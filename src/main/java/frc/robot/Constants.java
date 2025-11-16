@@ -255,6 +255,13 @@ public final class Constants {
     // Starting pose validation tolerance
     public static final double STARTING_POSE_TOLERANCE_METERS = 0.15;  // 15cm
     public static final double STARTING_POSE_TOLERANCE_DEGREES = 5.0;   // 5 degrees
+
+    // Vision initialization timeout
+    public static final double VISION_INITIALIZATION_TIMEOUT_SECONDS = 7.0;
+    
+    // Default fallback position if vision never initializes
+    // Uses Blue Reef Tag 17 as safe default
+    public static final Pose2d DEFAULT_FALLBACK_POSE = StartingPositions.BLUE_REEF_TAG_17;
   }
 
   public static final class StartingPositions {
