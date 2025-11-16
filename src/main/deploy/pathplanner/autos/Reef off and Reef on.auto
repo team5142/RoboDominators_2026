@@ -1,0 +1,55 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reef 2 to Reset Point"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reset Point to Reef 3"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reef 3 to 2"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reef 2 to 1"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reef 1 to Reset Point"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reset Point to Reef 3"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Reef 3 to 2"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}
