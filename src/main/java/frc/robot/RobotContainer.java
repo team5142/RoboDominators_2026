@@ -15,6 +15,7 @@ import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.POVButton;
 import frc.robot.commands.auto.FollowPreplannedPath;
@@ -27,6 +28,8 @@ import frc.robot.subsystems.ObjectVisionSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.GyroSubsystem;
+import frc.robot.generated.TunerConstants;
+import frc.robot.commands.auto.DriveToSavedPosition;
 
 public class RobotContainer {
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
@@ -34,6 +37,7 @@ public class RobotContainer {
   private final RobotState robotState = new RobotState();
   private final GyroSubsystem gyro = new GyroSubsystem();
 
+  // ✅ Simplified - CTRE CommandSwerveDrivetrain handles Tuner X constants internally
   private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
   
   private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(
@@ -106,9 +110,9 @@ public class RobotContainer {
         new DriveWithJoysticks(
             driveSubsystem,
             robotState,
-            () -> -driverController.getLeftY(),
-            () -> -driverController.getLeftX(),
-            () -> -driverController.getRightX(),
+            () -> -driverController.getLeftY(),  // ✅ REMOVED * 0.4
+            () -> -driverController.getLeftX(),  // ✅ REMOVED * 0.4
+            () -> -driverController.getRightX(), // ✅ REMOVED * 0.4
             () -> true,
             () -> driverController.getRightBumper()));
   }
@@ -151,6 +155,25 @@ public class RobotContainer {
             gyro,
             driveSubsystem,
             poseEstimator));
+
+    // ✅ X Button: Save current position as custom waypoint
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .onTrue(Commands.runOnce(() -> {
+          Pose2d currentPose = poseEstimator.getEstimatedPose();
+          SavedPositions.saveCustomPosition(currentPose);
+        }));
+
+    // ✅ Y Button: Drive to Blue Reef Tag 17 (HOLD to drive, release to stop)
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_17, "Blue Reef Tag 17"));
+
+    // ✅ B Button: Drive to Processor Position (HOLD to drive, release to stop)
+    new JoystickButton(driverController, XboxController.Button.kB.value)
+        .whileTrue(new DriveToSavedPosition(PROCESSOR_POS, "Processor Position"));
+
+    // ✅ A Button: Drive to Intake Position (HOLD to drive, release to stop)
+    new JoystickButton(driverController, XboxController.Button.kA.value)
+        .whileTrue(new DriveToSavedPosition(INTAKE_POS, "Intake Position"));
   }
 
   public Command getAutonomousCommand() {

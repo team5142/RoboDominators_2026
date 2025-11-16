@@ -46,7 +46,7 @@ public class SnapToHeadingFixed extends Command {
 
   @Override
   public void initialize() {
-    headingController.reset(driveSubsystem.getHeading().getRadians());
+    headingController.reset(driveSubsystem.getGyroRotation().getRadians()); // ✅ Use gyro, not pose
   }
 
   @Override
@@ -63,22 +63,22 @@ public class SnapToHeadingFixed extends Command {
     double xMetersPerSec = x * MAX_TRANSLATION_SPEED_MPS;
     double yMetersPerSec = y * MAX_TRANSLATION_SPEED_MPS;
 
-    // Calculate heading correction
+    // Calculate heading correction - USE GYRO, NOT POSE
     double targetHeadingRad = Math.toRadians(targetHeadingDegreesSupplier.getAsDouble());
-    double currentHeadingRad = driveSubsystem.getHeading().getRadians();
+    double currentHeadingRad = driveSubsystem.getGyroRotation().getRadians(); // ✅ Changed from robotState
     double omegaRadPerSec = headingController.calculate(currentHeadingRad, targetHeadingRad);
 
     // Drive with normal speed scale
     driveSubsystem.drive(
-        new Translation2d(xMetersPerSec, yMetersPerSec),
+        xMetersPerSec,
+        yMetersPerSec,
         omegaRadPerSec,
-        true,
-        NORMAL_SPEED_SCALE);
+        true);
   }
 
   @Override
   public void end(boolean interrupted) {
-    driveSubsystem.drive(new Translation2d(), 0.0, true, 1.0);
+    driveSubsystem.drive(0.0, 0.0, 0.0, true);
   }
 
   @Override

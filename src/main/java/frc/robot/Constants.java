@@ -49,38 +49,38 @@ public final class Constants {
     // Pigeon 2
     public static final int PIGEON_CAN_ID = 14;
 
-    // Module CAN IDs and offsets from Tuner X
+    // Module CAN IDs and offsets from Tuner X - UPDATED from latest TunerConstants
     // Front Left
     public static final int FRONT_LEFT_DRIVE_ID = 2;
     public static final int FRONT_LEFT_STEER_ID = 1;
     public static final int FRONT_LEFT_CANCODER_ID = 9;
-    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.073974609375;
+    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.484130859375;  // ✅ From Tuner X
 
     // Front Right
     public static final int FRONT_RIGHT_DRIVE_ID = 4;
     public static final int FRONT_RIGHT_STEER_ID = 3;
     public static final int FRONT_RIGHT_CANCODER_ID = 10;
-    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.21533203125;
+    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.20703125;  // ✅ UPDATED (was 0.21533203125)
 
     // Back Left
     public static final int BACK_LEFT_DRIVE_ID = 8;
     public static final int BACK_LEFT_STEER_ID = 7;
     public static final int BACK_LEFT_CANCODER_ID = 12;
-    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.2998046875;
+    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.30908203125;  // ✅ From Tuner X
 
     // Back Right
     public static final int BACK_RIGHT_DRIVE_ID = 6;
     public static final int BACK_RIGHT_STEER_ID = 5;
     public static final int BACK_RIGHT_CANCODER_ID = 11;
-    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.389892578125;
+    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.396240234375;  // ✅ UPDATED (was 0.389892578125)
 
     // Motor inversions from Tuner X
     public static final boolean FRONT_LEFT_DRIVE_INVERTED = false; // kInvertLeftSide
-    public static final boolean FRONT_LEFT_STEER_INVERTED = true;
+    public static final boolean FRONT_LEFT_STEER_INVERTED = true;  // ✅ Back to true
     public static final boolean FRONT_RIGHT_DRIVE_INVERTED = true; // kInvertRightSide
     public static final boolean FRONT_RIGHT_STEER_INVERTED = true;
     public static final boolean BACK_LEFT_DRIVE_INVERTED = false;
-    public static final boolean BACK_LEFT_STEER_INVERTED = true;
+    public static final boolean BACK_LEFT_STEER_INVERTED = true;   // ✅ Back to true
     public static final boolean BACK_RIGHT_DRIVE_INVERTED = true;
     public static final boolean BACK_RIGHT_STEER_INVERTED = true;
 
@@ -276,7 +276,12 @@ public final class Constants {
     /** Blue Reef Right - Tag 18 */
     public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(3.897, 1.799, Rotation2d.fromDegrees(0.0));
     
-    // Add more presets as needed for different starting positions
+    // ✅ ADD YOUR CUSTOM POSITIONS HERE
+    /** Scoring Position - Recorded during practice */
+    public static final Pose2d INTAKE_POS = new Pose2d(1.41, 0.42, Rotation2d.fromDegrees(-111.5));
+    
+    /** Another Position - Example */
+    public static final Pose2d PROCESSOR_POS = new Pose2d(5.73, 1.49, Rotation2d.fromDegrees(-75.0));
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed

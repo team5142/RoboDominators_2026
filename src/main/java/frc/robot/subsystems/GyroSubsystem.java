@@ -4,6 +4,7 @@ import static frc.robot.Constants.QuestNav.*;
 import static frc.robot.Constants.Swerve.*;
 
 import com.ctre.phoenix6.hardware.Pigeon2;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
@@ -204,16 +205,33 @@ public class GyroSubsystem extends SubsystemBase {
     // Reset Pigeon immediately
     pigeon.reset();
     
-    // In autonomous, we want QuestNav to reset too
-    // In teleop, we typically don't (let vision correct it)
+    // Reset QuestNav yaw to 0° while preserving X,Y position
+    // QuestNav doesn't have a resetYaw() method, so we use setPose() with new rotation
+    try {
+      var poseFrames = questNav.getAllUnreadPoseFrames();
+      if (poseFrames != null && poseFrames.length > 0) {
+        // Get current pose
+        Pose2d currentQuestPose = poseFrames[poseFrames.length - 1].questPose();
+        
+        // Create new pose with same X,Y but 0° rotation
+        Pose2d newPose = new Pose2d(
+            currentQuestPose.getTranslation(),
+            Rotation2d.fromDegrees(0.0));
+        
+        questNav.setPose(newPose);  // Use setPose, not resetYaw
+        Logger.recordOutput("Gyro/QuestNavYawReset", true);
+      }
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNavYawResetFailed", e.getMessage());
+    }
+    
+    // Log the reset
     if (DriverStation.isAutonomous()) {
-      // TODO: Properly reset QuestNav pose
-      // For now, just log intent
       Logger.recordOutput("Gyro/HeadingReset/Auto", true);
       System.out.println("Gyro reset in AUTONOMOUS mode");
     } else {
       Logger.recordOutput("Gyro/HeadingReset/Teleop", true);
-      System.out.println("Gyro reset in TELEOP mode (QuestNav unchanged)");
+      System.out.println("Gyro reset in TELEOP mode");
     }
     
     Logger.recordOutput("Gyro/HeadingReset", true);
@@ -224,9 +242,28 @@ public class GyroSubsystem extends SubsystemBase {
    * @param angleDegrees Desired heading in degrees
    */
   public void setHeading(double angleDegrees) {
-    // This is tricky with QuestNav - it maintains full pose, not just rotation
-    // For now, just reset Pigeon and log
+    // Reset Pigeon to specific angle
     pigeon.setYaw(angleDegrees);
+    
+    // Reset QuestNav to same angle while preserving X,Y
+    try {
+      var poseFrames = questNav.getAllUnreadPoseFrames();
+      if (poseFrames != null && poseFrames.length > 0) {
+        // Get current pose
+        Pose2d currentQuestPose = poseFrames[poseFrames.length - 1].questPose();
+        
+        // Create new pose with same X,Y but new rotation
+        Pose2d newPose = new Pose2d(
+            currentQuestPose.getTranslation(),
+            Rotation2d.fromDegrees(angleDegrees));
+        
+        questNav.setPose(newPose);  // Use setPose, not resetYaw
+        Logger.recordOutput("Gyro/QuestNavYawSet", angleDegrees);
+      }
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNavYawSetFailed", e.getMessage());
+    }
+    
     Logger.recordOutput("Gyro/HeadingSet", angleDegrees);
   }
 

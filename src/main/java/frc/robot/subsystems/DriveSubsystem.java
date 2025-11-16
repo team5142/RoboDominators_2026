@@ -1,159 +1,130 @@
 package frc.robot.subsystems;
 
-import static frc.robot.Constants.Swerve.*;
-
-import edu.wpi.first.math.geometry.Pose2d;
+import com.ctre.phoenix6.swerve.SwerveRequest;
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
-import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
-import edu.wpi.first.math.kinematics.SwerveModulePosition;
-import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotState;
 import org.littletonrobotics.junction.Logger;
 
-public class DriveSubsystem extends SubsystemBase {
-  private final SwerveDriveKinematics kinematics =
-      new SwerveDriveKinematics(
-          FRONT_LEFT_LOCATION,
-          FRONT_RIGHT_LOCATION,
-          BACK_LEFT_LOCATION,
-          BACK_RIGHT_LOCATION);
+import java.util.function.Supplier;
 
+/**
+ * Swerve drivetrain extending CTRE's CommandSwerveDrivetrain.
+ * Integrates with custom GyroSubsystem for QuestNav/Pigeon failover.
+ */
+public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final GyroSubsystem gyro;
-
-  private final SwerveModule frontLeft =
-      new SwerveModule(
-          FRONT_LEFT_DRIVE_ID,
-          FRONT_LEFT_STEER_ID,
-          FRONT_LEFT_CANCODER_ID,
-          FRONT_LEFT_OFFSET_ROTATIONS * 2.0 * Math.PI,
-          FRONT_LEFT_DRIVE_INVERTED,
-          FRONT_LEFT_STEER_INVERTED);
-  private final SwerveModule frontRight =
-      new SwerveModule(
-          FRONT_RIGHT_DRIVE_ID,
-          FRONT_RIGHT_STEER_ID,
-          FRONT_RIGHT_CANCODER_ID,
-          FRONT_RIGHT_OFFSET_ROTATIONS * 2.0 * Math.PI,
-          FRONT_RIGHT_DRIVE_INVERTED,
-          FRONT_RIGHT_STEER_INVERTED);
-  private final SwerveModule backLeft =
-      new SwerveModule(
-          BACK_LEFT_DRIVE_ID,
-          BACK_LEFT_STEER_ID,
-          BACK_LEFT_CANCODER_ID,
-          BACK_LEFT_OFFSET_ROTATIONS * 2.0 * Math.PI,
-          BACK_LEFT_DRIVE_INVERTED,
-          BACK_LEFT_STEER_INVERTED);
-  private final SwerveModule backRight =
-      new SwerveModule(
-          BACK_RIGHT_DRIVE_ID,
-          BACK_RIGHT_STEER_ID,
-          BACK_RIGHT_CANCODER_ID,
-          BACK_RIGHT_OFFSET_ROTATIONS * 2.0 * Math.PI,
-          BACK_RIGHT_DRIVE_INVERTED,
-          BACK_RIGHT_STEER_INVERTED);
-
   private final RobotState robotState;
+  
+  // Swerve requests for different drive modes
+  private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
+  private final SwerveRequest.RobotCentric robotCentricDrive = new SwerveRequest.RobotCentric();
 
+  /**
+   * Constructs the drivetrain using Tuner X generated constants
+   */
   public DriveSubsystem(RobotState robotState, GyroSubsystem gyro) {
+    // Call parent constructor with Tuner X constants
+    super(
+        frc.robot.generated.TunerConstants.DrivetrainConstants,
+        frc.robot.generated.TunerConstants.FrontLeft,
+        frc.robot.generated.TunerConstants.FrontRight,
+        frc.robot.generated.TunerConstants.BackLeft,
+        frc.robot.generated.TunerConstants.BackRight
+    );
+    
     this.robotState = robotState;
     this.gyro = gyro;
   }
 
   @Override
   public void periodic() {
-    // Just log sensor data, pose estimation happens elsewhere
+    super.periodic(); // CTRE's periodic (handles odometry, operator perspective, etc.)
+    
+    // Additional logging
     Logger.recordOutput("Drive/GyroYawDeg", getGyroRotation().getDegrees());
-    Logger.recordOutput("Drive/ModuleStates", getModuleStates());
+    Logger.recordOutput("Drive/Pose", getState().Pose);
   }
 
+  /**
+   * Drive using field-relative or robot-relative control
+   */
   public void drive(
-      Translation2d translation,
-      double omegaRadPerSec,
-      boolean fieldRelative,
-      double speedScale) {
-
-    double scaledX = translation.getX() * speedScale;
-    double scaledY = translation.getY() * speedScale;
-    double scaledOmega = omegaRadPerSec * speedScale;
-
-    ChassisSpeeds speeds =
-        fieldRelative
-            ? ChassisSpeeds.fromFieldRelativeSpeeds(
-                scaledX, scaledY, scaledOmega, getGyroRotation())
-            : new ChassisSpeeds(scaledX, scaledY, scaledOmega);
-
-    SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(states, MAX_TRANSLATION_SPEED_MPS);
-    setModuleStates(states, true);
+      double xVelocity,
+      double yVelocity,
+      double rotationalVelocity,
+      boolean fieldRelative) {
+    
+    if (fieldRelative) {
+      setControl(fieldCentricDrive
+          .withVelocityX(xVelocity)
+          .withVelocityY(yVelocity)
+          .withRotationalRate(rotationalVelocity));
+    } else {
+      setControl(robotCentricDrive
+          .withVelocityX(xVelocity)
+          .withVelocityY(yVelocity)
+          .withRotationalRate(rotationalVelocity));
+    }
   }
 
   /**
    * Drive using robot-relative chassis speeds (for PathPlanner)
    */
   public void driveRobotRelative(ChassisSpeeds speeds) {
-    SwerveModuleState[] states = kinematics.toSwerveModuleStates(speeds);
-    SwerveDriveKinematics.desaturateWheelSpeeds(states, MAX_TRANSLATION_SPEED_MPS);
-    setModuleStates(states, false);  // Use closed-loop for auto
+    setControl(robotCentricDrive
+        .withVelocityX(speeds.vxMetersPerSecond)
+        .withVelocityY(speeds.vyMetersPerSecond)
+        .withRotationalRate(speeds.omegaRadiansPerSecond));
   }
 
   /**
    * Get robot-relative chassis speeds (for PathPlanner)
    */
   public ChassisSpeeds getRobotRelativeSpeeds() {
-    return kinematics.toChassisSpeeds(getModuleStates());
+    return super.getKinematics().toChassisSpeeds(getState().ModuleStates);
   }
 
-  public void setModuleStates(SwerveModuleState[] desiredStates, boolean openLoop) {
-    frontLeft.setDesiredState(desiredStates[0], openLoop);
-    frontRight.setDesiredState(desiredStates[1], openLoop);
-    backLeft.setDesiredState(desiredStates[2], openLoop);
-    backRight.setDesiredState(desiredStates[3], openLoop);
+  /**
+   * Get swerve module positions (for pose estimator)
+   */
+  public edu.wpi.first.math.kinematics.SwerveModulePosition[] getModulePositions() {
+    return getState().ModulePositions;
   }
 
-  public SwerveDriveKinematics getKinematics() {
-    return kinematics;
-  }
+  // DON'T add getKinematics() - it's already inherited from CommandSwerveDrivetrain
+  // The parent class already has it as public, so we can use it directly
 
-  public SwerveModulePosition[] getModulePositions() {
-    return new SwerveModulePosition[] {
-      frontLeft.getPosition(),
-      frontRight.getPosition(),
-      backLeft.getPosition(),
-      backRight.getPosition()
-    };
-  }
-
-  public SwerveModuleState[] getModuleStates() {
-    return new SwerveModuleState[] {
-      new SwerveModuleState(frontLeft.getPosition().distanceMeters, frontLeft.getAngle()),
-      new SwerveModuleState(frontRight.getPosition().distanceMeters, frontRight.getAngle()),
-      new SwerveModuleState(backLeft.getPosition().distanceMeters, backLeft.getAngle()),
-      new SwerveModuleState(backRight.getPosition().distanceMeters, backRight.getAngle())
-    };
-  }
-
-  public Rotation2d getHeading() {
-    return robotState.getRobotPose().getRotation();
-  }
-
-  public void zeroHeading() {
-    gyro.resetHeading();
-  }
-
+  /**
+   * Get gyro rotation (uses our hybrid QuestNav/Pigeon system)
+   */
   public Rotation2d getGyroRotation() {
     return gyro.getRotation();
   }
 
+  /**
+   * Reset heading to zero
+   */
+  public void zeroHeading() {
+    gyro.resetHeading();
+  }
+
+  /**
+   * Create command to orient robot to field
+   * This sets the CURRENT direction as "forward" (0°) for field-relative driving
+   */
   public Command createOrientToFieldCommand(RobotState robotState) {
-    return runOnce(
-        () -> {
-          gyro.resetHeading();
-          Logger.recordOutput("Drive/OrientToFieldButton", true);
-        });
+    return runOnce(() -> {
+      // Reset gyro to 0°
+      gyro.resetHeading();
+      
+      // Tell CTRE framework that current direction is now "operator forward"
+      // This makes field-relative driving use this as the reference
+      setOperatorPerspectiveForward(Rotation2d.fromDegrees(0.0));
+      
+      Logger.recordOutput("Drive/OrientToFieldButton", true);
+      System.out.println("Field orientation set - current direction is now 0° (downfield)");
+    });
   }
 }

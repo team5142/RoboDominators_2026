@@ -62,14 +62,14 @@ public class DriveWithJoysticks extends Command {
 
     // Drive
     driveSubsystem.drive(
-        new Translation2d(xMetersPerSec, yMetersPerSec),
-        omegaRadPerSec,
-        fieldRelativeSupplier.getAsBoolean(),
-        speedScale);
+        xMetersPerSec * speedScale,
+        yMetersPerSec * speedScale,
+        omegaRadPerSec * speedScale,
+        fieldRelativeSupplier.getAsBoolean());
   }
 
   @Override
   public void end(boolean interrupted) {
-    driveSubsystem.drive(new Translation2d(), 0.0, true, 1.0);
+    driveSubsystem.drive(0.0, 0.0, 0.0, true);
   }
 }
