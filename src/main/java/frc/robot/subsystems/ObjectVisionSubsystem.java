@@ -29,6 +29,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
   
   private List<ObjectDetection> detectedObjects = new ArrayList<>();
   private Optional<ObjectDetection> closestTarget = Optional.empty();
+  private boolean connectionWarningShown = false; // Prevent spam
 
   public ObjectVisionSubsystem(RobotState robotState) {
     this.robotState = robotState;
@@ -44,55 +45,77 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     
     // Set to object detection pipeline (index 0)
     camera.setPipelineIndex(0);
+    
+    System.out.println("ObjectVisionSubsystem initialized:");
+    System.out.println("  - Camera: " + OBJ_CAMERA_NAME);
+    System.out.println("  - FOV: " + OBJ_CAMERA_FOV_DEG + "° (default, measure actual)");
   }
 
   @Override
   public void periodic() {
-    PhotonPipelineResult result = camera.getLatestResult();
-    
-    detectedObjects.clear();
-    closestTarget = Optional.empty();
+    try {
+      PhotonPipelineResult result = camera.getLatestResult();
+      
+      detectedObjects.clear();
+      closestTarget = Optional.empty();
 
-    if (!result.hasTargets()) {
+      if (!result.hasTargets()) {
+        Logger.recordOutput("ObjectVision/HasTargets", false);
+        Logger.recordOutput("ObjectVision/TargetCount", 0);
+        connectionWarningShown = false; // Reset warning when camera recovers
+        return;
+      }
+
+      // Get current robot pose for field-relative transforms
+      Pose2d robotPose = robotState.getRobotPose();
+
+      // Process all detected targets
+      for (PhotonTrackedTarget target : result.getTargets()) {
+        processTarget(target, result.getTimestampSeconds(), robotPose)
+            .ifPresent(detectedObjects::add);
+      }
+
+      // Find closest target (in field coordinates)
+      if (!detectedObjects.isEmpty()) {
+        closestTarget = detectedObjects.stream()
+            .min((a, b) -> {
+              double distA = robotPose.getTranslation().getDistance(a.getPosition());
+              double distB = robotPose.getTranslation().getDistance(b.getPosition());
+              return Double.compare(distA, distB);
+            });
+      }
+
+      // Logging
+      Logger.recordOutput("ObjectVision/HasTargets", true);
+      Logger.recordOutput("ObjectVision/TargetCount", detectedObjects.size());
+      Logger.recordOutput("ObjectVision/DetectedPositions", 
+          detectedObjects.stream()
+              .map(obj -> new Pose2d(obj.getPosition(), new Rotation2d()))
+              .toArray(Pose2d[]::new));
+      
+      if (closestTarget.isPresent()) {
+        ObjectDetection closest = closestTarget.get();
+        Logger.recordOutput("ObjectVision/ClosestTarget/Type", closest.getType().toString());
+        Logger.recordOutput("ObjectVision/ClosestTarget/Distance", closest.getDistanceMeters());
+        Logger.recordOutput("ObjectVision/ClosestTarget/Angle", closest.getAngleToTarget().getDegrees());
+        Logger.recordOutput("ObjectVision/ClosestTarget/FieldPosition", 
+            new Pose2d(closest.getPosition(), new Rotation2d()));
+      }
+      
+      connectionWarningShown = false; // Reset warning on successful cycle
+      
+    } catch (Exception e) {
+      // Camera disconnected or communication error
+      if (!connectionWarningShown) {
+        System.err.println("[WARNING] Object detection camera error: " + e.getMessage());
+        connectionWarningShown = true;
+      }
+      Logger.recordOutput("ObjectVision/ConnectionError", e.getMessage());
       Logger.recordOutput("ObjectVision/HasTargets", false);
       Logger.recordOutput("ObjectVision/TargetCount", 0);
-      return;
-    }
-
-    // Get current robot pose for field-relative transforms
-    Pose2d robotPose = robotState.getRobotPose();
-
-    // Process all detected targets
-    for (PhotonTrackedTarget target : result.getTargets()) {
-      processTarget(target, result.getTimestampSeconds(), robotPose)
-          .ifPresent(detectedObjects::add);
-    }
-
-    // Find closest target (in field coordinates)
-    if (!detectedObjects.isEmpty()) {
-      closestTarget = detectedObjects.stream()
-          .min((a, b) -> {
-            double distA = robotPose.getTranslation().getDistance(a.getPosition());
-            double distB = robotPose.getTranslation().getDistance(b.getPosition());
-            return Double.compare(distA, distB);
-          });
-    }
-
-    // Logging
-    Logger.recordOutput("ObjectVision/HasTargets", true);
-    Logger.recordOutput("ObjectVision/TargetCount", detectedObjects.size());
-    Logger.recordOutput("ObjectVision/DetectedPositions", 
-        detectedObjects.stream()
-            .map(obj -> new Pose2d(obj.getPosition(), new Rotation2d()))
-            .toArray(Pose2d[]::new));
-    
-    if (closestTarget.isPresent()) {
-      ObjectDetection closest = closestTarget.get();
-      Logger.recordOutput("ObjectVision/ClosestTarget/Type", closest.getType().toString());
-      Logger.recordOutput("ObjectVision/ClosestTarget/Distance", closest.getDistanceMeters());
-      Logger.recordOutput("ObjectVision/ClosestTarget/Angle", closest.getAngleToTarget().getDegrees());
-      Logger.recordOutput("ObjectVision/ClosestTarget/FieldPosition", 
-          new Pose2d(closest.getPosition(), new Rotation2d()));
+      
+      detectedObjects.clear();
+      closestTarget = Optional.empty();
     }
   }
 
@@ -114,17 +137,15 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     double cameraHeightMeters = OBJ_CAMERA_Z_METERS;
     
     // Distance calculation: d = (h_target - h_camera) / tan(pitch)
-    // Handle edge cases where pitch is near zero
-    double distance;
-    if (Math.abs(pitchRadians) < 0.01) {
-      // Too close to horizontal, use alternative method or reject
+    if (Math.abs(pitchRadians) < 0.01) { // Pitch too close to horizontal
       return Optional.empty();
-    } else {
-      distance = Math.abs((targetHeightMeters - cameraHeightMeters) / Math.tan(pitchRadians));
     }
     
-    // Sanity check
+    double distance = Math.abs((targetHeightMeters - cameraHeightMeters) / Math.tan(pitchRadians));
+    
+    // Sanity check distance
     if (distance > MAX_TARGET_DISTANCE_METERS || distance < 0.1) {
+      Logger.recordOutput("ObjectVision/Debug/RejectedDistance", distance);
       return Optional.empty();
     }
 
@@ -132,9 +153,17 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     Rotation2d yawFromCamera = Rotation2d.fromDegrees(target.getYaw());
 
     // Transform to robot-relative coordinates
-    // Account for camera offset and yaw
     double robotRelativeX = distance * yawFromCamera.getCos() + OBJ_CAMERA_X_METERS;
     double robotRelativeY = distance * yawFromCamera.getSin() + OBJ_CAMERA_Y_METERS;
+    
+    // CRITICAL FIX: Check magnitude BEFORE creating Rotation2d
+    double magnitude = Math.hypot(robotRelativeX, robotRelativeY);
+    
+    if (magnitude < 0.01) { // Less than 1cm - too close to robot center
+      Logger.recordOutput("ObjectVision/Debug/RejectedZeroMagnitude", magnitude);
+      return Optional.empty();
+    }
+    
     Translation2d robotRelativePosition = new Translation2d(robotRelativeX, robotRelativeY);
 
     // Transform to field coordinates
@@ -142,12 +171,13 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     Translation2d fieldPosition = robotPose.transformBy(robotToTarget).getTranslation();
 
     // Calculate robot-relative angle for driver assistance
+    // NOW safe to create Rotation2d because we checked magnitude > 0.01
     Rotation2d angleToTarget = new Rotation2d(robotRelativeX, robotRelativeY);
 
     return Optional.of(new ObjectDetection(
         type,
-        fieldPosition,  // Now field-relative!
-        target.getArea() / 100.0,  // Normalize area as confidence
+        fieldPosition,
+        target.getArea() / 100.0,
         distance,
         angleToTarget,
         timestamp));

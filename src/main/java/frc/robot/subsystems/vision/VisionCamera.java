@@ -1,13 +1,8 @@
-
 package frc.robot.subsystems.vision;
 
-
-
 import edu.wpi.first.math.geometry.Pose2d;
-
+import java.util.List;
 import java.util.Optional;
-
-
 
 public interface VisionCamera {
 
@@ -21,9 +16,9 @@ public interface VisionCamera {
 
     public final double averageTagDistance;
 
+    public final List<Integer> tagIds; // NEW: Track which tags were used
 
-
-    public VisionResult(Pose2d estimatedPose, double timestampSeconds, int tagCount, double averageTagDistance) {
+    public VisionResult(Pose2d estimatedPose, double timestampSeconds, int tagCount, double averageTagDistance, List<Integer> tagIds) {
 
       this.estimatedPose = estimatedPose;
 
@@ -33,11 +28,11 @@ public interface VisionCamera {
 
       this.averageTagDistance = averageTagDistance;
 
+      this.tagIds = tagIds;
+
     }
 
   }
-
-
 
   Optional<VisionResult> getLatestResult();
 

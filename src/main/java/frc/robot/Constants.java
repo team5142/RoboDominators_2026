@@ -168,9 +168,14 @@ public final class Constants {
   }
 
   public static final class Vision {
-    // Limelight names
+    // AprilTag cameras for pose estimation
+    
+    // Limelight 3 - Front camera (existing)
     public static final String LL_FRONT_NAME = "limelight-front";
-    public static final String LL_BACK_NAME = "limelight-back";
+    
+    // PhotonVision - Back cameras (CORRECTED TO MATCH PHOTONVISION)
+    public static final String PV_BACK_LEFT_NAME = "BackLeftTagPV";    // Changed back to CamelCase
+    public static final String PV_BACK_RIGHT_NAME = "BackRightTagPV";  // Changed back to CamelCase
 
     // Vision pose estimation tuning
     public static final double MAX_AMBIGUITY = 0.3;
@@ -183,8 +188,9 @@ public final class Constants {
     public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.5, 0.5, 0.7};
     public static final double[] ODOMETRY_STD_DEVS = {0.1, 0.1, 0.1};
 
-    // Robot-to-camera transforms (will need to measure these)
-    // Example placeholders - X forward, Y left, Z up from robot center
+    // ===================================================================
+    // LIMELIGHT 3 - FRONT CAMERA
+    // ===================================================================
     public static final double FRONT_LL_X_METERS = 0.3;
     public static final double FRONT_LL_Y_METERS = 0.0;
     public static final double FRONT_LL_Z_METERS = 0.2;
@@ -192,35 +198,52 @@ public final class Constants {
     public static final double FRONT_LL_PITCH_DEG = -20.0; // Angled down
     public static final double FRONT_LL_YAW_DEG = 0.0;
 
-    public static final double BACK_LL_X_METERS = -0.3;
-    public static final double BACK_LL_Y_METERS = 0.0;
-    public static final double BACK_LL_Z_METERS = 0.2;
-    public static final double BACK_LL_ROLL_DEG = 0.0;
-    public static final double BACK_LL_PITCH_DEG = -20.0;
-    public static final double BACK_LL_YAW_DEG = 180.0; // Facing backwards
+    // ===================================================================
+    // PHOTONVISION - BACK LEFT TAG CAMERA
+    // ===================================================================
+    // Back 11.5", Left 10", Height 8"
+    // Pitch 20° up, Yaw 180° + 20° outward
+    public static final double BACK_LEFT_PV_X_METERS = Units.inchesToMeters(-11.5);
+    public static final double BACK_LEFT_PV_Y_METERS = Units.inchesToMeters(10.0);
+    public static final double BACK_LEFT_PV_Z_METERS = Units.inchesToMeters(8.0);
+    public static final double BACK_LEFT_PV_ROLL_DEG = 0.0;
+    public static final double BACK_LEFT_PV_PITCH_DEG = 20.0;    // Positive (camera angled UP)
+    public static final double BACK_LEFT_PV_YAW_DEG = 200.0 + 122.4;  // 322.4° - empirically corrected
+    public static final double BACK_LEFT_PV_FOV_DEG = 100.0;
 
-    // PhotonVision cameras for object detection (future)
-    public static final String PV_OBJECT_FRONT_NAME = "pv-front-object";
-    public static final String PV_OBJECT_BACK_NAME = "pv-back-object";
+    // ===================================================================
+    // PHOTONVISION - BACK RIGHT TAG CAMERA
+    // ===================================================================
+    // Back 11.5", Right 10", Height 8"
+    // Pitch 20° up, Yaw 180° - 20° outward
+    public static final double BACK_RIGHT_PV_X_METERS = Units.inchesToMeters(-11.5);
+    public static final double BACK_RIGHT_PV_Y_METERS = Units.inchesToMeters(-10.0);
+    public static final double BACK_RIGHT_PV_Z_METERS = Units.inchesToMeters(8.0);
+    public static final double BACK_RIGHT_PV_ROLL_DEG = 0.0;
+    public static final double BACK_RIGHT_PV_PITCH_DEG = 20.0;   // Positive (camera angled UP)
+    public static final double BACK_RIGHT_PV_YAW_DEG = 160.0 + 22.8;  // 182.8° - empirically corrected
+    public static final double BACK_RIGHT_PV_FOV_DEG = 100.0;
 
-    // Object detection camera (PhotonVision)
-    public static final String OBJ_CAMERA_NAME = "Front_OBJ_Arducam_OV9782";
+    // ===================================================================
+    // PHOTONVISION - FRONT OBJECT DETECTION CAMERA
+    // ===================================================================
+    public static final String OBJ_CAMERA_NAME = "FrontObjectDetectionPV";
     
-    // Camera mounting (robot coordinate system: +X forward, +Y left, +Z up)
-    public static final double OBJ_CAMERA_X_METERS = Units.inchesToMeters(12.0);   // Forward
-    public static final double OBJ_CAMERA_Y_METERS = Units.inchesToMeters(5.5);    // Left
-    public static final double OBJ_CAMERA_Z_METERS = Units.inchesToMeters(9.75);   // Up
+    public static final double OBJ_CAMERA_X_METERS = Units.inchesToMeters(12.0);
+    public static final double OBJ_CAMERA_Y_METERS = Units.inchesToMeters(5.5);
+    public static final double OBJ_CAMERA_Z_METERS = Units.inchesToMeters(9.75);
     public static final double OBJ_CAMERA_ROLL_DEG = 0.0;
-    public static final double OBJ_CAMERA_PITCH_DEG = 0.0;  // Horizontal
-    public static final double OBJ_CAMERA_YAW_DEG = 0.0;    // Forward
+    public static final double OBJ_CAMERA_PITCH_DEG = 0.0;
+    public static final double OBJ_CAMERA_YAW_DEG = 0.0;
+    public static final double OBJ_CAMERA_FOV_DEG = 70.0;  // Default FOV for Arducam (measure actual value later)
     
     // 2025 game piece heights (temporary for testing until 2026 game)
     public static final double CORAL_HEIGHT_METERS = Units.inchesToMeters(6.0);
     public static final double ALGAE_HEIGHT_METERS = Units.inchesToMeters(3.0);
     
     // Detection filtering
-    public static final double MIN_TARGET_AREA_PERCENT = 0.1;  // Reject tiny detections
-    public static final double MAX_TARGET_DISTANCE_METERS = 5.0;  // Max reasonable distance
+    public static final double MIN_TARGET_AREA_PERCENT = 0.1;
+    public static final double MAX_TARGET_DISTANCE_METERS = 5.0;
   }
 
   public static final class QuestNav {

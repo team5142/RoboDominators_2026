@@ -1,7 +1,9 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.DriveSubsystem;
@@ -11,7 +13,7 @@ import org.littletonrobotics.junction.Logger;
 
 /**
  * Sets the robot's starting pose for match initialization.
- * Resets gyro and pose estimator to a known position.
+ * Resets gyro, pose estimator, and QuestNav to a known position.
  */
 public class SetStartingPoseCommand extends Command {
   private final Pose2d targetPose;
@@ -49,6 +51,16 @@ public class SetStartingPoseCommand extends Command {
         drive.getGyroRotation(),
         drive.getModulePositions());
     
+    // CRITICAL: Reset QuestNav to match the new pose
+    // Convert Pose2d to Pose3d (QuestNav uses 3D poses)
+    Pose3d targetPose3d = new Pose3d(
+        targetPose.getX(),
+        targetPose.getY(),
+        0.0, // Z height (assume on ground)
+        new Rotation3d(0.0, 0.0, targetPose.getRotation().getRadians()));
+    
+    gyro.setQuestNavPose(targetPose3d);
+    
     // Log to AdvantageKit
     Logger.recordOutput("StartingPose/Name", positionName);
     Logger.recordOutput("StartingPose/TargetPose", targetPose);
@@ -76,6 +88,7 @@ public class SetStartingPoseCommand extends Command {
     System.out.println("Position: " + positionName);
     System.out.println("Target: " + targetPose);
     System.out.println("Actual: " + actualPose);
+    System.out.println("QuestNav synced to: " + targetPose3d);
     System.out.println("========================");
   }
 
