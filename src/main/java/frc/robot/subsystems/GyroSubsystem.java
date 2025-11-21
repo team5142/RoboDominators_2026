@@ -219,7 +219,7 @@ public class GyroSubsystem extends SubsystemBase {
     boolean tracking = isQuestNavTracking();
     Logger.recordOutput("Gyro/Debug/QuestNavIsTracking", tracking);
     
-    // Try to get rotation (even if isTracking() is false, we might still have frames)
+    // Try to get rotation
     Rotation2d questNavRotation = getQuestNavRotation();
     
     // Check timeout
@@ -227,26 +227,31 @@ public class GyroSubsystem extends SubsystemBase {
     double timeSinceUpdate = currentTime - lastQuestNavUpdateTime;
     Logger.recordOutput("Gyro/Debug/TimeSinceUpdate", timeSinceUpdate);
     
-    // RELAXED: Only fail if BOTH tracking is false AND no recent frames
-    // This prevents false failovers when Quest momentarily reports not tracking
-    // but is still sending valid pose data
-    if (!tracking && timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
+    // NEW: Check if we actually got new frame data (even if isTracking() is false)
+    boolean gotNewFrame = (lastQuestNavFrameCount != -1); // -1 = never got a frame
+    Logger.recordOutput("Gyro/Debug/GotNewFrame", gotNewFrame);
+    
+    // CRITICAL FIX: Only fail if BOTH conditions are true:
+    // 1. isTracking() is false AND
+    // 2. We haven't received ANY frames in the timeout period
+    //
+    // This prevents failover when Quest is sending data but reports not tracking
+    if (!tracking && !gotNewFrame && timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
       Logger.recordOutput("Gyro/QuestNavTimeout", true);
       Logger.recordOutput("Gyro/Debug/FailReason", 
-          String.format("Not tracking AND timeout (%.3fs)", timeSinceUpdate));
+          String.format("Not tracking AND no frames AND timeout (%.3fs)", timeSinceUpdate));
       return false;
     }
     
-    // If we have recent frames, trust them even if isTracking() is false
-    if (timeSinceUpdate < 0.1) { // Frames within last 100ms
-      Logger.recordOutput("Gyro/Debug/UsingFramesEvenIfNotTracking", !tracking && timeSinceUpdate < 0.1);
-      // Continue processing - we have recent data
-    }
-    
-    // Check if timeout (even if tracking says true, reject stale data)
-    if (timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
+    // NEW: If we have RECENT frames (within 100ms), trust them even if isTracking() is false
+    if (gotNewFrame && timeSinceUpdate < 0.1) {
+      Logger.recordOutput("Gyro/Debug/UsingFramesEvenIfNotTracking", !tracking);
+      // Continue - we have fresh data, ignore isTracking() status
+    } else if (timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
+      // Timeout - no recent frames
       Logger.recordOutput("Gyro/QuestNavTimeout", true);
-      Logger.recordOutput("Gyro/Debug/FailReason", "Timeout: " + timeSinceUpdate + "s");
+      Logger.recordOutput("Gyro/Debug/FailReason", 
+          String.format("Timeout: %.3fs (no recent frames)", timeSinceUpdate));
       return false;
     }
 

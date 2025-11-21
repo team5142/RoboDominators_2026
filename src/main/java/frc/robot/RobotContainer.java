@@ -43,7 +43,7 @@ public class RobotContainer {
   private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro); // CTRE swerve drive
   private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro); // NEW: Pass gyro
   private final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator); // AprilTag cameras
-  private final ObjectVisionSubsystem objectVisionSubsystem = new ObjectVisionSubsystem(robotState); // Re-enabled!
+  // private final ObjectVisionSubsystem objectVisionSubsystem = new ObjectVisionSubsystem(robotState); // DISABLED: Causing errors - re-enable later when ready
   private final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem); // LED status indicators
 
   // Autonomous
@@ -144,15 +144,15 @@ public class RobotContainer {
 
     // Y: Auto-drive to Blue Reef Tag 17 (hold to drive, release to stop)
     new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_17, "Blue Reef Tag 17"));
+        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_17, "Blue Reef Tag 17", poseEstimator));
 
     // B: Auto-drive to Processor position
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(new DriveToSavedPosition(PROCESSOR_POS, "Processor Position"));
+        .whileTrue(new DriveToSavedPosition(PROCESSOR_POS, "Processor Position", poseEstimator));
 
     // A: Auto-drive to Intake position
     new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(new DriveToSavedPosition(INTAKE_POS, "Intake Position"));
+        .whileTrue(new DriveToSavedPosition(INTAKE_POS, "Intake Position", poseEstimator));
 
     System.out.println("Button bindings configured");
   }

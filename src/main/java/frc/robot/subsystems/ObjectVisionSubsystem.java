@@ -33,22 +33,23 @@ public class ObjectVisionSubsystem extends SubsystemBase {
 
   public ObjectVisionSubsystem(RobotState robotState) {
     this.robotState = robotState;
+    
+    // Initialize camera transform (position and orientation relative to robot center)
+    this.robotToCamera = new Transform3d(
+        new Translation3d(OBJ_CAMERA_X_METERS, OBJ_CAMERA_Y_METERS, OBJ_CAMERA_Z_METERS),
+        new Rotation3d()
+    );
+    
+    // Initialize PhotonVision camera for object detection (FObjPV with FCalibratedTag pipeline)
     camera = new PhotonCamera(OBJ_CAMERA_NAME);
     
-    // Robot-to-camera transform
-    robotToCamera = new Transform3d(
-        new Translation3d(OBJ_CAMERA_X_METERS, OBJ_CAMERA_Y_METERS, OBJ_CAMERA_Z_METERS),
-        new Rotation3d(
-            Units.degreesToRadians(OBJ_CAMERA_ROLL_DEG),
-            Units.degreesToRadians(OBJ_CAMERA_PITCH_DEG),
-            Units.degreesToRadians(OBJ_CAMERA_YAW_DEG)));
-    
-    // Set to object detection pipeline (index 0)
-    camera.setPipelineIndex(0);
+    // Set pipeline to "FCalibratedTag" (pipeline 0 by default)
+    camera.setPipelineIndex(0);  // Assumes "FCalibratedTag" is pipeline 0
     
     System.out.println("ObjectVisionSubsystem initialized:");
     System.out.println("  - Camera: " + OBJ_CAMERA_NAME);
-    System.out.println("  - FOV: " + OBJ_CAMERA_FOV_DEG + "° (default, measure actual)");
+    System.out.println("  - Pipeline: FCalibratedTag");
+    System.out.println("  - FOV: " + OBJ_CAMERA_FOV_DEG + "°");
   }
 
   @Override
@@ -156,12 +157,12 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     double robotRelativeX = distance * yawFromCamera.getCos() + OBJ_CAMERA_X_METERS;
     double robotRelativeY = distance * yawFromCamera.getSin() + OBJ_CAMERA_Y_METERS;
     
-    // CRITICAL FIX: Check magnitude BEFORE creating Rotation2d
+    // CRITICAL FIX: Check magnitude BEFORE creating any Rotation2d objects
     double magnitude = Math.hypot(robotRelativeX, robotRelativeY);
     
     if (magnitude < 0.01) { // Less than 1cm - too close to robot center
       Logger.recordOutput("ObjectVision/Debug/RejectedZeroMagnitude", magnitude);
-      return Optional.empty();
+      return Optional.empty(); // ← Return BEFORE creating Rotation2d
     }
     
     Translation2d robotRelativePosition = new Translation2d(robotRelativeX, robotRelativeY);
@@ -171,7 +172,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     Translation2d fieldPosition = robotPose.transformBy(robotToTarget).getTranslation();
 
     // Calculate robot-relative angle for driver assistance
-    // NOW safe to create Rotation2d because we checked magnitude > 0.01
+    // NOW safe to create Rotation2d because we already checked magnitude > 0.01
     Rotation2d angleToTarget = new Rotation2d(robotRelativeX, robotRelativeY);
 
     return Optional.of(new ObjectDetection(

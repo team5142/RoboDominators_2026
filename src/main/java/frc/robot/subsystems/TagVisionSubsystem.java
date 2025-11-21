@@ -55,9 +55,10 @@ public class TagVisionSubsystem extends SubsystemBase {
     // Front Limelight 3
     cameras.add(new LimelightCamera(LL_FRONT_NAME, 0));
     
-    // Back Left PhotonVision camera
+    // Back Left PhotonVision camera (RLTagPV with RLCalibratedAT pipeline)
     cameras.add(new PhotonVisionCamera(
         PV_BACK_LEFT_NAME,
+        "RLCalibratedAT",  // Pipeline name
         new Transform3d(
             new Translation3d(
                 BACK_LEFT_PV_X_METERS,
@@ -69,9 +70,10 @@ public class TagVisionSubsystem extends SubsystemBase {
                 Units.degreesToRadians(BACK_LEFT_PV_YAW_DEG))),
         fieldLayout));
     
-    // Back Right PhotonVision camera
+    // Back Right PhotonVision camera (RRTagPV with RRCalibratedAT pipeline)
     cameras.add(new PhotonVisionCamera(
         PV_BACK_RIGHT_NAME,
+        "RRCalibratedAT",  // Pipeline name
         new Transform3d(
             new Translation3d(
                 BACK_RIGHT_PV_X_METERS,
@@ -85,8 +87,8 @@ public class TagVisionSubsystem extends SubsystemBase {
     
     System.out.println("TagVisionSubsystem initialized with 3 cameras:");
     System.out.println("  - " + LL_FRONT_NAME + " (Limelight 3)");
-    System.out.println("  - " + PV_BACK_LEFT_NAME + " (PhotonVision, FOV: " + BACK_LEFT_PV_FOV_DEG + "°)");
-    System.out.println("  - " + PV_BACK_RIGHT_NAME + " (PhotonVision, FOV: " + BACK_RIGHT_PV_FOV_DEG + "°)");
+    System.out.println("  - " + PV_BACK_LEFT_NAME + " (PhotonVision, Pipeline: RLCalibratedAT)");
+    System.out.println("  - " + PV_BACK_RIGHT_NAME + " (PhotonVision, Pipeline: RRCalibratedAT)");
   }
 
   @Override
@@ -122,6 +124,59 @@ public class TagVisionSubsystem extends SubsystemBase {
   }
 
   private boolean processVisionUpdate(VisionCamera camera) {
+    // TESTING: Skip PhotonVision cameras - only use Limelight for now
+    if (camera.getName().equals(PV_BACK_LEFT_NAME) || camera.getName().equals(PV_BACK_RIGHT_NAME)) {
+      Logger.recordOutput("TagVision/" + camera.getName() + "/Disabled", true);
+      
+      // Still update detection status and test metrics, just don't feed to pose estimator
+      Optional<VisionResult> result = camera.getLatestResult();
+      
+      if (result.isPresent()) {
+        VisionResult visionResult = result.get();
+        Pose2d estimatedPose = visionResult.estimatedPose;
+        
+        // Calculate error from expected test pose (for debugging)
+        double positionError = estimatedPose.getTranslation().getDistance(EXPECTED_TEST_POSE.getTranslation());
+        double rotationError = Math.abs(
+            estimatedPose.getRotation().minus(EXPECTED_TEST_POSE.getRotation()).getDegrees());
+        
+        // Log metrics (but don't send to pose estimator)
+        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedX", estimatedPose.getX());
+        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedY", estimatedPose.getY());
+        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedRotation", 
+            estimatedPose.getRotation().getDegrees());
+        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/PositionErrorMeters", positionError);
+        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/RotationErrorDegrees", rotationError);
+        Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", true);
+        Logger.recordOutput("TagVision/" + camera.getName() + "/TagCount", visionResult.tagCount);
+        
+        // Throttled console output (still visible for debugging)
+        double currentTime = Timer.getFPGATimestamp();
+        double lastOutputTime = lastConsoleOutputTime.getOrDefault(camera.getName(), 0.0);
+        
+        if (currentTime - lastOutputTime >= CONSOLE_OUTPUT_INTERVAL_SECONDS) {
+          String tagIdsStr = visionResult.tagIds.stream()
+              .map(String::valueOf)
+              .collect(java.util.stream.Collectors.joining(","));
+          
+          System.out.println(String.format(
+              "[%s] DISABLED - Estimate: (%.3f, %.3f, %.1f°) | Error: %.3fm, %.1f° | Tags: %d [%s]",
+              camera.getName(),
+              estimatedPose.getX(), estimatedPose.getY(), estimatedPose.getRotation().getDegrees(),
+              positionError, rotationError,
+              visionResult.tagCount,
+              tagIdsStr));
+          
+          lastConsoleOutputTime.put(camera.getName(), currentTime);
+        }
+      } else {
+        Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
+      }
+      
+      return false; // Don't count as accepted (not feeding odometry)
+    }
+    
+    // Original code for Limelight (continues normally)
     Optional<VisionResult> result = camera.getLatestResult();
 
     if (result.isEmpty()) {

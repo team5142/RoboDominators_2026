@@ -94,9 +94,14 @@ public final class Constants {
 
     // PID Gains from Tuner X
     public static final class SteerGains {
-      public static final double kP = 100.0;
+      // BEFORE (twitchy at slow speeds):
+      // public static final double kP = 100.0;
+      // public static final double kD = 0.5;
+      
+      // AFTER (smoother, less twitchy):
+      public static final double kP = 50.0;  // REDUCED from 100.0 - less aggressive steering correction
       public static final double kI = 0.0;
-      public static final double kD = 0.5;
+      public static final double kD = 1.0;   // INCREASED from 0.5 - more damping to prevent oscillation
       public static final double kS = 0.1;
       public static final double kV = 2.66;
       public static final double kA = 0.0;
@@ -173,9 +178,12 @@ public final class Constants {
     // Limelight 3 - Front camera (existing)
     public static final String LL_FRONT_NAME = "limelight-front";
     
-    // PhotonVision - Back cameras (CORRECTED TO MATCH PHOTONVISION)
-    public static final String PV_BACK_LEFT_NAME = "BackLeftTagPV";    // Changed back to CamelCase
-    public static final String PV_BACK_RIGHT_NAME = "BackRightTagPV";  // Changed back to CamelCase
+    // PhotonVision - Back cameras (UPDATED NAMES)
+    public static final String PV_BACK_LEFT_NAME = "RLTagPV";     // Back Left Tag camera
+    public static final String PV_BACK_RIGHT_NAME = "RRTagPV";    // Back Right Tag camera
+    
+    // PhotonVision - Front object detection camera (UPDATED NAME)
+    public static final String OBJ_CAMERA_NAME = "FObjPV";        // Front Object Detection camera
 
     // Vision pose estimation tuning
     public static final double MAX_AMBIGUITY = 0.3;
@@ -184,9 +192,11 @@ public final class Constants {
 
     // Standard deviations for pose estimation (adjust based on testing)
     // [x, y, theta] - lower = trust more
-    public static final double[] VISION_STD_DEVS_SINGLE_TAG = {0.9, 0.9, 0.9};
-    public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.5, 0.5, 0.7};
-    public static final double[] ODOMETRY_STD_DEVS = {0.1, 0.1, 0.1};
+    
+    // More balanced (trust vision more)
+    public static final double[] VISION_STD_DEVS_SINGLE_TAG = {0.3, 0.3, 0.5};  // Trust single-tag more
+    public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.1, 0.1, 0.2};   // Trust multi-tag a LOT
+    public static final double[] ODOMETRY_STD_DEVS = {0.5, 0.5, 0.5};           // Trust odometry LESS (it drifts!)
 
     // ===================================================================
     // LIMELIGHT 3 - FRONT CAMERA
@@ -199,43 +209,41 @@ public final class Constants {
     public static final double FRONT_LL_YAW_DEG = 0.0;
 
     // ===================================================================
-    // PHOTONVISION - BACK LEFT TAG CAMERA
+    // PHOTONVISION - BACK LEFT TAG CAMERA (RLTagPV)
     // ===================================================================
     // Back 11.5", Left 10", Height 8"
-    // Pitch 20° up, Yaw 180° + 20° outward
+    // Pointing outward along back-left diagonal (away from center toward back-left corner)
     public static final double BACK_LEFT_PV_X_METERS = Units.inchesToMeters(-11.5);
     public static final double BACK_LEFT_PV_Y_METERS = Units.inchesToMeters(10.0);
     public static final double BACK_LEFT_PV_Z_METERS = Units.inchesToMeters(8.0);
     public static final double BACK_LEFT_PV_ROLL_DEG = 0.0;
-    public static final double BACK_LEFT_PV_PITCH_DEG = 20.0;    // Positive (camera angled UP)
-    public static final double BACK_LEFT_PV_YAW_DEG = 200.0 + 122.4;  // 322.4° - empirically corrected
+    public static final double BACK_LEFT_PV_PITCH_DEG = 0.0;
+    public static final double BACK_LEFT_PV_YAW_DEG = 225.0;  // SW diagonal (180° + 45°)
     public static final double BACK_LEFT_PV_FOV_DEG = 100.0;
 
     // ===================================================================
-    // PHOTONVISION - BACK RIGHT TAG CAMERA
+    // PHOTONVISION - BACK RIGHT TAG CAMERA (RRTagPV)
     // ===================================================================
     // Back 11.5", Right 10", Height 8"
-    // Pitch 20° up, Yaw 180° - 20° outward
+    // Pointing outward along back-right diagonal (away from center toward back-right corner)
     public static final double BACK_RIGHT_PV_X_METERS = Units.inchesToMeters(-11.5);
     public static final double BACK_RIGHT_PV_Y_METERS = Units.inchesToMeters(-10.0);
     public static final double BACK_RIGHT_PV_Z_METERS = Units.inchesToMeters(8.0);
     public static final double BACK_RIGHT_PV_ROLL_DEG = 0.0;
-    public static final double BACK_RIGHT_PV_PITCH_DEG = 20.0;   // Positive (camera angled UP)
-    public static final double BACK_RIGHT_PV_YAW_DEG = 160.0 + 22.8;  // 182.8° - empirically corrected
+    public static final double BACK_RIGHT_PV_PITCH_DEG = 0.0;
+    public static final double BACK_RIGHT_PV_YAW_DEG = 135.0;  // SE diagonal (180° - 45°)
     public static final double BACK_RIGHT_PV_FOV_DEG = 100.0;
 
     // ===================================================================
-    // PHOTONVISION - FRONT OBJECT DETECTION CAMERA
+    // PHOTONVISION - FRONT OBJECT DETECTION CAMERA (FObjPV)
     // ===================================================================
-    public static final String OBJ_CAMERA_NAME = "FrontObjectDetectionPV";
-    
     public static final double OBJ_CAMERA_X_METERS = Units.inchesToMeters(12.0);
     public static final double OBJ_CAMERA_Y_METERS = Units.inchesToMeters(5.5);
     public static final double OBJ_CAMERA_Z_METERS = Units.inchesToMeters(9.75);
     public static final double OBJ_CAMERA_ROLL_DEG = 0.0;
     public static final double OBJ_CAMERA_PITCH_DEG = 0.0;
     public static final double OBJ_CAMERA_YAW_DEG = 0.0;
-    public static final double OBJ_CAMERA_FOV_DEG = 70.0;  // Default FOV for Arducam (measure actual value later)
+    public static final double OBJ_CAMERA_FOV_DEG = 120.0;  // OV9782 has ~120° diagonal FOV
     
     // 2025 game piece heights (temporary for testing until 2026 game)
     public static final double CORAL_HEIGHT_METERS = Units.inchesToMeters(6.0);
@@ -264,13 +272,21 @@ public final class Constants {
 
   public static final class Auto {
     // PathPlanner PID constants for holonomic drive controller
-    public static final double TRANSLATION_KP = 5.0;
-    public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.0;
     
-    public static final double ROTATION_KP = 4.0;
+    // BEFORE (janky at slow speeds):
+    // public static final double TRANSLATION_KP = 5.0;
+    // public static final double TRANSLATION_KD = 0.0;
+    // public static final double ROTATION_KP = 4.0;
+    // public static final double ROTATION_KD = 0.05;
+    
+    // AFTER (smoother, better damped):
+    public static final double TRANSLATION_KP = 2.5;  // REDUCED from 5.0 - less aggressive correction
+    public static final double TRANSLATION_KI = 0.0;
+    public static final double TRANSLATION_KD = 0.2;  // INCREASED from 0.0 - adds damping
+    
+    public static final double ROTATION_KP = 2.5;     // REDUCED from 4.0 - less aggressive rotation
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.0;
+    public static final double ROTATION_KD = 0.15;    // INCREASED from 0.05 - more rotational damping
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
@@ -301,12 +317,13 @@ public final class Constants {
     
     // ✅ ADD YOUR CUSTOM POSITIONS HERE
     /** Scoring Position - Recorded during practice */
-    public static final Pose2d INTAKE_POS = new Pose2d(1.41, 0.42, Rotation2d.fromDegrees(-111.5));
+    public static final Pose2d INTAKE_POS = new Pose2d(1.87, 0.73, Rotation2d.fromDegrees(-120));
     
-    /** Another Position - Example */
-    public static final Pose2d PROCESSOR_POS = new Pose2d(5.73, 1.49, Rotation2d.fromDegrees(-75.0));
+    /** Processor Position - Updated coordinates */
+    public static final Pose2d PROCESSOR_POS = new Pose2d(5.9, 0.5, Rotation2d.fromDegrees(-90.0));
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed
   }
+
 }

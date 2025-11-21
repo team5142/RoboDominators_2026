@@ -26,27 +26,51 @@ public class PhotonVisionCamera implements VisionCamera {
    * Create a PhotonVision camera for AprilTag pose estimation.
    * 
    * @param cameraName Name of the camera in PhotonVision
+   * @param pipelineName Name of the pipeline to use (e.g., "RLCalibratedAT")
    * @param robotToCamera Transform from robot center to camera
    * @param fieldLayout AprilTag field layout for 2025
    */
   public PhotonVisionCamera(
       String cameraName,
+      String pipelineName,
       Transform3d robotToCamera,
       AprilTagFieldLayout fieldLayout) {
     this.name = cameraName;
     this.camera = new PhotonCamera(cameraName);
     
-    // Create pose estimator using MULTI_TAG_PNP_ON_COPROCESSOR strategy
-    // This uses PhotonVision's multi-tag solver running on the coprocessor
+    // Set the pipeline by name
+    camera.setPipelineIndex(getPipelineIndex(pipelineName));
+    
+    // Create pose estimator
     this.poseEstimator = new PhotonPoseEstimator(
         fieldLayout,
-        PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,
+        // TESTING: Use single-tag mode for RLTagPV to avoid Tag 22 multi-tag issues
+        cameraName.equals("RLTagPV") 
+            ? PoseStrategy.LOWEST_AMBIGUITY  // Single-tag only for RLTagPV
+            : PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,  // Multi-tag for others
         robotToCamera);
     
-    // Enable multi-tag fallback
-    poseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+    // Enable multi-tag fallback (only used if primary strategy is multi-tag)
+    if (!cameraName.equals("RLTagPV")) {
+      poseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
+    }
     
-    System.out.println("PhotonVision camera initialized: " + cameraName);
+    System.out.println("PhotonVision camera initialized: " + cameraName 
+        + " (Pipeline: " + pipelineName 
+        + ", Strategy: " + (cameraName.equals("RLTagPV") ? "SINGLE_TAG" : "MULTI_TAG") + ")");
+  }
+
+  /**
+   * Get pipeline index by name (PhotonVision API requires index, not name)
+   * For now, assumes pipeline 0 - you may need to adjust this based on your PhotonVision config
+   */
+  private int getPipelineIndex(String pipelineName) {
+    // PhotonVision pipelines are indexed 0, 1, 2, etc.
+    // Since you're using "Duel Point Offset Mode", pipeline 0 should be the calibrated one
+    // If you have multiple pipelines, you'll need to map names to indices
+    
+    // For now, default to pipeline 0 (the calibrated AprilTag pipeline)
+    return 0;
   }
 
   @Override
