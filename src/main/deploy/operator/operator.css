@@ -1,0 +1,462 @@
+/* Import base styles from dashboard */
+@import url('../dashboard/style.css');
+
+/* Override body for touchscreen layout (1024x600 landscape) */
+body {
+    overflow: hidden;
+    width: 1024px;
+    height: 600px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    margin: 0;
+    padding: 0;
+}
+
+/* Add a wrapper to enforce exact dimensions */
+#interface-wrapper {
+    width: 1024px;
+    height: 600px;
+    position: relative;
+    overflow: hidden;
+    background: var(--bg-black);
+}
+
+/* Status Bar (Top) */
+.status-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: var(--card-bg);
+    border-bottom: 2px solid var(--border-gray);
+    display: flex;
+    gap: 20px;
+    padding: 0 20px;
+    align-items: center;
+    z-index: 100;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.status-light {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--status-error);
+    border: 2px solid var(--border-gray);
+    transition: background 0.3s ease;
+}
+
+.status-light.connected {
+    background: var(--status-ok);
+    box-shadow: 0 0 10px var(--status-ok);
+}
+
+/* Field Container */
+.field-container {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    width: 682px;
+    height: 510px;
+    background: var(--bg-black);
+    border-right: 2px solid var(--border-gray);
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-left: 100px;
+}
+
+/* Reef Container */
+.reef {
+    position: relative;
+    width: 254px;
+    height: 254px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    clip-path: none !important;
+}
+
+/* Center blocker */
+.reef-center-blocker {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    background: transparent;
+    pointer-events: auto;
+    z-index: 10;
+    cursor: default;
+}
+
+/* Reef face - Triangular VISUAL ONLY (not clickable) */
+.reef-face {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-left: 73px solid transparent;
+    border-right: 73px solid transparent;
+    border-bottom: 127px solid var(--card-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: bold;
+    color: var(--algae);
+    cursor: default;
+    transition: all 0.3s ease; /* Smooth fade out like other buttons */
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transform-origin: center;
+    pointer-events: none;
+}
+
+/* Text inside triangles */
+.reef-face::after {
+    content: attr(data-tag);
+    position: absolute;
+    top: 43px;
+    left: 0;
+    transform: translateX(-50%);
+}
+
+/* Position triangular faces */
+#reef-21 {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) rotate(180deg);
+    border-bottom-color: var(--card-bg);
+    z-index: 6;
+}
+
+#reef-22 {
+    top: 33px;
+    left: calc(50% + 55px);
+    transform: translateX(-50%) rotate(240deg);
+    border-bottom-color: var(--card-bg);
+    z-index: 5;
+}
+
+#reef-17 {
+    top: 94px;
+    left: calc(50% + 55px);
+    transform: translateX(-50%) rotate(300deg);
+    border-bottom-color: var(--card-bg);
+    z-index: 4;
+}
+
+#reef-18 {
+    top: 127px;
+    left: 50%;
+    transform: translateX(-50%) rotate(0deg);
+    border-bottom-color: var(--card-bg);
+    z-index: 3;
+}
+
+#reef-19 {
+    top: 94px;
+    left: calc(50% - 55px);
+    transform: translateX(-50%) rotate(60deg);
+    border-bottom-color: rgba(13, 13, 13, 0.3);
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 2;
+}
+
+#reef-20 {
+    top: 33px;
+    left: calc(50% - 55px);
+    transform: translateX(-50%) rotate(120deg);
+    border-bottom-color: rgba(13, 13, 13, 0.3);
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Active/pressed state - SAME AS PROCESSOR/CORAL STATION */
+.reef-face.active {
+    filter: brightness(1.5) drop-shadow(0 0 20px var(--algae)); /* Same glow as other buttons */
+    transform: scale(1.05); /* Same scale as other buttons */
+}
+
+/* Center hexagon outline */
+.reef::after {
+    content: '⬡';
+    position: absolute;
+    font-size: 180px;
+    color: var(--border-gray);
+    opacity: 0.08;
+    z-index: -1;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* Processor */
+.processor {
+    position: absolute;
+    top: 80px;
+    right: 30px;
+    width: 180px;
+    height: 110px;
+    background: rgba(13, 13, 13, 0.95);
+    border: 4px solid var(--algae);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--algae);
+    text-align: center;
+    line-height: 1.3;
+    padding: 10px;
+    z-index: 10;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.processor:active {
+    transform: scale(0.95);
+    background: var(--algae);
+    color: var(--bg-black);
+    box-shadow: 0 0 20px var(--algae);
+}
+
+/* Coral Station */
+.coral-station {
+    position: absolute;
+    bottom: 80px;
+    right: 30px;
+    width: 180px;
+    height: 110px;
+    background: rgba(13, 13, 13, 0.95);
+    border: 4px solid var(--coral);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--coral);
+    text-align: center;
+    line-height: 1.3;
+    padding: 10px;
+    z-index: 10;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.coral-station:active {
+    transform: scale(0.95);
+    background: var(--coral);
+    color: var(--bg-black);
+    box-shadow: 0 0 20px var(--coral);
+}
+
+/* Action Buttons */
+.action-container {
+    position: absolute;
+    top: 40px;
+    right: 0;
+    width: 342px;
+    height: 510px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+    padding: 30px 15px;
+}
+
+.action-button {
+    width: 180px;
+    height: 110px;
+    background: var(--card-bg);
+    border: 5px solid var(--border-gray);
+    color: var(--text-white);
+    font-size: 18px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    text-align: center;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.action-button.primary {
+    border-color: var(--algae);
+    color: var(--algae);
+}
+
+.action-button.primary:active {
+    transform: scale(0.95);
+    background: var(--algae);
+    color: var(--bg-black);
+    box-shadow: 0 0 30px var(--algae);
+}
+
+.action-button.secondary {
+    border-color: var(--coral);
+    color: var(--coral);
+}
+
+.action-button.secondary:active {
+    transform: scale(0.95);
+    background: var(--coral);
+    color: var(--bg-black);
+    box-shadow: 0 0 30px var(--coral);
+}
+
+/* Message Box */
+.message-box {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 50px;
+    height: 50px;
+    background: var(--card-bg);
+    border-top: 2px solid var(--border-gray);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--algae);
+    text-align: center;
+    padding: 0 20px;
+}
+
+/* Fullscreen Toggle Button */
+.fullscreen-toggle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 50px;
+    height: 50px;
+    background: var(--card-bg);
+    border: 2px solid var(--border-gray);
+    border-bottom: none;
+    border-right: none;
+    color: var(--text-white);
+    font-size: 24px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fullscreen-toggle:hover {
+    background: var(--border-gray);
+    color: var(--algae);
+}
+
+.fullscreen-toggle:active {
+    transform: scale(0.9);
+}
+
+/* Pulsing animation for active commands */
+@keyframes command-pulse {
+    0%, 100% {
+        border-color: inherit;
+    }
+    50% {
+        border-color: var(--text-white);
+        box-shadow: 0 0 20px var(--algae);
+    }
+}
+
+.field-element.active,
+.action-button.active {
+    animation: command-pulse 1s ease-in-out infinite;
+
+}
+/* =================================================================== */
+/* REEF CLICK ZONES - Circular hit areas (temporarily visible)         */
+/* =================================================================== */
+.reef-click-layer {
+    position: absolute;
+    width: 254px;
+    height: 254px;
+    z-index: 12; /* Above triangles */
+    pointer-events: none; /* Only children clickable */
+}
+
+.reef-click-zone {
+    position: absolute;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: transparent; /* CHANGED from rgba(255, 51, 51, 0.2) - now invisible */
+    border: none; /* CHANGED from 2px solid rgba(255, 51, 51, 0.5) - no border */
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.15s ease;
+    z-index: 1;
+}
+
+.reef-click-zone.disabled {
+    pointer-events: none;
+    opacity: 0.3;
+}
+
+/* Visual feedback on press - NO visual feedback on circle itself */
+.reef-click-zone:active {
+    background: transparent; /* CHANGED - no circle highlight */
+    box-shadow: none; /* CHANGED - no glow */
+    transform: none; /* CHANGED - no scale */
+}
+
+/* Position click zones - PUSHED OUTWARD from center by ~10px */
+#click-21 {
+    top: 0px; /* MOVED UP from 10px (pushed even further toward top edge) */
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#click-22 {
+    top: 45px;
+    left: calc(50% + 85px);
+    transform: translateX(-50%);
+}
+
+#click-17 {
+    top: 135px;
+    left: calc(50% + 85px);
+    transform: translateX(-50%);
+}
+
+#click-18 {
+    top: 180px; /* MOVED DOWN from 170px (pushed even further toward bottom edge) */
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#click-19 {
+    top: 135px;
+    left: calc(50% - 85px);
+    transform: translateX(-50%);
+}
+
+#click-20 {
+    top: 45px;
+    left: calc(50% - 85px);
+    transform: translateX(-50%);
+}

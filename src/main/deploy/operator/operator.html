@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator Interface - Team 5142</title>
+    <link rel="stylesheet" href="operator.css">
+</head>
+<body>
+    <div id="interface-wrapper">
+        <!-- Connection Status Indicators -->
+        <div class="status-bar">
+            <div class="status-indicator" id="robot-connected">
+                <div class="status-light" id="connection-light"></div>
+                <span>Robot</span>
+            </div>
+            <div class="status-indicator" id="robot-enabled">
+                <div class="status-light" id="enabled-light"></div>
+                <span>Enabled</span>
+            </div>
+        </div>
+
+        <!-- Field Map Section (Left) -->
+        <div class="field-container">
+            <!-- Reef (6 triangular faces forming hexagon) -->
+            <div class="field-element reef" id="reef-container">
+                <div class="reef-face" id="reef-21" data-position="BLUE_REEF_TAG_21" data-tag="21"></div>
+                <div class="reef-face" id="reef-20" data-position="BLUE_REEF_TAG_20" data-tag="20"></div>
+                <div class="reef-face" id="reef-19" data-position="BLUE_REEF_TAG_19" data-tag="19"></div>
+                <div class="reef-face" id="reef-18" data-position="BLUE_REEF_TAG_18" data-tag="18"></div>
+                <div class="reef-face" id="reef-17" data-position="BLUE_REEF_TAG_17" data-tag="17"></div>
+                <div class="reef-face" id="reef-22" data-position="BLUE_REEF_TAG_22" data-tag="22"></div>
+                
+                <!-- Center blocker -->
+                <div class="reef-center-blocker"></div>
+            </div>
+
+            <!-- NEW: Circular click zones layer -->
+            <div class="reef-click-layer">
+                <button class="reef-click-zone" id="click-21" data-position="BLUE_REEF_TAG_21"></button>
+                <button class="reef-click-zone disabled" id="click-20" data-position="BLUE_REEF_TAG_20"></button>
+                <button class="reef-click-zone disabled" id="click-19" data-position="BLUE_REEF_TAG_19"></button>
+                <button class="reef-click-zone" id="click-18" data-position="BLUE_REEF_TAG_18"></button>
+                <button class="reef-click-zone" id="click-17" data-position="BLUE_REEF_TAG_17"></button>
+                <button class="reef-click-zone" id="click-22" data-position="BLUE_REEF_TAG_22"></button>
+            </div>
+
+            <!-- Processor Station (Tag 16) -->
+            <div class="field-element processor" id="processor" data-position="BLUE_TAG_16">
+                <span>PROCESSOR<br>16</span>
+            </div>
+
+            <!-- Coral Station (Tag 12) -->
+            <div class="field-element coral-station" id="coral-station" data-position="BLUE_TAG_12">
+                <span>CORAL STATION<br>12</span>
+            </div>
+        </div>
+
+        <!-- Action Buttons (Right) -->
+        <div class="action-container">
+            <button class="action-button primary" id="orient-field">
+                ORIENT TO FIELD
+            </button>
+
+            <button class="action-button secondary" id="set-reef-17">
+                SET REEF 17<br>START POSITION
+            </button>
+        </div>
+
+        <!-- Command Feedback Message Box -->
+        <div class="message-box" id="message-box">
+            Ready
+        </div>
+
+        <!-- Fullscreen Toggle -->
+        <button class="fullscreen-toggle" id="fullscreen-btn">⛶</button>
+    </div>
+
+    <script src="nt4.js"></script>
+    <script src="operator.js"></script>
+</body>
+</html>

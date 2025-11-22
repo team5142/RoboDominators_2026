@@ -18,6 +18,8 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.POVButton;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.NetworkTable;
 import frc.robot.commands.auto.FollowPreplannedPath;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.SnapToHeadingFixed;
@@ -29,6 +31,11 @@ import frc.robot.subsystems.ObjectVisionSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.GyroSubsystem;
+import edu.wpi.first.networktables.BooleanSubscriber;
+import edu.wpi.first.networktables.BooleanPublisher;
+import edu.wpi.first.networktables.PubSubOption;
+
+import java.util.Map;
 
 // RobotContainer: Connects subsystems, controllers, and commands. Created once at robot boot.
 public class RobotContainer {
@@ -49,10 +56,18 @@ public class RobotContainer {
   // Autonomous
   private final SendableChooser<Command> autoChooser; // Populated by PathPlanner
 
+  // Touchscreen operator interface toggle
+  private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Toggle between touchscreen and Xbox controller
+
   public RobotContainer() {
     configurePathPlanner();
     configureDefaultCommands();
     configureButtonBindings();
+    
+    // Configure touchscreen or Xbox operator controls
+    if (USE_TOUCHSCREEN_OPERATOR) {
+      configureTouchscreenInterface();
+    }
     
     autoChooser = AutoBuilder.buildAutoChooser();
     SmartDashboard.putData("Auto Chooser", autoChooser);
@@ -146,15 +161,116 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_17, "Blue Reef Tag 17", poseEstimator));
 
-    // B: Auto-drive to Processor position
+    // B: Auto-drive to Blue Reef Tag 18 position
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(new DriveToSavedPosition(PROCESSOR_POS, "Processor Position", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_18, "Blue Reef Tag 18", poseEstimator));
 
-    // A: Auto-drive to Intake position
+    // A: Auto-drive to Blue Reef Tag 21 position
     new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(new DriveToSavedPosition(INTAKE_POS, "Intake Position", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_21, "Blue Reef Tag 21", poseEstimator));
 
     System.out.println("Button bindings configured");
+  }
+
+  private void configureTouchscreenInterface() {
+    NetworkTable opTable = NetworkTableInstance.getDefault().getTable("OperatorInterface");
+    
+    // Map of position names to Pose2d constants
+    Map<String, Pose2d> positions = Map.of(
+        "BLUE_REEF_TAG_17", BLUE_REEF_TAG_17,
+        "BLUE_REEF_TAG_18", BLUE_REEF_TAG_18,
+        "BLUE_REEF_TAG_21", BLUE_REEF_TAG_21,
+        "BLUE_REEF_TAG_22", BLUE_REEF_TAG_22,
+        "BLUE_TAG_16", BLUE_TAG_16,
+        "BLUE_TAG_12", BLUE_TAG_12
+    );
+    
+    // Subscribe to drive-to-position commands (2025 API)
+    positions.forEach((positionName, pose) -> {
+      BooleanSubscriber sub = opTable
+          .getSubTable("DriveToPosition")
+          .getBooleanTopic(positionName)
+          .subscribe(false);
+      
+      // Poll in periodic (add this to a periodic method or use a notifier)
+      new Thread(() -> {
+        while (true) {
+          if (sub.get()) {
+            String displayName = positionName.replace("_", " ").toLowerCase();
+            new DriveToSavedPosition(pose, displayName, poseEstimator).schedule();
+            System.out.println("[Touchscreen] Drive to: " + displayName);
+          }
+          try {
+            Thread.sleep(50); // Check every 50ms
+          } catch (InterruptedException e) {
+            break;
+          }
+        }
+      }).start();
+    });
+    
+    // Subscribe to action commands (2025 API)
+    BooleanSubscriber orientFieldSub = opTable
+        .getSubTable("Action")
+        .getBooleanTopic("OrientToField")
+        .subscribe(false);
+    
+    new Thread(() -> {
+      while (true) {
+        if (orientFieldSub.get()) {
+          driveSubsystem.createOrientToFieldCommand(robotState).schedule();
+          System.out.println("[Touchscreen] Orient to Field");
+        }
+        try {
+          Thread.sleep(50);
+        } catch (InterruptedException e) {
+          break;
+        }
+      }
+    }).start();
+    
+    BooleanSubscriber setReef17Sub = opTable
+        .getSubTable("Action")
+        .getBooleanTopic("SetReef17")
+        .subscribe(false);
+    
+    new Thread(() -> {
+      while (true) {
+        if (setReef17Sub.get()) {
+          new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, driveSubsystem, poseEstimator).schedule();
+          System.out.println("[Touchscreen] Set Reef 17 Start Position");
+        }
+        try {
+          Thread.sleep(50);
+        } catch (InterruptedException e) {
+          break;
+        }
+      }
+    }).start();
+    
+    // Publish robot state to touchscreen (2025 API)
+    BooleanPublisher connectedPub = opTable
+        .getBooleanTopic("RobotConnected")
+        .publish();
+    
+    BooleanPublisher enabledPub = opTable
+        .getBooleanTopic("RobotEnabled")
+        .publish();
+    
+    new Thread(() -> {
+      while (true) {
+        connectedPub.set(true);
+        enabledPub.set(robotState.isEnabled());
+        
+        try {
+          Thread.sleep(100);
+        } catch (InterruptedException e) {
+          break;
+        }
+      }
+    }).start();
+    
+    System.out.println("Touchscreen operator interface configured");
   }
 
   // Public Accessors

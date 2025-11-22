@@ -315,12 +315,23 @@ public final class Constants {
     /** Blue Reef Right - Tag 18 */
     public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(3.897, 1.799, Rotation2d.fromDegrees(0.0));
     
-    // ✅ ADD YOUR CUSTOM POSITIONS HERE
-    /** Scoring Position - Recorded during practice */
-    public static final Pose2d INTAKE_POS = new Pose2d(1.87, 0.73, Rotation2d.fromDegrees(-120));
+    /** Blue Reef Tag 19 - Bottom left (disabled in UI) */
+    public static final Pose2d BLUE_REEF_TAG_19 = new Pose2d(3.2, 2.0, Rotation2d.fromDegrees(-60.0)); // TODO: Measure
     
-    /** Processor Position - Updated coordinates */
-    public static final Pose2d PROCESSOR_POS = new Pose2d(5.9, 0.5, Rotation2d.fromDegrees(-90.0));
+    /** Blue Reef Tag 20 - Top left (disabled in UI) */
+    public static final Pose2d BLUE_REEF_TAG_20 = new Pose2d(3.2, 3.9, Rotation2d.fromDegrees(180.0)); // TODO: Measure
+    
+    /** Blue Reef Tag 21 - Top of reef */
+    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(3.5, 2.5, Rotation2d.fromDegrees(0.0)); // TODO: Measure actual position
+    
+    /** Blue Reef Tag 22 - Top right of reef */
+    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(3.5, 3.5, Rotation2d.fromDegrees(0.0)); // TODO: Measure actual position
+    
+    /** Blue Processor Station - Tag 16 */
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.9, 0.5, Rotation2d.fromDegrees(-90.0)); // TODO: Measure actual position
+    
+    /** Blue Coral Station - Tag 12 (same as former INTAKE_POS) */
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.87, 0.73, Rotation2d.fromDegrees(-120));
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed
