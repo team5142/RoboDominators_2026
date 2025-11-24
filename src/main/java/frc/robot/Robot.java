@@ -1,5 +1,6 @@
 package frc.robot;
 
+import com.ctre.phoenix6.SignalLogger;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -22,6 +23,17 @@ public class Robot extends LoggedRobot {
   // Runs ONCE at robot boot - setup logging and create subsystems
   @Override
   public void robotInit() {
+    // === START CTRE SIGNAL LOGGER ===
+    // SignalLogger automatically logs to /home/lvuser/logs/
+    // It automatically captures all SignalLogger.writeString() and writeDouble() calls
+    SignalLogger.start();
+    
+    System.out.println("=== CTRE SignalLogger STARTED ===");
+    System.out.println("Logs will be saved to: /home/lvuser/logs/");
+    System.out.println("Log file format: .hoot");
+    System.out.println("Auto-capturing SysId state signals");
+    // ================================
+
     // AdvantageKit logging setup - records everything for replay
     Logger.recordMetadata("ProjectName", "RoboDominators_2026");
     Logger.recordMetadata("TeamNumber", "5142");
@@ -29,7 +41,7 @@ public class Robot extends LoggedRobot {
     Logger.recordMetadata("GitSHA", "TODO"); // TODO: Add git commit hash
     
     Logger.addDataReceiver(new NT4Publisher()); // Live dashboard data
-    Logger.addDataReceiver(new WPILOGWriter("/U/logs")); // Save to USB drive
+    Logger.addDataReceiver(new WPILOGWriter("/home/lvuser/logs")); // CHANGED: Save to same location as CTRE logs
     Logger.start();
     
     System.out.println("========================================");
@@ -89,10 +101,24 @@ public class Robot extends LoggedRobot {
     matchActive = false; // Re-enable battery warnings
     robotContainer.getRobotState().setEnabled(false);
     System.out.println("Robot DISABLED");
+
+    // === STOP CTRE SIGNAL LOGGER ON DISABLE ===
+    // This flushes and closes the current log file
+    SignalLogger.stop();
+    System.out.println("=== CTRE SignalLogger STOPPED (log file saved) ===");
+    // ===========================================
   }
 
   @Override
   public void disabledPeriodic() {} // Nothing needed - LED updates in their periodic()
+
+  @Override
+  public void disabledExit() {
+    // === RESTART CTRE SIGNAL LOGGER WHEN RE-ENABLED ===
+    SignalLogger.start();
+    System.out.println("=== CTRE SignalLogger RESTARTED (new log file) ===");
+    // ==================================================
+  }
 
   @Override
   public void autonomousInit() {

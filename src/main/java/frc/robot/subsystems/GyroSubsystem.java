@@ -3,6 +3,8 @@ package frc.robot.subsystems;
 import static frc.robot.Constants.QuestNav.*;
 import static frc.robot.Constants.Swerve.*;
 
+import java.util.OptionalInt;
+
 import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
@@ -77,6 +79,25 @@ public class GyroSubsystem extends SubsystemBase {
       boolean tracking = questNav.isTracking();
       System.out.println("isTracking() returned: " + tracking);
       
+      // Test 1.5: Battery status
+      try {
+        OptionalInt batteryLevel = questNav.getBatteryPercent();
+        if (batteryLevel.isPresent()) {
+          int level = batteryLevel.getAsInt();
+          System.out.println("Battery Level: " + level + "%");
+          
+          if (level < 20) {
+            System.err.println("[WARNING] Quest battery low (" + level + "%)!");
+          } else if (level < 50) {
+            System.err.println("[INFO] Quest battery at " + level + "% - consider charging");
+          }
+        } else {
+          System.err.println("[INFO] Battery level not available");
+        }
+      } catch (Exception e) {
+        System.err.println("[WARNING] Could not read battery info: " + e.getMessage());
+      }
+      
       if (!tracking) {
         System.err.println("[WARNING] QuestNav is NOT tracking!");
         System.err.println("   Possible causes:");
@@ -143,6 +164,15 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/IsUsingQuestNav", activeSource == GyroSource.QUESTNAV);
     Logger.recordOutput("Gyro/IsUsingPigeon", activeSource == GyroSource.PIGEON);
     
+    // QuestNav battery status
+    try {
+      OptionalInt batteryLevel = questNav.getBatteryPercent();
+      Logger.recordOutput("Gyro/QuestNav/BatteryLevel", batteryLevel.orElse(-1));
+      Logger.recordOutput("Gyro/QuestNav/BatteryLow", batteryLevel.orElse(100) < 20);
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNav/BatteryError", e.getMessage());
+    }
+    
     // Pigeon status (for comparison/backup)
     Logger.recordOutput("Gyro/PigeonRotation", getPigeonRotation());
     Logger.recordOutput("Gyro/PigeonYawDegrees", pigeon.getYaw().getValueAsDouble());
@@ -202,78 +232,23 @@ public class GyroSubsystem extends SubsystemBase {
   }
 
   private void updateRotation() {
-    if (tryUpdateFromQuestNav()) {
-      activeSource = GyroSource.QUESTNAV;
-      consecutiveQuestNavFailures = 0;
-      return;
-    }
-
-    // QuestNav failed, use Pigeon
-    activeSource = GyroSource.PIGEON;
-    currentRotation = getPigeonRotation();
-    consecutiveQuestNavFailures++;
-  }
-
-  private boolean tryUpdateFromQuestNav() {
-    // Check if QuestNav is tracking
-    boolean tracking = isQuestNavTracking();
-    Logger.recordOutput("Gyro/Debug/QuestNavIsTracking", tracking);
+    // TEMPORARY DEBUG MODE: Always use QuestNav, never fail back to Pigeon
+    // This lets us see what QuestNav is actually doing without failover interference
     
-    // Try to get rotation
+    activeSource = GyroSource.QUESTNAV; // Force QuestNav as active source
+    
+    // Try to get latest QuestNav data (but don't care if it "fails")
     Rotation2d questNavRotation = getQuestNavRotation();
     
-    // Check timeout
-    double currentTime = Timer.getFPGATimestamp();
-    double timeSinceUpdate = currentTime - lastQuestNavUpdateTime;
-    Logger.recordOutput("Gyro/Debug/TimeSinceUpdate", timeSinceUpdate);
-    
-    // NEW: Check if we actually got new frame data (even if isTracking() is false)
-    boolean gotNewFrame = (lastQuestNavFrameCount != -1); // -1 = never got a frame
-    Logger.recordOutput("Gyro/Debug/GotNewFrame", gotNewFrame);
-    
-    // CRITICAL FIX: Only fail if BOTH conditions are true:
-    // 1. isTracking() is false AND
-    // 2. We haven't received ANY frames in the timeout period
-    //
-    // This prevents failover when Quest is sending data but reports not tracking
-    if (!tracking && !gotNewFrame && timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
-      Logger.recordOutput("Gyro/QuestNavTimeout", true);
-      Logger.recordOutput("Gyro/Debug/FailReason", 
-          String.format("Not tracking AND no frames AND timeout (%.3fs)", timeSinceUpdate));
-      return false;
-    }
-    
-    // NEW: If we have RECENT frames (within 100ms), trust them even if isTracking() is false
-    if (gotNewFrame && timeSinceUpdate < 0.1) {
-      Logger.recordOutput("Gyro/Debug/UsingFramesEvenIfNotTracking", !tracking);
-      // Continue - we have fresh data, ignore isTracking() status
-    } else if (timeSinceUpdate > MAX_QUESTNAV_DISCONNECT_TIME_SECONDS) {
-      // Timeout - no recent frames
-      Logger.recordOutput("Gyro/QuestNavTimeout", true);
-      Logger.recordOutput("Gyro/Debug/FailReason", 
-          String.format("Timeout: %.3fs (no recent frames)", timeSinceUpdate));
-      return false;
-    }
-
-    // Check angular rate sanity
-    if (!lastValidQuestNavRotation.equals(new Rotation2d()) && timeSinceUpdate > 0) {
-      double angleDelta = Math.abs(questNavRotation.minus(lastValidQuestNavRotation).getDegrees());
-      double angularRate = angleDelta / timeSinceUpdate;
-      
-      Logger.recordOutput("Gyro/Debug/AngularRate", angularRate);
-      
-      if (angularRate > MAX_ANGULAR_RATE_DEG_PER_SEC) {
-        Logger.recordOutput("Gyro/QuestNavUnrealisticRate", angularRate);
-        Logger.recordOutput("Gyro/Debug/FailReason", "Unrealistic rate: " + angularRate + " deg/s");
-        return false;
-      }
-    }
-
-    // Success!
+    // Always update rotation from QuestNav (even if it's the same as before)
     currentRotation = questNavRotation;
-    lastValidQuestNavRotation = questNavRotation;
-    Logger.recordOutput("Gyro/Debug/FailReason", "SUCCESS");
-    return true;
+    
+    // Don't increment failure counter - we're ignoring failures
+    consecutiveQuestNavFailures = 0;
+    
+    // Log that we're in forced QuestNav mode
+    Logger.recordOutput("Gyro/Debug/ForcedQuestNavMode", true);
+    Logger.recordOutput("Gyro/Debug/IgnoringFailoverLogic", true);
   }
 
   private Rotation2d getQuestNavRotation() {
@@ -431,5 +406,48 @@ public class GyroSubsystem extends SubsystemBase {
 
   public boolean isUsingPigeon() {
     return activeSource == GyroSource.PIGEON;
+  }
+
+  /**
+   * Get QuestNav pose as Pose2d (for pose estimator integration)
+   * Returns null if no QuestNav data available
+   */
+  public Pose2d getQuestNavPose2d() {
+    try {
+      PoseFrame[] poseFrames = questNav.getAllUnreadPoseFrames();
+      
+      if (poseFrames == null || poseFrames.length == 0) {
+        return null; // No QuestNav data available
+      }
+      
+      PoseFrame latestFrame = poseFrames[poseFrames.length - 1];
+      Pose3d questPose3d = latestFrame.questPose3d();
+      
+      // Convert Pose3d to Pose2d (drop Z coordinate)
+      Pose2d questPose2d = new Pose2d(
+        questPose3d.getX(),
+        questPose3d.getY(),
+        questPose3d.getRotation().toRotation2d()
+      );
+      
+      return questPose2d;
+      
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNavPose2dError", e.getMessage());
+      return null;
+    }
+  }
+  
+  /**
+   * Check if QuestNav has new pose data available
+   * Used by PoseEstimatorSubsystem to avoid duplicate vision measurements
+   */
+  public boolean hasNewQuestNavPose() {
+    try {
+      PoseFrame[] poseFrames = questNav.getAllUnreadPoseFrames();
+      return (poseFrames != null && poseFrames.length > 0);
+    } catch (Exception e) {
+      return false;
+    }
   }
 }

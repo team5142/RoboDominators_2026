@@ -21,6 +21,7 @@ public class RobotState {
   private Mode mode = Mode.DISABLED;
   private AssistMode assistMode = AssistMode.NONE;
   private boolean enabled = false;
+  private boolean sysIdMode = false; // NEW: Flag for SysID characterization
   private Pose2d robotPose = new Pose2d();
 
   public void setRobotPose(Pose2d pose) {
@@ -56,6 +57,21 @@ public class RobotState {
 
   public boolean isEnabled() {
     return enabled;
+  }
+
+  public boolean isSysIdMode() {
+    return sysIdMode;
+  }
+
+  public void setSysIdMode(boolean sysIdMode) {
+    this.sysIdMode = sysIdMode;
+    if (sysIdMode) {
+      System.out.println("=== SYSID MODE ENABLED ===");
+      System.out.println("Vision updates DISABLED");
+      System.out.println("Run SysID routines now");
+    } else {
+      System.out.println("=== SYSID MODE DISABLED ===");
+    }
   }
 
   private void log() {

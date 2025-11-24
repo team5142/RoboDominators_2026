@@ -254,70 +254,59 @@ class NT4Client {
     }
 
     publish(topic, type, value) {
-        // Check if already published
-        if (!this.publishedTopics.has(topic)) {
+        // Get or create publisher info
+        let pubInfo = this.publishedTopics.get(topic);
+        
+        if (!pubInfo) {
             const pubId = ++this.pubUid;
-            this.publishedTopics.set(topic, { id: pubId, type });
-            
-            // Announce the topic
-            if (this.connected) {
-                this.sendJson([{
-                    method: 'publish',
-                    params: {
-                        name: topic,
-                        pubuid: pubId,
-                        type: type,
-                        properties: {}
-                    }
-                }]);
+            pubInfo = { id: pubId, type, announced: false };
+            this.publishedTopics.set(topic, pubInfo);
+        }
+        
+        if (!this.connected) {
+            return; // Can't send if not connected
+        }
+        
+        // First time publishing this topic - announce it
+        if (!pubInfo.announced) {
+            this.sendJson([{
+                method: 'publish',
+                params: {
+                    name: topic,
+                    pubuid: pubInfo.id,
+                    type: type,
+                    properties: {}
+                }
+            }]);
+            pubInfo.announced = true;
+        }
+        
+        // Send value update using JSON (MessagePack compatible format)
+        // The server expects: [topicId, timestamp, typeCode, value]
+        // But we'll use JSON messages instead of binary
+        const timestamp = this.getServerTime();
+        
+        // Use a simple timestamped update message
+        this.sendJson([{
+            method: 'setproperties',
+            params: {
+                name: topic,
+                update: {
+                    '.value': value,
+                    '.timestamp': timestamp
+                }
             }
-        }
-        
-        // Set the value
-        const pubInfo = this.publishedTopics.get(topic);
-        if (this.connected) {
-            // Send binary update
-            this.sendBinaryUpdate(pubInfo.id, type, value);
-        }
+        }]);
     }
-
-    sendBinaryUpdate(topicId, type, value) {
-        // Create binary message
-        const timestamp = BigInt(Date.now() * 1000);
-        
-        let valueBuffer;
-        switch (type) {
-            case 'double':
-                valueBuffer = new ArrayBuffer(24);
-                const dv = new DataView(valueBuffer);
-                dv.setInt32(0, topicId, true);
-                dv.setBigInt64(4, timestamp, true);
-                dv.setInt32(12, 0, true); // type info
-                dv.setFloat64(16, value, true);
-                break;
-            case 'int':
-                valueBuffer = new ArrayBuffer(20);
-                const iv = new DataView(valueBuffer);
-                iv.setInt32(0, topicId, true);
-                iv.setBigInt64(4, timestamp, true);
-                iv.setInt32(12, 0, true);
-                iv.setInt32(16, value, true);
-                break;
-            case 'boolean':
-                valueBuffer = new ArrayBuffer(17);
-                const bv = new DataView(valueBuffer);
-                bv.setInt32(0, topicId, true);
-                bv.setBigInt64(4, timestamp, true);
-                bv.setInt32(12, 0, true);
-                bv.setUint8(16, value ? 1 : 0);
-                break;
-            default:
-                console.warn('Unsupported type for publishing:', type);
-                return;
+    
+    disconnect() {
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
         }
-        
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(valueBuffer);
+        if (this.reconnectInterval) {
+            clearInterval(this.reconnectInterval);
+            this.reconnectInterval = null;
         }
     }
 }

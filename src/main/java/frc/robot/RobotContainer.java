@@ -34,11 +34,17 @@ import frc.robot.subsystems.GyroSubsystem;
 import edu.wpi.first.networktables.BooleanSubscriber;
 import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.PubSubOption;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import java.util.Map;
 
 // RobotContainer: Connects subsystems, controllers, and commands. Created once at robot boot.
 public class RobotContainer {
+  
+  // === SYSID MODE TOGGLE ===
+  // Set to true when running SysID characterization, false for normal operation
+  private static final boolean SYSID_MODE = false; // CHANGED: Back to normal operation
+  // =========================
   
   // Controllers
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT); // Port 0
@@ -71,6 +77,16 @@ public class RobotContainer {
     
     autoChooser = AutoBuilder.buildAutoChooser();
     SmartDashboard.putData("Auto Chooser", autoChooser);
+    
+    // Set SysID mode based on constant
+    robotState.setSysIdMode(SYSID_MODE);
+    
+    // Debug: Log available autos
+    System.out.println("=== PathPlanner Autos Loaded ===");
+    System.out.println("Available autos in chooser (check deploy/pathplanner/autos/):");
+    System.out.println("  - LeftSide1Piece.auto should appear in SmartDashboard dropdown");
+    System.out.println("  - If not visible, verify .auto file is in src/main/deploy/pathplanner/autos/");
+    System.out.println("================================");
     
     System.out.println("RobotContainer initialized - all subsystems and bindings ready!");
   }
@@ -127,6 +143,12 @@ public class RobotContainer {
   // Button Bindings - Map controller buttons to commands
   private void configureButtonBindings() {
     
+    // Only add SysId bindings if in SysId mode
+    if (SYSID_MODE) {
+      configureSysIdButtons();
+      return; // Skip normal button bindings during SysId
+    }
+    
     // BACK: Reset field orientation (gyro zero)
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
@@ -163,13 +185,44 @@ public class RobotContainer {
 
     // B: Auto-drive to Blue Reef Tag 18 position
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_18, "Blue Reef Tag 18", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(BLUE_TAG_16, "Blue Tag 16", poseEstimator));
 
     // A: Auto-drive to Blue Reef Tag 21 position
     new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_21, "Blue Reef Tag 21", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(BLUE_TAG_12, "Blue Tag 12", poseEstimator));
 
     System.out.println("Button bindings configured");
+  }
+  
+  private void configureSysIdButtons() {
+    System.out.println("=== SysId Button Bindings Active ===");
+    System.out.println("Testing: DRIVE MOTORS (Translation)");
+    System.out.println("Using CTRE's built-in SysId routines (logs to .hoot file)");
+    
+    // Use parent class methods - these log to CTRE SignalLogger
+    // Y: Quasistatic Forward
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .whileTrue(driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+    
+    // A: Quasistatic Reverse
+    new JoystickButton(driverController, XboxController.Button.kA.value)
+        .whileTrue(driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+    
+    // B: Dynamic Forward
+    new JoystickButton(driverController, XboxController.Button.kB.value)
+        .whileTrue(driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kForward));
+    
+    // X: Dynamic Reverse
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .whileTrue(driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kReverse));
+    
+    System.out.println("Y = Quasistatic Forward");
+    System.out.println("A = Quasistatic Reverse");
+    System.out.println("B = Dynamic Forward");
+    System.out.println("X = Dynamic Reverse");
+    System.out.println("");
+    System.out.println("SysId data will be in .hoot file");
+    System.out.println("Look for 'SysIdTranslation_State' signal in Phoenix Tuner X");
   }
 
   private void configureTouchscreenInterface() {
@@ -247,6 +300,7 @@ public class RobotContainer {
         }
       }
     }).start();
+
     
     // Publish robot state to touchscreen (2025 API)
     BooleanPublisher connectedPub = opTable
@@ -270,7 +324,22 @@ public class RobotContainer {
       }
     }).start();
     
-    System.out.println("Touchscreen operator interface configured");
+  System.out.println("Touchscreen operator interface configured");
+}
+
+private void configureSysIdCommands() {
+    System.out.println("=== SysId Commands Available ===");
+    System.out.println("Check SmartDashboard for SysId buttons");
+    
+    // Translation characterization (drive motors)
+    SmartDashboard.putData("SysId/Quasistatic Forward", 
+        driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
+    SmartDashboard.putData("SysId/Quasistatic Reverse", 
+        driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
+    SmartDashboard.putData("SysId/Dynamic Forward", 
+        driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kForward));
+    SmartDashboard.putData("SysId/Dynamic Reverse", 
+        driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kReverse));
   }
 
   // Public Accessors

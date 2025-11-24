@@ -193,10 +193,10 @@ public final class Constants {
     // Standard deviations for pose estimation (adjust based on testing)
     // [x, y, theta] - lower = trust more
     
-    // More balanced (trust vision more)
-    public static final double[] VISION_STD_DEVS_SINGLE_TAG = {0.3, 0.3, 0.5};  // Trust single-tag more
-    public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.1, 0.1, 0.2};   // Trust multi-tag a LOT
-    public static final double[] ODOMETRY_STD_DEVS = {0.5, 0.5, 0.5};           // Trust odometry LESS (it drifts!)
+    // UPDATED: Trust hierarchy: Vision > QuestNav > Odometry
+    public static final double[] VISION_STD_DEVS_SINGLE_TAG = {0.3, 0.3, 0.5};  // Single tag: medium trust
+    public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.1, 0.1, 0.2};   // Multi tag: HIGHEST trust
+    public static final double[] ODOMETRY_STD_DEVS = {1.0, 1.0, 1.0};           // REDUCED trust (was 0.5) - odometry drifts a LOT
 
     // ===================================================================
     // LIMELIGHT 3 - FRONT CAMERA
@@ -267,26 +267,27 @@ public final class Constants {
     public static final double MAX_ANGULAR_RATE_DEG_PER_SEC = 720.0;  // Reject unrealistic rates
     
     // Trust settings (for future pose estimation)
-    public static final double[] QUESTNAV_STD_DEVS = {0.02, 0.02, 0.035};  // [x, y, theta] in meters/radians
+    // UPDATED: Much higher trust - QuestNav is very accurate, should dominate odometry
+    public static final double[] QUESTNAV_STD_DEVS = {0.05, 0.05, 0.05};  // INCREASED trust (was 0.15) - 20x more trusted than odometry!
   }
 
   public static final class Auto {
     // PathPlanner PID constants for holonomic drive controller
     
-    // BEFORE (janky at slow speeds):
-    // public static final double TRANSLATION_KP = 5.0;
+    // BEFORE (very gentle but too slow to respond):
+    // public static final double TRANSLATION_KP = 0.5;
     // public static final double TRANSLATION_KD = 0.0;
-    // public static final double ROTATION_KP = 4.0;
-    // public static final double ROTATION_KD = 0.05;
+    // public static final double ROTATION_KP = 0.5;
+    // public static final double ROTATION_KD = 0.0;
     
-    // AFTER (smoother, better damped):
-    public static final double TRANSLATION_KP = 2.5;  // REDUCED from 5.0 - less aggressive correction
+    // AFTER (more responsive, still smooth):
+    public static final double TRANSLATION_KP = 1.0;  // INCREASED from 0.5 - more responsive
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.2;  // INCREASED from 0.0 - adds damping
+    public static final double TRANSLATION_KD = 0.0;  // Keep at 0 - no damping
     
-    public static final double ROTATION_KP = 2.5;     // REDUCED from 4.0 - less aggressive rotation
+    public static final double ROTATION_KP = 1.0;     // INCREASED from 0.5 - more responsive heading
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.15;    // INCREASED from 0.05 - more rotational damping
+    public static final double ROTATION_KD = 0.0;     // Keep at 0 - no damping
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;

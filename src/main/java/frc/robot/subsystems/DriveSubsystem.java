@@ -5,6 +5,7 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
 import org.littletonrobotics.junction.Logger;
 
@@ -21,6 +22,11 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
   // Swerve requests for different drive modes
   private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
   private final SwerveRequest.RobotCentric robotCentricDrive = new SwerveRequest.RobotCentric();
+
+  // SysId requests (directly from parent class)
+  private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
+  private final SwerveRequest.SysIdSwerveSteerGains m_steerCharacterization = new SwerveRequest.SysIdSwerveSteerGains();
+  private final SwerveRequest.SysIdSwerveRotation m_rotationCharacterization = new SwerveRequest.SysIdSwerveRotation();
 
   /**
    * Constructs the drivetrain using Tuner X generated constants
@@ -157,5 +163,125 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     }
     
     return filteredStates;
+  }
+
+  /**
+   * SYSID: Test drive motors (translation)
+   * Use this to characterize kS, kV, kA for driving forward/backward
+   */
+  public Command sysIdQuasistaticTranslation(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            null,
+            edu.wpi.first.units.Units.Volts.of(4),
+            null,
+            state -> {
+                Logger.recordOutput("SysId/Translation/State", state.toString());
+                System.out.println("SysId State: " + state.toString()); // NEW: Debug print
+            }
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> setControl(m_translationCharacterization.withVolts(output)),
+            null,
+            this
+        )
+    ).quasistatic(direction);
+  }
+
+  public Command sysIdDynamicTranslation(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            null,
+            edu.wpi.first.units.Units.Volts.of(4),
+            null,
+            state -> {
+                Logger.recordOutput("SysId/Translation/State", state.toString());
+                System.out.println("SysId State: " + state.toString()); // NEW: Debug print
+            }
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> setControl(m_translationCharacterization.withVolts(output)),
+            null,
+            this
+        )
+    ).dynamic(direction);
+  }
+
+  /**
+   * SYSID: Test steering motors
+   * Use this to characterize steering PID gains
+   */
+  public Command sysIdQuasistaticSteer(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            null,
+            edu.wpi.first.units.Units.Volts.of(7),
+            null,
+            state -> Logger.recordOutput("SysId/Steer/State", state.toString())
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> setControl(m_steerCharacterization.withVolts(output)),
+            null,
+            this
+        )
+    ).quasistatic(direction);
+  }
+
+  public Command sysIdDynamicSteer(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            null,
+            edu.wpi.first.units.Units.Volts.of(7),
+            null,
+            state -> Logger.recordOutput("SysId/Steer/State", state.toString())
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> setControl(m_steerCharacterization.withVolts(output)),
+            null,
+            this
+        )
+    ).dynamic(direction);
+  }
+
+  /**
+   * SYSID: Test rotation (heading controller)
+   * Use this to characterize rotation PID for field-centric facing angle
+   */
+  public Command sysIdQuasistaticRotation(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            edu.wpi.first.units.Units.Volts.of(Math.PI / 6).per(edu.wpi.first.units.Units.Second),
+            edu.wpi.first.units.Units.Volts.of(Math.PI),
+            null,
+            state -> Logger.recordOutput("SysId/Rotation/State", state.toString())
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> {
+                setControl(m_rotationCharacterization.withRotationalRate(output.in(edu.wpi.first.units.Units.Volts)));
+                Logger.recordOutput("SysId/Rotation/Rate", output.in(edu.wpi.first.units.Units.Volts));
+            },
+            null,
+            this
+        )
+    ).quasistatic(direction);
+  }
+
+  public Command sysIdDynamicRotation(SysIdRoutine.Direction direction) {
+    return new SysIdRoutine(
+        new SysIdRoutine.Config(
+            edu.wpi.first.units.Units.Volts.of(Math.PI / 6).per(edu.wpi.first.units.Units.Second),
+            edu.wpi.first.units.Units.Volts.of(Math.PI),
+            null,
+            state -> Logger.recordOutput("SysId/Rotation/State", state.toString())
+        ),
+        new SysIdRoutine.Mechanism(
+            output -> {
+                setControl(m_rotationCharacterization.withRotationalRate(output.in(edu.wpi.first.units.Units.Volts)));
+                Logger.recordOutput("SysId/Rotation/Rate", output.in(edu.wpi.first.units.Units.Volts));
+            },
+            null,
+            this
+        )
+    ).dynamic(direction);
   }
 }

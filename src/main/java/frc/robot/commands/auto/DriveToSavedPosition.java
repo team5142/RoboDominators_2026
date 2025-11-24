@@ -21,9 +21,9 @@ public class DriveToSavedPosition extends Command {
 
   // NEW: Settle time tracking
   private final Timer settleTimer = new Timer();
-  private static final double SETTLE_TIME_SECONDS = 0.3; // Wait 0.3s after "arrived"
-  private static final double POSITION_TOLERANCE_METERS = 0.05; // 5cm
-  private static final double ROTATION_TOLERANCE_DEGREES = 3.0; // 3°
+  private static final double SETTLE_TIME_SECONDS = 0.2; // REDUCED from 0.3 - finish faster
+  private static final double POSITION_TOLERANCE_METERS = 0.15; // INCREASED from 0.05 (15cm instead of 5cm)
+  private static final double ROTATION_TOLERANCE_DEGREES = 10.0; // INCREASED from 3.0 (10° instead of 3°)
   private boolean settling = false;
 
   public DriveToSavedPosition(Pose2d targetPose, String positionName, PoseEstimatorSubsystem poseEstimator) {
@@ -37,21 +37,31 @@ public class DriveToSavedPosition extends Command {
     System.out.println("Driving to: " + positionName);
     System.out.println("Target: " + targetPose);
     
-    // BALANCED constraints (faster but still precise)
+    // Start timing path generation
+    double startTime = Timer.getFPGATimestamp();
+    
+    // MUCH FASTER constraints - more responsive start
     PathConstraints constraints = new PathConstraints(
-        1.5, // max velocity m/s (UP from 0.6 - faster approach, still safe)
-        0.8, // max acceleration m/s² (UP from 0.3 - quicker starts/stops)
-        Units.degreesToRadians(120),  // max angular velocity (UP from 60 - faster rotation)
-        Units.degreesToRadians(240)   // max angular acceleration (UP from 120)
+        3.0, // max velocity m/s (UP from 2.5 - faster movement)
+        2.5, // max acceleration m/s² (UP from 1.5 - MUCH quicker start)
+        Units.degreesToRadians(240),  // max angular velocity (UP from 180 - faster rotation)
+        Units.degreesToRadians(480)   // max angular acceleration (UP from 360 - quicker heading changes)
     );
     
+    // Generate path (this is what takes 3 seconds)
     pathCommand = AutoBuilder.pathfindToPose(
         targetPose,
         constraints,
-        0.0); // end velocity (CHANGED to 0.0 - full stop at target, no coast)
+        0.0); // end velocity (full stop at target)
+    
+    double pathGenTime = Timer.getFPGATimestamp() - startTime;
+    System.out.println("Path generation took: " + String.format("%.3f", pathGenTime) + "s");
+    Logger.recordOutput("DriveToSavedPosition/PathGenTime", pathGenTime);
     
     if (pathCommand != null) {
       pathCommand.initialize();
+    } else {
+      System.err.println("WARNING: PathPlanner returned null command!");
     }
 
     settling = false;

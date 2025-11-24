@@ -126,29 +126,29 @@ function setupTouchHandlers() {
 
 // Trigger drive-to-position command
 function triggerDriveCommand(position, displayName) {
-    console.log(`Drive to: ${displayName}`);
+    console.log(`Drive to: ${displayName} (READ-ONLY MODE - not sent to robot)`);
     
-    nt.publish(`/OperatorInterface/DriveToPosition/${position}`, 'boolean', true);
+    // DISABLED - operator is read-only
+    // nt.publish(`/OperatorInterface/DriveToPosition/${position}`, 'boolean', true);
+    // setTimeout(() => {
+    //     nt.publish(`/OperatorInterface/DriveToPosition/${position}`, 'boolean', false);
+    // }, 100);
     
-    setTimeout(() => {
-        nt.publish(`/OperatorInterface/DriveToPosition/${position}`, 'boolean', false);
-    }, 100);
-    
-    showMessage(`Drive to ${displayName}`);
+    showMessage(`Drive to ${displayName} (READ-ONLY)`);
     setActiveElement(document.querySelector(`[data-position="${position}"]`));
 }
 
 // Trigger action command
 function triggerAction(action, displayName) {
-    console.log(`Action: ${displayName}`);
+    console.log(`Action: ${displayName} (READ-ONLY MODE - not sent to robot)`);
     
-    nt.publish(`/OperatorInterface/Action/${action}`, 'boolean', true);
+    // DISABLED - operator is read-only
+    // nt.publish(`/OperatorInterface/Action/${action}`, 'boolean', true);
+    // setTimeout(() => {
+    //     nt.publish(`/OperatorInterface/Action/${action}`, 'boolean', false);
+    // }, 100);
     
-    setTimeout(() => {
-        nt.publish(`/OperatorInterface/Action/${action}`, 'boolean', false);
-    }, 100);
-    
-    showMessage(displayName);
+    showMessage(`${displayName} (READ-ONLY)`);
     
     const button = action === 'OrientToField' ? elements.orientField : elements.setReef17;
     setActiveElement(button);
@@ -199,9 +199,11 @@ function setupFullscreen() {
 
 // Heartbeat
 function startHeartbeat() {
-    setInterval(() => {
-        nt.publish('/OperatorInterface/Heartbeat', 'boolean', true);
-    }, 500);
+    // DISABLED - operator is read-only, no heartbeat needed
+    // setInterval(() => {
+    //     nt.publish('/OperatorInterface/Heartbeat', 'boolean', true);
+    // }, 500);
+    console.log('Heartbeat disabled - operator in read-only mode');
 }
 
 window.addEventListener('DOMContentLoaded', init);

@@ -106,7 +106,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     );
 
     /* The SysId routine to test */
-    private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineSteer;
+    private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineTranslation; // CHANGED: Use translation instead of steer
 
     /**
      * Constructs a CTRE SwerveDrivetrain using the specified constants.

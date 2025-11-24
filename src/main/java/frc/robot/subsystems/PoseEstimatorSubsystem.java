@@ -3,6 +3,7 @@ package frc.robot.subsystems;
 import static frc.robot.Constants.Swerve.*;
 import static frc.robot.Constants.Vision.*;
 import static frc.robot.Constants.StartingPositions.*;
+import static frc.robot.Constants.QuestNav.*;
 
 import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.estimator.SwerveDrivePoseEstimator;
@@ -144,8 +145,36 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // Update with latest wheel odometry
+    // Skip ALL vision updates during SysID
+    if (robotState.isSysIdMode()) {
+      Logger.recordOutput("PoseEstimator/SysIdMode", true);
+      return; // Don't update pose estimator at all
+    }
+    
+    // Update with latest wheel odometry (ALWAYS - this is the baseline)
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+    
+    // NEW: Add QuestNav pose as vision measurement (SECOND HIGHEST TRUST after vision tags)
+    if (gyroSubsystem.hasNewQuestNavPose()) {
+      Pose2d questNavPose = gyroSubsystem.getQuestNavPose2d();
+      
+      if (questNavPose != null) {
+        poseEstimator.addVisionMeasurement(
+          questNavPose,
+          Timer.getFPGATimestamp(),
+          VecBuilder.fill(
+            QUESTNAV_STD_DEVS[0],  // 0.02 - MUCH higher trust than vision
+            QUESTNAV_STD_DEVS[1],  // 0.02
+            QUESTNAV_STD_DEVS[2]   // 0.035
+          )
+        );
+        
+        Logger.recordOutput("PoseEstimator/QuestNavUpdate", questNavPose);
+        Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
+      }
+    } else {
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+    }
     
     // Check for vision timeout
     if (initState == InitializationState.WAITING_FOR_VISION && 
