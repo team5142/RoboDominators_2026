@@ -3,61 +3,61 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 7.2,
-        "y": 0.45
+        "x": 1.6828767123287671,
+        "y": 0.7268621575342468
       },
       "prevControl": null,
       "nextControl": {
-        "x": 6.552384868421052,
-        "y": 0.6958881578947365
+        "x": 2.569392123287671,
+        "y": 1.3128638698630142
       },
       "isLocked": false,
-      "linkedName": "SPFarLeft"
+      "linkedName": "CoralLeft"
     },
     {
       "anchor": {
-        "x": 6.273355263157895,
-        "y": 1.128865131578948
+        "x": 2.6144691780821914,
+        "y": 1.2828125
       },
       "prevControl": {
-        "x": 6.523519736842105,
-        "y": 0.7055098684210531
+        "x": 2.4191948452881205,
+        "y": 1.117623401589876
       },
       "nextControl": {
-        "x": 5.943361302126293,
-        "y": 1.6873164502478137
+        "x": 2.805336486912081,
+        "y": 1.4442735492349017
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 5.137993421052631,
-        "y": 2.9377467105263158
+        "x": 3.83,
+        "y": 2.89
       },
       "prevControl": {
-        "x": 5.926973684210526,
-        "y": 1.6580592105263154
+        "x": 3.0502140410958902,
+        "y": 1.7786601027397262
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "Reef 22"
+      "linkedName": "Reef 17"
     }
   ],
   "rotationTargets": [
     {
-      "waypointRelativePos": 1.0,
-      "rotationDegrees": 119.99999999999999
+      "waypointRelativePos": 1,
+      "rotationDegrees": 59.99999999999999
     }
   ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 1.9,
+      "minWaypointRelativePos": 1.8,
       "maxWaypointRelativePos": 2.0,
       "constraints": {
         "maxVelocity": 0.5,
-        "maxAcceleration": 1.0,
+        "maxAcceleration": 0.5,
         "maxAngularVelocity": 360.0,
         "maxAngularAcceleration": 480.0,
         "nominalVoltage": 12.0,
@@ -77,13 +77,13 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": 119.99999999999999
+    "rotation": 59.99999999999999
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 180.0
+    "rotation": -130.0
   },
   "useDefaultConstraints": true
 }

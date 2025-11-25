@@ -7,43 +7,55 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Reef 2 to Reset Point"
+            "pathName": "SPBlueRightToReef22"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "Reset Point to Reef 3"
+            "pathName": "Reef22toCoralLeft"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "Reef 3 to 2"
+            "pathName": "CoralLeftToReef17"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "Reef 2 to 1"
+            "pathName": "Reef17toCoralLeft"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 1.0
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "Reef 1 to Reset Point"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "Reset Point to Reef 3"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "Reef 3 to 2"
+            "pathName": "CoralLeftToReef17"
           }
         }
       ]

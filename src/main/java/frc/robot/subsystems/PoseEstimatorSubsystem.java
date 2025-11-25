@@ -42,6 +42,14 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private double lastQuestNavSyncTime = 0.0;
   private static final double QUESTNAV_SYNC_INTERVAL_SECONDS = 1.0; // Only sync once per second
 
+  // NEW: Temporary flag to disable ALL vision updates (for testing/calibration)
+  private static final boolean VISION_UPDATES_ENABLED = true; // RE-ENABLED: Test multi-camera fusion!
+
+  // NEW: Camera quality multipliers (higher = more trust)
+  private static final double LIMELIGHT_QUALITY = 1.0;    // Highest quality (baseline)
+  private static final double RR_TAG_PV_QUALITY = 1.5;    // Medium quality (50% less trust than Limelight)
+  private static final double RL_TAG_PV_QUALITY = 2.0;    // Lowest quality (2x less trust than Limelight)
+
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
       RobotState robotState,
@@ -66,6 +74,18 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   }
 
   public void addVisionMeasurement(Pose2d visionPose, double timestampSeconds, int tagCount) {
+    addVisionMeasurement(visionPose, timestampSeconds, tagCount, "unknown");
+  }
+
+  public void addVisionMeasurement(Pose2d visionPose, double timestampSeconds, int tagCount, String cameraName) {
+    // TESTING MODE: Ignore all vision updates
+    if (!VISION_UPDATES_ENABLED) {
+      Logger.recordOutput("PoseEstimator/VisionUpdatesDisabled", true);
+      Logger.recordOutput("PoseEstimator/VisionMeasurementIgnored", visionPose);
+      Logger.recordOutput("PoseEstimator/VisionTagCountIgnored", tagCount);
+      return; // Don't add vision measurement
+    }
+    
     // First vision update - we're initialized!
     if (initState == InitializationState.WAITING_FOR_VISION) {
       initState = InitializationState.VISION_INITIALIZED;
@@ -104,21 +124,49 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       lastQuestNavSyncTime = currentTime;
     }
 
-    // Adjust standard deviations based on number of tags
-    double[] stdDevs = tagCount >= MIN_TAG_COUNT_FOR_MULTI 
-        ? VISION_STD_DEVS_MULTI_TAG 
-        : VISION_STD_DEVS_SINGLE_TAG;
+    // Base standard deviations based on number of tags
+    double[] baseStdDevs = tagCount >= MIN_TAG_COUNT_FOR_MULTI 
+        ? VISION_STD_DEVS_MULTI_TAG  // [0.1, 0.1, 0.2] - Multi-tag baseline
+        : VISION_STD_DEVS_SINGLE_TAG; // [0.3, 0.3, 0.5] - Single-tag baseline
+
+    // NEW: Apply camera-specific quality multiplier
+    double qualityMultiplier = getCameraQualityMultiplier(cameraName);
+    double[] adjustedStdDevs = new double[] {
+        baseStdDevs[0] * qualityMultiplier, // X std dev
+        baseStdDevs[1] * qualityMultiplier, // Y std dev
+        baseStdDevs[2] * qualityMultiplier  // Theta std dev
+    };
 
     poseEstimator.addVisionMeasurement(
         visionPose,
         timestampSeconds,
-        VecBuilder.fill(stdDevs[0], stdDevs[1], stdDevs[2]));
+        VecBuilder.fill(adjustedStdDevs[0], adjustedStdDevs[1], adjustedStdDevs[2]));
 
     visionUpdateCount++;
     
     Logger.recordOutput("PoseEstimator/VisionUpdate", visionPose);
     Logger.recordOutput("PoseEstimator/VisionTagCount", tagCount);
+    Logger.recordOutput("PoseEstimator/VisionCamera", cameraName);
+    Logger.recordOutput("PoseEstimator/VisionQualityMultiplier", qualityMultiplier);
+    Logger.recordOutput("PoseEstimator/VisionStdDevX", adjustedStdDevs[0]);
     Logger.recordOutput("PoseEstimator/TotalVisionUpdates", visionUpdateCount);
+  }
+
+  /**
+   * Get camera quality multiplier (higher = less trust)
+   * Limelight = 1.0 (best), RRTagPV = 1.5 (medium), RLTagPV = 2.0 (weakest)
+   */
+  private double getCameraQualityMultiplier(String cameraName) {
+    switch (cameraName) {
+      case "limelight-front":
+        return LIMELIGHT_QUALITY; // Highest quality
+      case "RRTagPV":
+        return RR_TAG_PV_QUALITY; // Medium quality
+      case "RLTagPV":
+        return RL_TAG_PV_QUALITY; // Lowest quality
+      default:
+        return 2.0; // Unknown camera = low trust
+    }
   }
 
   public Pose2d getEstimatedPose() {
@@ -128,11 +176,18 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   public void resetPose(Pose2d pose, Rotation2d gyroAngle, SwerveModulePosition[] modulePositions) {
     poseEstimator.resetPosition(gyroAngle, modulePositions, pose);
     
+    // CRITICAL: Sync QuestNav to match the new pose
+    // This prevents QuestNav from immediately "correcting" the pose back to where it was
+    syncQuestNavToPose(pose);
+    
     // Manual reset counts as initialized
     if (initState == InitializationState.WAITING_FOR_VISION) {
       initState = InitializationState.VISION_INITIALIZED;
       Logger.recordOutput("PoseEstimator/InitializedManually", true);
     }
+    
+    Logger.recordOutput("PoseEstimator/PoseReset", pose);
+    Logger.recordOutput("PoseEstimator/QuestNavSyncedOnReset", true);
   }
 
   public InitializationState getInitializationState() {
@@ -154,8 +209,14 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     // Update with latest wheel odometry (ALWAYS - this is the baseline)
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     
-    // NEW: Add QuestNav pose as vision measurement (SECOND HIGHEST TRUST after vision tags)
-    if (gyroSubsystem.hasNewQuestNavPose()) {
+    // TESTING MODE: Log that vision is disabled
+    if (!VISION_UPDATES_ENABLED) {
+      Logger.recordOutput("PoseEstimator/VisionUpdatesDisabled", true);
+    }
+    
+    // CHANGED: Only use QuestNav position during TELEOP, not AUTO
+    // QuestNav gets confused when we "teleport" it to a new pose at auto start
+    if (VISION_UPDATES_ENABLED && robotState.getMode() != RobotState.Mode.AUTO && gyroSubsystem.hasNewQuestNavPose()) {
       Pose2d questNavPose = gyroSubsystem.getQuestNavPose2d();
       
       if (questNavPose != null) {
@@ -163,9 +224,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           questNavPose,
           Timer.getFPGATimestamp(),
           VecBuilder.fill(
-            QUESTNAV_STD_DEVS[0],  // 0.02 - MUCH higher trust than vision
-            QUESTNAV_STD_DEVS[1],  // 0.02
-            QUESTNAV_STD_DEVS[2]   // 0.035
+            QUESTNAV_STD_DEVS[0],
+            QUESTNAV_STD_DEVS[1],
+            QUESTNAV_STD_DEVS[2]
           )
         );
         
@@ -176,9 +237,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
     }
     
-    // Check for vision timeout
+    // FIXED: Only use fallback pose during TELEOP mode, not auto or disabled
+    // Auto should use PathPlanner's starting pose, not our fallback
     if (initState == InitializationState.WAITING_FOR_VISION && 
-        visionWaitTimer.hasElapsed(VISION_TIMEOUT_SECONDS)) {
+        visionWaitTimer.hasElapsed(VISION_TIMEOUT_SECONDS) &&
+        robotState.getMode() == RobotState.Mode.TELEOP) { // CHANGED: TELEOP only
       
       initState = InitializationState.FALLBACK_USED;
       

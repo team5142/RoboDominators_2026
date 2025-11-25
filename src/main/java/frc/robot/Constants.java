@@ -205,33 +205,35 @@ public final class Constants {
     public static final double FRONT_LL_Y_METERS = 0.0;
     public static final double FRONT_LL_Z_METERS = 0.2;
     public static final double FRONT_LL_ROLL_DEG = 0.0;
-    public static final double FRONT_LL_PITCH_DEG = -20.0; // Angled down
+    public static final double FRONT_LL_PITCH_DEG = 0.0;  // FIXED: No pitch (was -20.0)
     public static final double FRONT_LL_YAW_DEG = 0.0;
 
     // ===================================================================
     // PHOTONVISION - BACK LEFT TAG CAMERA (RLTagPV)
     // ===================================================================
     // Back 11.5", Left 10", Height 8"
-    // Pointing outward along back-left diagonal (away from center toward back-left corner)
+    // MOUNTED ON BACK but POINTING FORWARD-LEFT (add 180° to forward angle)
+    // Tilted backward 15° to see tags above robot
     public static final double BACK_LEFT_PV_X_METERS = Units.inchesToMeters(-11.5);
     public static final double BACK_LEFT_PV_Y_METERS = Units.inchesToMeters(10.0);
     public static final double BACK_LEFT_PV_Z_METERS = Units.inchesToMeters(8.0);
     public static final double BACK_LEFT_PV_ROLL_DEG = 0.0;
-    public static final double BACK_LEFT_PV_PITCH_DEG = 0.0;
-    public static final double BACK_LEFT_PV_YAW_DEG = 225.0;  // SW diagonal (180° + 45°)
+    public static final double BACK_LEFT_PV_PITCH_DEG = 15.0;  // FIXED: Tilted backward to see up (was 0.0)
+    public static final double BACK_LEFT_PV_YAW_DEG = 135.0;  // Mounted on back, pointing forward-left
     public static final double BACK_LEFT_PV_FOV_DEG = 100.0;
 
     // ===================================================================
     // PHOTONVISION - BACK RIGHT TAG CAMERA (RRTagPV)
     // ===================================================================
     // Back 11.5", Right 10", Height 8"
-    // Pointing outward along back-right diagonal (away from center toward back-right corner)
+    // MOUNTED ON BACK but POINTING FORWARD-RIGHT (add 180° to forward angle)
+    // Tilted backward 15° to see tags above robot
     public static final double BACK_RIGHT_PV_X_METERS = Units.inchesToMeters(-11.5);
     public static final double BACK_RIGHT_PV_Y_METERS = Units.inchesToMeters(-10.0);
     public static final double BACK_RIGHT_PV_Z_METERS = Units.inchesToMeters(8.0);
     public static final double BACK_RIGHT_PV_ROLL_DEG = 0.0;
-    public static final double BACK_RIGHT_PV_PITCH_DEG = 0.0;
-    public static final double BACK_RIGHT_PV_YAW_DEG = 135.0;  // SE diagonal (180° - 45°)
+    public static final double BACK_RIGHT_PV_PITCH_DEG = 15.0;  // Tilted backward to see up ✅
+    public static final double BACK_RIGHT_PV_YAW_DEG = 225.0;  // Mounted on back, pointing forward-right
     public static final double BACK_RIGHT_PV_FOV_DEG = 100.0;
 
     // ===================================================================

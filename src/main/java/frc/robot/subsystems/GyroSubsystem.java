@@ -134,6 +134,21 @@ public class GyroSubsystem extends SubsystemBase {
         System.out.println("   Quest is actively sending data over Ethernet!");
       }
       
+      // NEW: Print ALL public methods in QuestNav API
+      System.out.println("\n=== QuestNav Complete API (All Public Methods) ===");
+      for (var method : questNav.getClass().getMethods()) {
+        // Only show QuestNav methods, not inherited Object methods
+        if (method.getDeclaringClass() == questNav.getClass()) {
+          String returnType = method.getReturnType().getSimpleName();
+          String methodName = method.getName();
+          String params = java.util.Arrays.stream(method.getParameterTypes())
+              .map(Class::getSimpleName)
+              .collect(java.util.stream.Collectors.joining(", "));
+          System.out.println("  " + returnType + " " + methodName + "(" + params + ")");
+        }
+      }
+      System.out.println("=================================================\n");
+      
     } catch (Exception e) {
       System.err.println("[ERROR] Exception testing QuestNav connection:");
       e.printStackTrace();
@@ -142,6 +157,14 @@ public class GyroSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // CRITICAL: Call QuestNav's periodic update method
+    // This processes new frames and updates internal state
+    try {
+      questNav.commandPeriodic();
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNav/PeriodicError", e.getMessage());
+    }
+    
     updateRotation();
     
     if (activeSource != lastActiveSource) {
@@ -155,10 +178,21 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/RotationDegrees", currentRotation.getDegrees());
     Logger.recordOutput("Gyro/RotationRadians", currentRotation.getRadians());
     
-    // QuestNav status and health
+    // QuestNav status and health - USE NEW API METHODS
     Logger.recordOutput("Gyro/QuestNavTracking", isQuestNavTracking());
+    Logger.recordOutput("Gyro/QuestNavConnected", isQuestNavConnected()); // NEW
     Logger.recordOutput("Gyro/TimeSinceQuestNavUpdate", Timer.getFPGATimestamp() - lastQuestNavUpdateTime);
-    Logger.recordOutput("Gyro/QuestNavFrameCount", lastQuestNavFrameCount);
+    
+    // Use API methods instead of manual tracking
+    try {
+      Logger.recordOutput("Gyro/QuestNavFrameCount", questNav.getFrameCount().orElse(-1)); // NEW
+      Logger.recordOutput("Gyro/QuestNavTrackingLostCount", questNav.getTrackingLostCounter().orElse(0)); // NEW
+      Logger.recordOutput("Gyro/QuestNavLatency", questNav.getLatency()); // NEW
+      Logger.recordOutput("Gyro/QuestNavAppTimestamp", questNav.getAppTimestamp().orElse(-1.0)); // NEW
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/QuestNav/MetricsError", e.getMessage());
+    }
+    
     Logger.recordOutput("Gyro/TotalFramesProcessed", totalFramesProcessed);
     Logger.recordOutput("Gyro/ConsecutiveFailures", consecutiveQuestNavFailures);
     Logger.recordOutput("Gyro/IsUsingQuestNav", activeSource == GyroSource.QUESTNAV);
@@ -232,23 +266,36 @@ public class GyroSubsystem extends SubsystemBase {
   }
 
   private void updateRotation() {
-    // TEMPORARY DEBUG MODE: Always use QuestNav, never fail back to Pigeon
-    // This lets us see what QuestNav is actually doing without failover interference
-    
-    activeSource = GyroSource.QUESTNAV; // Force QuestNav as active source
-    
-    // Try to get latest QuestNav data (but don't care if it "fails")
+    // Try to get latest QuestNav rotation
     Rotation2d questNavRotation = getQuestNavRotation();
     
-    // Always update rotation from QuestNav (even if it's the same as before)
-    currentRotation = questNavRotation;
+    // Use API method to check connection instead of manual timeout
+    boolean questNavConnected = isQuestNavConnected();
+    boolean questNavIsUpdating = (Timer.getFPGATimestamp() - lastQuestNavUpdateTime) < 0.5;
     
-    // Don't increment failure counter - we're ignoring failures
-    consecutiveQuestNavFailures = 0;
+    if (questNavConnected && questNavIsUpdating) {
+      // QuestNav is working - use it
+      activeSource = GyroSource.QUESTNAV;
+      currentRotation = questNavRotation;
+      consecutiveQuestNavFailures = 0;
+    } else {
+      // QuestNav is frozen/broken - fall back to Pigeon
+      activeSource = GyroSource.PIGEON;
+      currentRotation = getPigeonRotation();
+      consecutiveQuestNavFailures++;
+      
+      // Log why we failed back
+      if (!questNavConnected) {
+        Logger.recordOutput("Gyro/Debug/FailoverReason", "Not connected");
+      } else if (!questNavIsUpdating) {
+        Logger.recordOutput("Gyro/Debug/FailoverReason", "No new frames");
+      }
+    }
     
-    // Log that we're in forced QuestNav mode
-    Logger.recordOutput("Gyro/Debug/ForcedQuestNavMode", true);
-    Logger.recordOutput("Gyro/Debug/IgnoringFailoverLogic", true);
+    // Log which source we're using
+    Logger.recordOutput("Gyro/Debug/QuestNavConnected", questNavConnected);
+    Logger.recordOutput("Gyro/Debug/QuestNavIsUpdating", questNavIsUpdating);
+    Logger.recordOutput("Gyro/Debug/TimeSinceLastUpdate", Timer.getFPGATimestamp() - lastQuestNavUpdateTime);
   }
 
   private Rotation2d getQuestNavRotation() {
@@ -322,6 +369,19 @@ public class GyroSubsystem extends SubsystemBase {
     } catch (Exception e) {
       Logger.recordOutput("Gyro/Debug/TrackingException", e.getMessage());
       System.err.println("QuestNav isTracking() exception: " + e.getMessage());
+      return false;
+    }
+  }
+
+  /**
+   * Check if QuestNav is connected to NetworkTables
+   * Uses new API method instead of checking for null frames
+   */
+  private boolean isQuestNavConnected() {
+    try {
+      return questNav.isConnected();
+    } catch (Exception e) {
+      Logger.recordOutput("Gyro/Debug/ConnectionCheckException", e.getMessage());
       return false;
     }
   }

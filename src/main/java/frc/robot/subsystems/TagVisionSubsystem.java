@@ -124,71 +124,27 @@ public class TagVisionSubsystem extends SubsystemBase {
   }
 
   private boolean processVisionUpdate(VisionCamera camera) {
-    // TESTING: Skip PhotonVision cameras - only use Limelight for now
-    if (camera.getName().equals(PV_BACK_LEFT_NAME) || camera.getName().equals(PV_BACK_RIGHT_NAME)) {
-      Logger.recordOutput("TagVision/" + camera.getName() + "/Disabled", true);
-      
-      // Still update detection status and test metrics, just don't feed to pose estimator
-      Optional<VisionResult> result = camera.getLatestResult();
-      
-      if (result.isPresent()) {
-        VisionResult visionResult = result.get();
-        Pose2d estimatedPose = visionResult.estimatedPose;
-        
-        // Calculate error from expected test pose (for debugging)
-        double positionError = estimatedPose.getTranslation().getDistance(EXPECTED_TEST_POSE.getTranslation());
-        double rotationError = Math.abs(
-            estimatedPose.getRotation().minus(EXPECTED_TEST_POSE.getRotation()).getDegrees());
-        
-        // Log metrics (but don't send to pose estimator)
-        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedX", estimatedPose.getX());
-        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedY", estimatedPose.getY());
-        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedRotation", 
-            estimatedPose.getRotation().getDegrees());
-        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/PositionErrorMeters", positionError);
-        Logger.recordOutput("TagVision/" + camera.getName() + "/Test/RotationErrorDegrees", rotationError);
-        Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", true);
-        Logger.recordOutput("TagVision/" + camera.getName() + "/TagCount", visionResult.tagCount);
-        
-        // Throttled console output (still visible for debugging)
-        double currentTime = Timer.getFPGATimestamp();
-        double lastOutputTime = lastConsoleOutputTime.getOrDefault(camera.getName(), 0.0);
-        
-        if (currentTime - lastOutputTime >= CONSOLE_OUTPUT_INTERVAL_SECONDS) {
-          String tagIdsStr = visionResult.tagIds.stream()
-              .map(String::valueOf)
-              .collect(java.util.stream.Collectors.joining(","));
-          
-          System.out.println(String.format(
-              "[%s] DISABLED - Estimate: (%.3f, %.3f, %.1f°) | Error: %.3fm, %.1f° | Tags: %d [%s]",
-              camera.getName(),
-              estimatedPose.getX(), estimatedPose.getY(), estimatedPose.getRotation().getDegrees(),
-              positionError, rotationError,
-              visionResult.tagCount,
-              tagIdsStr));
-          
-          lastConsoleOutputTime.put(camera.getName(), currentTime);
-        }
-      } else {
-        Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
-      }
-      
-      return false; // Don't count as accepted (not feeding odometry)
-    }
-    
-    // Original code for Limelight (continues normally)
+    // === Process all cameras normally ===
     Optional<VisionResult> result = camera.getLatestResult();
 
     if (result.isEmpty()) {
       Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
+      Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", "No result from camera");
       return false;
     }
 
     VisionResult visionResult = result.get();
 
+    // NEW: Log raw vision result details BEFORE validation
+    Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/TagCount", visionResult.tagCount);
+    Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/EstimatedPose", visionResult.estimatedPose);
+    Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/AvgDistance", visionResult.averageTagDistance);
+    Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/Timestamp", visionResult.timestampSeconds);
+
     // Validation: Check tag count
     if (visionResult.tagCount == 0) {
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", "No tags");
+      Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
       return false;
     }
 
@@ -221,12 +177,12 @@ public class TagVisionSubsystem extends SubsystemBase {
           .collect(java.util.stream.Collectors.joining(","));
       
       System.out.println(String.format(
-          "[%s] Estimate: (%.3f, %.3f, %.1f°) | Error: %.3fm, %.1f° | Tags: %d [%s]",
+          "[%s] ENABLED - Estimate: (%.3f, %.3f, %.1f°) | Tags: %d [%s] | AvgDist: %.2fm",
           camera.getName(),
           estimatedPose.getX(), estimatedPose.getY(), estimatedPose.getRotation().getDegrees(),
-          positionError, rotationError,
           visionResult.tagCount,
-          tagIdsStr)); // NEW: Show which tags were used
+          tagIdsStr,
+          visionResult.averageTagDistance));
       
       lastConsoleOutputTime.put(camera.getName(), currentTime);
     }
@@ -238,6 +194,7 @@ public class TagVisionSubsystem extends SubsystemBase {
             "Too far: " + visionResult.averageTagDistance + "m");
         Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedDistance",
             visionResult.averageTagDistance);
+        Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
         return false;
       }
     }
@@ -251,14 +208,18 @@ public class TagVisionSubsystem extends SubsystemBase {
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason",
           "Pose diff too large: " + distance + "m");
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedPoseDiff", distance);
+      Logger.recordOutput("TagVision/" + camera.getName() + "/CurrentPose", currentPose);
+      Logger.recordOutput("TagVision/" + camera.getName() + "/VisionPose", visionResult.estimatedPose);
+      Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
       return false;
     }
 
-    // ACCEPTED - Add measurement to pose estimator
+    // ACCEPTED - Add measurement to pose estimator WITH CAMERA-SPECIFIC TRUST
     poseEstimator.addVisionMeasurement(
         visionResult.estimatedPose,
         visionResult.timestampSeconds,
-        visionResult.tagCount);
+        visionResult.tagCount,
+        camera.getName()); // NEW: Pass camera name for quality weighting
 
     // Log acceptance
     Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", true);

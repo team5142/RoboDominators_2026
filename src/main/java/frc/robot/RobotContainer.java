@@ -35,6 +35,8 @@ import edu.wpi.first.networktables.BooleanSubscriber;
 import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.PubSubOption;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
+import edu.wpi.first.math.geometry.Rotation2d;
+import org.littletonrobotics.junction.Logger;
 
 import java.util.Map;
 
@@ -61,6 +63,7 @@ public class RobotContainer {
 
   // Autonomous
   private final SendableChooser<Command> autoChooser; // Populated by PathPlanner
+  private Command lastSelectedAuto = null; // Track selected auto for pose preview
 
   // Touchscreen operator interface toggle
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Toggle between touchscreen and Xbox controller
@@ -80,6 +83,9 @@ public class RobotContainer {
     
     // Set SysID mode based on constant
     robotState.setSysIdMode(SYSID_MODE);
+    
+    // NEW: Monitor auto selection and update pose preview
+    startAutoPreviewMonitor();
     
     // Debug: Log available autos
     System.out.println("=== PathPlanner Autos Loaded ===");
@@ -119,7 +125,16 @@ public class RobotContainer {
 
   // Returns true if red alliance (flip paths), false if blue
   private boolean shouldFlipPath() {
-    return DriverStation.getAlliance().map(alliance -> alliance == Alliance.Red).orElse(false);
+    var alliance = DriverStation.getAlliance();
+    boolean isRed = alliance.map(a -> a == Alliance.Red).orElse(false);
+    
+    System.out.println("========== PATH FLIPPING DEBUG ==========");
+    System.out.println("Alliance detected: " + alliance);
+    System.out.println("Is Red alliance: " + isRed);
+    System.out.println("Flipping path: " + isRed);
+    System.out.println("========================================");
+    
+    return isRed;
   }
 
   // Reset robot pose estimate to a specific position
@@ -345,4 +360,71 @@ private void configureSysIdCommands() {
   // Public Accessors
   public Command getAutonomousCommand() { return autoChooser.getSelected(); } // Called by Robot.java at auto start
   public RobotState getRobotState() { return robotState; } // Global state tracker
+
+  /**
+   * Monitors the auto chooser and updates the robot pose estimate
+   * to match the selected auto's starting position (for AdvantageScope preview)
+   */
+  private void startAutoPreviewMonitor() {
+    new Thread(() -> {
+      while (true) {
+        try {
+          // Only update when disabled (not during auto or teleop)
+          if (DriverStation.isDisabled()) {
+            Command selectedAuto = autoChooser.getSelected();
+            
+            // Check if selection changed
+            if (selectedAuto != null && selectedAuto != lastSelectedAuto) {
+              lastSelectedAuto = selectedAuto;
+              
+              String autoName = selectedAuto.getName();
+              System.out.println("[Auto Preview] Selected: " + autoName);
+              
+              // Try to get starting pose from known autos
+              Pose2d startingPose = getStartingPoseForAuto(autoName);
+              
+              if (startingPose != null) {
+                // Set pose estimate to auto's starting position
+                poseEstimator.resetPose(
+                    startingPose,
+                    driveSubsystem.getGyroRotation(),
+                    driveSubsystem.getModulePositions());
+                
+                System.out.println("[Auto Preview] Pose set to: " + startingPose);
+                Logger.recordOutput("Auto/PreviewPose", startingPose);
+              }
+            }
+          }
+          
+          Thread.sleep(500); // Check every 500ms
+        } catch (Exception e) {
+          System.err.println("[Auto Preview] Error: " + e.getMessage());
+        }
+      }
+    }).start();
+  }
+
+  /**
+   * Get the starting pose for a known auto routine
+   * Returns null if auto not recognized
+   */
+  private Pose2d getStartingPoseForAuto(String autoName) {
+    // Map of auto names to their starting poses
+    // These should match the starting positions defined in your .auto files
+    switch (autoName.toLowerCase()) {
+      case "leftside1piece":
+      case "leftside3piece":
+        // Both start at (7.20, 0.45, 180°)
+        return new Pose2d(7.20, 0.45, Rotation2d.fromDegrees(180.0));
+      
+      // Add more autos as you create them
+      case "rightside1piece":
+        // Example: Right side starting position
+        return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
+      
+      default:
+        System.err.println("[Auto Preview] Unknown auto: " + autoName);
+        return null;
+    }
+  }
 }
