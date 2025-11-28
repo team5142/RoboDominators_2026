@@ -17,29 +17,34 @@ import gg.questnav.questnav.QuestNav;
 import gg.questnav.questnav.PoseFrame;
 import org.littletonrobotics.junction.Logger;
 
+// Hybrid gyro system - manages Meta Quest 3 VR headset (QuestNav) with Pigeon2 gyroscope failover
+// QuestNav provides SLAM-based 6DOF tracking (very accurate) but can lose tracking if view obstructed
+// Pigeon2 is traditional IMU gyro - always works but drifts over time (no absolute position)
+// System automatically switches to Pigeon if QuestNav disconnects or stops updating
 public class GyroSubsystem extends SubsystemBase {
+  // Gyro source tracking - which sensor are we currently using
   public enum GyroSource {
-    QUESTNAV,
-    PIGEON
+    QUESTNAV, // Quest 3 VR headset (preferred - SLAM tracking)
+    PIGEON    // Pigeon2 IMU (backup - traditional gyro)
   }
 
-  private final QuestNav questNav;
-  private final Pigeon2 pigeon;
+  private final QuestNav questNav; // Meta Quest 3 VR headset object
+  private final Pigeon2 pigeon; // CTRE Pigeon2 IMU on CANivore
 
-  private GyroSource activeSource = GyroSource.QUESTNAV;
-  private GyroSource lastActiveSource = GyroSource.PIGEON;
-  private double lastQuestNavUpdateTime = 0.0;
-  private int lastQuestNavFrameCount = -1; 
-  private Rotation2d currentRotation = new Rotation2d();
-  private Rotation2d lastValidQuestNavRotation = new Rotation2d();
+  private GyroSource activeSource = GyroSource.QUESTNAV; // Start with QuestNav (switch to Pigeon if it fails)
+  private GyroSource lastActiveSource = GyroSource.PIGEON; // Track transitions for logging
+  private double lastQuestNavUpdateTime = 0.0; // Timestamp of last QuestNav frame (detect timeouts)
+  private int lastQuestNavFrameCount = -1; // Track frame count to detect new data
+  private Rotation2d currentRotation = new Rotation2d(); // Current heading estimate
+  private Rotation2d lastValidQuestNavRotation = new Rotation2d(); // Fallback if QuestNav glitches
   
-  // Debug/logging counters
-  private int consecutiveQuestNavFailures = 0;
-  private int totalFramesProcessed = 0;
+  private int consecutiveQuestNavFailures = 0; // Count failures for diagnostics
+  private int totalFramesProcessed = 0; // Total QuestNav updates received
 
   public GyroSubsystem() {
     System.out.println("=== GyroSubsystem Initialization ===");
     
+    // Initialize QuestNav (Meta Quest 3 VR headset via USB-C to Ethernet adapter)
     try {
       questNav = new QuestNav();
       System.out.println("[OK] QuestNav object created successfully");
@@ -57,17 +62,14 @@ public class GyroSubsystem extends SubsystemBase {
     System.out.println("Disconnect timeout: " + MAX_QUESTNAV_DISCONNECT_TIME_SECONDS + "s");
     System.out.println("Max angular rate: " + MAX_ANGULAR_RATE_DEG_PER_SEC + " deg/s");
     
-    // Test QuestNav connection immediately
-    System.out.println("\n--- QuestNav Connection Test ---");
-    testQuestNavConnection();
+    testQuestNavConnection(); // Run diagnostics at startup
     System.out.println("=====================================\n");
   }
   
-  /**
-   * Test QuestNav connection at startup to help diagnose issues
-   */
+  // Test QuestNav connection at startup - helps diagnose NetworkTables issues
   private void testQuestNavConnection() {
     try {
+      System.out.println("\n--- QuestNav Connection Test ---");
       System.out.println("QuestNav Connection Details:");
       System.out.println("  - Connection: USB > Ethernet Switch > RoboRIO");
       System.out.println("  - Expected Quest IP: 10.51.42.X (team-based subnet)");
@@ -75,11 +77,11 @@ public class GyroSubsystem extends SubsystemBase {
       System.out.println("  - Protocol: NetworkTables 4 (port 1735)");
       System.out.println("");
       
-      // Test 1: Can we call isTracking()?
+      // Test tracking status
       boolean tracking = questNav.isTracking();
       System.out.println("isTracking() returned: " + tracking);
       
-      // Test 1.5: Battery status
+      // Test battery status
       try {
         OptionalInt batteryLevel = questNav.getBatteryPercent();
         if (batteryLevel.isPresent()) {
@@ -106,38 +108,29 @@ public class GyroSubsystem extends SubsystemBase {
         System.err.println("   3. Ethernet switch not powered or connected");
         System.err.println("   4. Quest not on 10.51.42.X subnet");
         System.err.println("   5. Quest just booted (wait 10-15 seconds for tracking)");
-        System.err.println("");
-        System.err.println("   Debugging steps:");
-        System.err.println("   - Check Quest Settings > Network > USB Ethernet");
-        System.err.println("   - Verify Quest IP is 10.51.42.X");
-        System.err.println("   - In QuestNav app, check NT server: 10.51.42.2");
-        System.err.println("   - Wait 10-15 seconds and check AdvantageScope");
       } else {
         System.out.println("[OK] QuestNav is tracking!");
       }
       
-      // Test 2: Can we get pose frames?
+      // Test pose frame availability
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       
       if (frames == null) {
         System.err.println("[ERROR] getAllUnreadPoseFrames() returned null");
         System.err.println("   Quest app running but NOT publishing to NetworkTables");
-        System.err.println("   Check NT server setting in QuestNav app");
       } else if (frames.length == 0) {
         System.err.println("[INFO] getAllUnreadPoseFrames() returned empty array");
         System.err.println("   Quest connected to NT but no pose data yet");
         System.err.println("   This is NORMAL if just started - wait 10-15 seconds");
-        System.err.println("   Check AdvantageScope in 10 seconds for frame updates");
       } else {
         System.out.println("[OK] Received " + frames.length + " pose frames!");
         System.out.println("   Latest frame count: " + frames[frames.length - 1].frameCount());
         System.out.println("   Quest is actively sending data over Ethernet!");
       }
       
-      // NEW: Print ALL public methods in QuestNav API
+      // Print complete QuestNav API for debugging
       System.out.println("\n=== QuestNav Complete API (All Public Methods) ===");
       for (var method : questNav.getClass().getMethods()) {
-        // Only show QuestNav methods, not inherited Object methods
         if (method.getDeclaringClass() == questNav.getClass()) {
           String returnType = method.getReturnType().getSimpleName();
           String methodName = method.getName();
@@ -157,16 +150,16 @@ public class GyroSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // CRITICAL: Call QuestNav's periodic update method
-    // This processes new frames and updates internal state
+    // CRITICAL: Call QuestNav's update method - processes new frames from Quest
     try {
       questNav.commandPeriodic();
     } catch (Exception e) {
       Logger.recordOutput("Gyro/QuestNav/PeriodicError", e.getMessage());
     }
     
-    updateRotation();
+    updateRotation(); // Decide which sensor to use and get rotation
     
+    // Log source transitions (QuestNav recovered, or QuestNav lost)
     if (activeSource != lastActiveSource) {
       onSourceChanged(lastActiveSource, activeSource);
       lastActiveSource = activeSource;
@@ -178,17 +171,17 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/RotationDegrees", currentRotation.getDegrees());
     Logger.recordOutput("Gyro/RotationRadians", currentRotation.getRadians());
     
-    // QuestNav status and health - USE NEW API METHODS
+    // QuestNav status using native API methods
     Logger.recordOutput("Gyro/QuestNavTracking", isQuestNavTracking());
-    Logger.recordOutput("Gyro/QuestNavConnected", isQuestNavConnected()); // NEW
+    Logger.recordOutput("Gyro/QuestNavConnected", isQuestNavConnected());
     Logger.recordOutput("Gyro/TimeSinceQuestNavUpdate", Timer.getFPGATimestamp() - lastQuestNavUpdateTime);
     
-    // Use API methods instead of manual tracking
+    // QuestNav metrics from API
     try {
-      Logger.recordOutput("Gyro/QuestNavFrameCount", questNav.getFrameCount().orElse(-1)); // NEW
-      Logger.recordOutput("Gyro/QuestNavTrackingLostCount", questNav.getTrackingLostCounter().orElse(0)); // NEW
-      Logger.recordOutput("Gyro/QuestNavLatency", questNav.getLatency()); // NEW
-      Logger.recordOutput("Gyro/QuestNavAppTimestamp", questNav.getAppTimestamp().orElse(-1.0)); // NEW
+      Logger.recordOutput("Gyro/QuestNavFrameCount", questNav.getFrameCount().orElse(-1));
+      Logger.recordOutput("Gyro/QuestNavTrackingLostCount", questNav.getTrackingLostCounter().orElse(0));
+      Logger.recordOutput("Gyro/QuestNavLatency", questNav.getLatency());
+      Logger.recordOutput("Gyro/QuestNavAppTimestamp", questNav.getAppTimestamp().orElse(-1.0));
     } catch (Exception e) {
       Logger.recordOutput("Gyro/QuestNav/MetricsError", e.getMessage());
     }
@@ -207,22 +200,21 @@ public class GyroSubsystem extends SubsystemBase {
       Logger.recordOutput("Gyro/QuestNav/BatteryError", e.getMessage());
     }
     
-    // Pigeon status (for comparison/backup)
+    // Pigeon status for comparison
     Logger.recordOutput("Gyro/PigeonRotation", getPigeonRotation());
     Logger.recordOutput("Gyro/PigeonYawDegrees", pigeon.getYaw().getValueAsDouble());
     Logger.recordOutput("Gyro/PigeonYawRadians", Math.toRadians(pigeon.getYaw().getValueAsDouble()));
     
-    // Debug outputs (always present in AdvantageKit for troubleshooting)
+    // Debug outputs
     Logger.recordOutput("Gyro/Debug/QuestNavIsTracking", isQuestNavTracking());
     Logger.recordOutput("Gyro/Debug/TimeSinceUpdate", Timer.getFPGATimestamp() - lastQuestNavUpdateTime);
     
-    // Try to get current QuestNav pose frame for additional logging
+    // Log full QuestNav 3D pose if available
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       if (frames != null && frames.length > 0) {
         PoseFrame latest = frames[frames.length - 1];
         
-        // Log the full 3D pose from QuestNav
         Pose3d questPose3d = latest.questPose3d();
         Logger.recordOutput("Gyro/QuestNav/Pose3d", questPose3d);
         Logger.recordOutput("Gyro/QuestNav/Position/X", questPose3d.getX());
@@ -232,15 +224,11 @@ public class GyroSubsystem extends SubsystemBase {
         Logger.recordOutput("Gyro/QuestNav/Rotation/Pitch", questPose3d.getRotation().getY());
         Logger.recordOutput("Gyro/QuestNav/Rotation/Yaw", questPose3d.getRotation().getZ());
         
-        // Log frame metadata
         Logger.recordOutput("Gyro/QuestNav/FrameTimestamp", latest.dataTimestamp());
         Logger.recordOutput("Gyro/QuestNav/AppTimestamp", latest.appTimestamp());
         Logger.recordOutput("Gyro/QuestNav/FrameCount", latest.frameCount());
-        
-        // Log how many frames we got this cycle
         Logger.recordOutput("Gyro/QuestNav/UnreadFrameCount", frames.length);
       } else {
-        // No frames available
         Logger.recordOutput("Gyro/QuestNav/UnreadFrameCount", 0);
       }
     } catch (Exception e) {
@@ -248,6 +236,7 @@ public class GyroSubsystem extends SubsystemBase {
     }
   }
 
+  // Log source transitions for diagnostics
   private void onSourceChanged(GyroSource from, GyroSource to) {
     String transition = from + " -> " + to;
     
@@ -265,26 +254,24 @@ public class GyroSubsystem extends SubsystemBase {
     }
   }
 
+  // Decide which sensor to use and get current rotation
   private void updateRotation() {
-    // Try to get latest QuestNav rotation
     Rotation2d questNavRotation = getQuestNavRotation();
     
-    // Use API method to check connection instead of manual timeout
+    // Check QuestNav health using API method
     boolean questNavConnected = isQuestNavConnected();
     boolean questNavIsUpdating = (Timer.getFPGATimestamp() - lastQuestNavUpdateTime) < 0.5;
     
     if (questNavConnected && questNavIsUpdating) {
-      // QuestNav is working - use it
-      activeSource = GyroSource.QUESTNAV;
+      activeSource = GyroSource.QUESTNAV; // QuestNav is working - use it
       currentRotation = questNavRotation;
       consecutiveQuestNavFailures = 0;
     } else {
-      // QuestNav is frozen/broken - fall back to Pigeon
-      activeSource = GyroSource.PIGEON;
+      activeSource = GyroSource.PIGEON; // QuestNav failed - fall back to Pigeon
       currentRotation = getPigeonRotation();
       consecutiveQuestNavFailures++;
       
-      // Log why we failed back
+      // Log why we failed over
       if (!questNavConnected) {
         Logger.recordOutput("Gyro/Debug/FailoverReason", "Not connected");
       } else if (!questNavIsUpdating) {
@@ -292,34 +279,32 @@ public class GyroSubsystem extends SubsystemBase {
       }
     }
     
-    // Log which source we're using
     Logger.recordOutput("Gyro/Debug/QuestNavConnected", questNavConnected);
     Logger.recordOutput("Gyro/Debug/QuestNavIsUpdating", questNavIsUpdating);
     Logger.recordOutput("Gyro/Debug/TimeSinceLastUpdate", Timer.getFPGATimestamp() - lastQuestNavUpdateTime);
   }
 
+  // Get latest QuestNav rotation - returns last known rotation if no new data
   private Rotation2d getQuestNavRotation() {
     try {
       PoseFrame[] poseFrames = questNav.getAllUnreadPoseFrames();
       
-      // Log frame array status
       Logger.recordOutput("Gyro/Debug/FrameArrayNull", poseFrames == null);
       
       if (poseFrames == null) {
         Logger.recordOutput("Gyro/Debug/FrameArrayLength", 0);
-        return currentRotation;
+        return currentRotation; // No data - use last known rotation
       }
       
       Logger.recordOutput("Gyro/Debug/FrameArrayLength", poseFrames.length);
       
       if (poseFrames.length == 0) {
-        return currentRotation;
+        return currentRotation; // No new frames
       }
       
-      // Get latest frame
       PoseFrame latestFrame = poseFrames[poseFrames.length - 1];
       
-      // Check if it's a new frame
+      // Check if frame is new
       int newFrameCount = latestFrame.frameCount();
       boolean isNewFrame = (newFrameCount != lastQuestNavFrameCount);
       
@@ -335,13 +320,13 @@ public class GyroSubsystem extends SubsystemBase {
         Logger.recordOutput("Gyro/Debug/FrameTimestamp", latestFrame.dataTimestamp());
       }
       
-      // Get pose and rotation
       Pose3d questPose = latestFrame.questPose3d();
       Logger.recordOutput("Gyro/Debug/QuestPose3d", questPose);
       
       Rotation2d questRotation = questPose.getRotation().toRotation2d();
       Logger.recordOutput("Gyro/Debug/QuestRotationRaw", questRotation.getDegrees());
       
+      // Apply yaw offset from mounting angle
       Rotation2d correctedRotation = questRotation.minus(Rotation2d.fromDegrees(QUEST_YAW_DEG));
       Logger.recordOutput("Gyro/Debug/QuestRotationCorrected", correctedRotation.getDegrees());
       
@@ -373,10 +358,7 @@ public class GyroSubsystem extends SubsystemBase {
     }
   }
 
-  /**
-   * Check if QuestNav is connected to NetworkTables
-   * Uses new API method instead of checking for null frames
-   */
+  // Check if QuestNav is connected to NetworkTables (uses API method)
   private boolean isQuestNavConnected() {
     try {
       return questNav.isConnected();
@@ -394,6 +376,7 @@ public class GyroSubsystem extends SubsystemBase {
     return activeSource;
   }
 
+  // Reset heading to zero (called by "orient to field" button)
   public void resetHeading() {
     pigeon.reset();
     try {
@@ -401,8 +384,8 @@ public class GyroSubsystem extends SubsystemBase {
       if (poseFrames != null && poseFrames.length > 0) {
         Pose3d currentQuestPose = poseFrames[poseFrames.length - 1].questPose3d();
         Pose3d newPose = new Pose3d(
-            currentQuestPose.getTranslation(),
-            new Rotation3d(0.0, 0.0, 0.0));
+            currentQuestPose.getTranslation(), // Keep XYZ position
+            new Rotation3d(0.0, 0.0, 0.0)); // Reset yaw to zero
         questNav.setPose(newPose);
         Logger.recordOutput("Gyro/QuestNavYawReset", true);
         System.out.println("QuestNav pose reset to: " + newPose);
@@ -423,6 +406,7 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/HeadingReset", true);
   }
 
+  // Set heading to a specific angle
   public void setHeading(double angleDegrees) {
     pigeon.setYaw(angleDegrees);
     try {
@@ -430,7 +414,7 @@ public class GyroSubsystem extends SubsystemBase {
       if (poseFrames != null && poseFrames.length > 0) {
         Pose3d currentQuestPose = poseFrames[poseFrames.length - 1].questPose3d();
         Pose3d newPose = new Pose3d(
-            currentQuestPose.getTranslation(), // Keep X, Y, Z position
+            currentQuestPose.getTranslation(), // Keep XYZ position
             new Rotation3d(0.0, 0.0, Math.toRadians(angleDegrees))); // Update only yaw
         questNav.setPose(newPose);
         Logger.recordOutput("Gyro/QuestNavYawSet", angleDegrees);
@@ -444,15 +428,11 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/HeadingSet", angleDegrees);
   }
   
-  /**
-   * Set QuestNav to a specific 3D pose (full position + rotation reset)
-   * Use this when resetting robot pose to a known starting position
-   */
+  // Set QuestNav to a specific 3D pose (used by PoseEstimatorSubsystem when resetting robot position)
   public void setQuestNavPose(Pose3d newPose) {
     try {
       questNav.setPose(newPose);
       Logger.recordOutput("Gyro/QuestNavPoseSet", newPose);
-      // REMOVED: Console output - only log to AdvantageScope
     } catch (Exception e) {
       Logger.recordOutput("Gyro/QuestNavPoseSetFailed", e.getMessage());
       System.err.println("QuestNav setPose failed: " + e.getMessage());
@@ -468,10 +448,7 @@ public class GyroSubsystem extends SubsystemBase {
     return activeSource == GyroSource.PIGEON;
   }
 
-  /**
-   * Get QuestNav pose as Pose2d (for pose estimator integration)
-   * Returns null if no QuestNav data available
-   */
+  // Get QuestNav pose as Pose2d (for pose estimator integration) - returns null if no data
   public Pose2d getQuestNavPose2d() {
     try {
       PoseFrame[] poseFrames = questNav.getAllUnreadPoseFrames();
@@ -498,10 +475,7 @@ public class GyroSubsystem extends SubsystemBase {
     }
   }
   
-  /**
-   * Check if QuestNav has new pose data available
-   * Used by PoseEstimatorSubsystem to avoid duplicate vision measurements
-   */
+  // Check if QuestNav has new pose data (used by PoseEstimatorSubsystem to avoid duplicate measurements)
   public boolean hasNewQuestNavPose() {
     try {
       PoseFrame[] poseFrames = questNav.getAllUnreadPoseFrames();

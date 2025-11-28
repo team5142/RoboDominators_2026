@@ -23,66 +23,66 @@ import java.util.Map;
 import java.util.Optional;
 import org.littletonrobotics.junction.Logger;
 
+// AprilTag vision processing - manages 3 cameras (Limelight + 2 PhotonVision) for robot localization
+// Filters bad measurements and sends good ones to PoseEstimator with quality-weighted trust levels
 public class TagVisionSubsystem extends SubsystemBase {
-  private final PoseEstimatorSubsystem poseEstimator;
-  private final AprilTagFieldLayout fieldLayout;
-  private final List<VisionCamera> cameras;
+  private final PoseEstimatorSubsystem poseEstimator; // Where we send vision measurements
+  private final AprilTagFieldLayout fieldLayout; // Official field tag positions (from WPILib)
+  private final List<VisionCamera> cameras; // All configured cameras
 
-  private boolean hasRecentPose = false;
+  private boolean hasRecentPose = false; // True if any camera accepted this loop
 
-  // NEW: Throttle console output per camera
-  private final Map<String, Double> lastConsoleOutputTime = new HashMap<>();
-  private static final double CONSOLE_OUTPUT_INTERVAL_SECONDS = 3.0;
+  private final Map<String, Double> lastConsoleOutputTime = new HashMap<>(); // Throttle console spam
+  private static final double CONSOLE_OUTPUT_INTERVAL_SECONDS = 3.0; // Print camera updates every 3s
 
-  // NEW: Expected test pose for validation (1m from Tag 17)
-  private static final Pose2d EXPECTED_TEST_POSE = new Pose2d(3.57, 2.44, Rotation2d.fromDegrees(240.0)); // Updated based on actual position
-  private static final double POSITION_TOLERANCE_METERS = 0.15;
-  private static final double ROTATION_TOLERANCE_DEGREES = 5.0;
+  // Test position validation - compares camera estimates to known test location
+  private static final Pose2d EXPECTED_TEST_POSE = new Pose2d(3.57, 2.44, Rotation2d.fromDegrees(240.0));
+  private static final double POSITION_TOLERANCE_METERS = 0.15; // Accept if within 15cm
+  private static final double ROTATION_TOLERANCE_DEGREES = 5.0; // Accept if within 5 degrees
 
   public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator) {
     this.poseEstimator = poseEstimator;
 
-    // Load 2025 field layout
+    // Load 2025 Reefscape field layout - contains all AprilTag positions
     try {
       fieldLayout = AprilTagFields.k2025ReefscapeAndyMark.loadAprilTagLayoutField();
     } catch (Exception e) {
       throw new RuntimeException("Failed to load AprilTag field layout", e);
     }
 
-    // Initialize cameras
     cameras = new ArrayList<>();
     
-    // Front Limelight 3
-    cameras.add(new LimelightCamera(LL_FRONT_NAME, 0));
+    // Front Limelight 3 - front center of robot (no transform needed, configured in camera)
+    cameras.add(new LimelightCamera(LL_FRONT_NAME, 0)); // Pipeline 0
     
-    // Back Left PhotonVision camera (RLTagPV with RLCalibratedAT pipeline)
+    // Back Left PhotonVision camera - back-left corner, angled forward-left
     cameras.add(new PhotonVisionCamera(
         PV_BACK_LEFT_NAME,
-        "RLCalibratedAT",  // Pipeline name
-        new Transform3d(
+        "RLCalibratedAT", // Pipeline name must match PhotonVision web UI
+        new Transform3d( // Camera position relative to robot center
             new Translation3d(
-                BACK_LEFT_PV_X_METERS,
-                BACK_LEFT_PV_Y_METERS,
-                BACK_LEFT_PV_Z_METERS),
-            new Rotation3d(
+                BACK_LEFT_PV_X_METERS, // 11.5" behind center
+                BACK_LEFT_PV_Y_METERS, // 10" left of center
+                BACK_LEFT_PV_Z_METERS), // 8" above ground
+            new Rotation3d( // Camera orientation (roll, pitch, yaw)
                 Units.degreesToRadians(BACK_LEFT_PV_ROLL_DEG),
-                Units.degreesToRadians(BACK_LEFT_PV_PITCH_DEG),
-                Units.degreesToRadians(BACK_LEFT_PV_YAW_DEG))),
+                Units.degreesToRadians(BACK_LEFT_PV_PITCH_DEG), // 15deg up to see high tags
+                Units.degreesToRadians(BACK_LEFT_PV_YAW_DEG))), // 135deg (forward-left)
         fieldLayout));
     
-    // Back Right PhotonVision camera (RRTagPV with RRCalibratedAT pipeline)
+    // Back Right PhotonVision camera - back-right corner, angled forward-right
     cameras.add(new PhotonVisionCamera(
         PV_BACK_RIGHT_NAME,
-        "RRCalibratedAT",  // Pipeline name
+        "RRCalibratedAT", // Pipeline name must match PhotonVision web UI
         new Transform3d(
             new Translation3d(
-                BACK_RIGHT_PV_X_METERS,
-                BACK_RIGHT_PV_Y_METERS,
-                BACK_RIGHT_PV_Z_METERS),
+                BACK_RIGHT_PV_X_METERS, // 11.5" behind center
+                BACK_RIGHT_PV_Y_METERS, // 10" right of center
+                BACK_RIGHT_PV_Z_METERS), // 8" above ground
             new Rotation3d(
                 Units.degreesToRadians(BACK_RIGHT_PV_ROLL_DEG),
-                Units.degreesToRadians(BACK_RIGHT_PV_PITCH_DEG),
-                Units.degreesToRadians(BACK_RIGHT_PV_YAW_DEG))),
+                Units.degreesToRadians(BACK_RIGHT_PV_PITCH_DEG), // 15deg up to see high tags
+                Units.degreesToRadians(BACK_RIGHT_PV_YAW_DEG))), // 225deg (forward-right)
         fieldLayout));
     
     System.out.println("TagVisionSubsystem initialized with 3 cameras:");
@@ -94,11 +94,11 @@ public class TagVisionSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     hasRecentPose = false;
-    int totalAccepted = 0;
-    int totalRejected = 0;
-    int totalErrors = 0;
+    int totalAccepted = 0; // How many cameras successfully updated pose this loop
+    int totalRejected = 0; // How many cameras saw tags but failed validation
+    int totalErrors = 0; // How many cameras threw exceptions
 
-    // Process all cameras
+    // Process each camera independently - failures don't affect other cameras
     for (VisionCamera camera : cameras) {
       try {
         boolean accepted = processVisionUpdate(camera);
@@ -106,16 +106,16 @@ public class TagVisionSubsystem extends SubsystemBase {
           totalAccepted++;
           hasRecentPose = true;
         } else if (camera.hasTarget()) {
-          totalRejected++; // Had target but rejected
+          totalRejected++; // Camera saw tags but measurement was rejected
         }
       } catch (Exception e) {
-        // Camera error - log but continue with other cameras
-        totalErrors++;
+        totalErrors++; // Camera error - log but continue with other cameras
         Logger.recordOutput("TagVision/" + camera.getName() + "/Error", e.getMessage());
         System.err.println("[WARNING] Vision camera '" + camera.getName() + "' error: " + e.getMessage());
       }
     }
 
+    // Summary logging - shows multi-camera health at a glance
     Logger.recordOutput("TagVision/HasAnyTarget", hasRecentPose);
     Logger.recordOutput("TagVision/AcceptedUpdates", totalAccepted);
     Logger.recordOutput("TagVision/RejectedUpdates", totalRejected);
@@ -123,8 +123,8 @@ public class TagVisionSubsystem extends SubsystemBase {
     Logger.recordOutput("TagVision/ActiveCameras", getCameraCount() - totalErrors);
   }
 
+  // Process vision measurement from one camera - returns true if accepted by pose estimator
   private boolean processVisionUpdate(VisionCamera camera) {
-    // === Process all cameras normally ===
     Optional<VisionResult> result = camera.getLatestResult();
 
     if (result.isEmpty()) {
@@ -135,28 +135,27 @@ public class TagVisionSubsystem extends SubsystemBase {
 
     VisionResult visionResult = result.get();
 
-    // NEW: Log raw vision result details BEFORE validation
+    // Log raw result BEFORE any filtering - useful for debugging rejected measurements
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/TagCount", visionResult.tagCount);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/EstimatedPose", visionResult.estimatedPose);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/AvgDistance", visionResult.averageTagDistance);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/Timestamp", visionResult.timestampSeconds);
 
-    // Validation: Check tag count
+    // Reject if no tags detected
     if (visionResult.tagCount == 0) {
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", "No tags");
       Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
       return false;
     }
 
-    // === DETAILED CAMERA TESTING LOGS ===
     Pose2d estimatedPose = visionResult.estimatedPose;
     
-    // Calculate error from expected test pose
+    // Calculate error from known test position - helps validate camera calibration
     double positionError = estimatedPose.getTranslation().getDistance(EXPECTED_TEST_POSE.getTranslation());
     double rotationError = Math.abs(
         estimatedPose.getRotation().minus(EXPECTED_TEST_POSE.getRotation()).getDegrees());
     
-    // Log detailed camera estimate (always log to AdvantageScope)
+    // Log camera estimate with test validation metrics
     Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedX", estimatedPose.getX());
     Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedY", estimatedPose.getY());
     Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedRotation", 
@@ -166,12 +165,11 @@ public class TagVisionSubsystem extends SubsystemBase {
     Logger.recordOutput("TagVision/" + camera.getName() + "/Test/WithinTolerance", 
         positionError < POSITION_TOLERANCE_METERS && rotationError < ROTATION_TOLERANCE_DEGREES);
     
-    // THROTTLED console output (every 3 seconds per camera)
+    // Throttled console output - prevents spam while still showing periodic updates
     double currentTime = Timer.getFPGATimestamp();
     double lastOutputTime = lastConsoleOutputTime.getOrDefault(camera.getName(), 0.0);
     
     if (currentTime - lastOutputTime >= CONSOLE_OUTPUT_INTERVAL_SECONDS) {
-      // Format tag IDs for display
       String tagIdsStr = visionResult.tagIds.stream()
           .map(String::valueOf)
           .collect(java.util.stream.Collectors.joining(","));
@@ -187,9 +185,9 @@ public class TagVisionSubsystem extends SubsystemBase {
       lastConsoleOutputTime.put(camera.getName(), currentTime);
     }
 
-    // Validation: For single-tag detections, check quality
+    // Quality check for single-tag measurements - reject distant/unreliable detections
     if (visionResult.tagCount == 1) {
-      if (visionResult.averageTagDistance > 20.0) {
+      if (visionResult.averageTagDistance > 20.0) { // 20m is unrealistically far
         Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", 
             "Too far: " + visionResult.averageTagDistance + "m");
         Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedDistance",
@@ -199,12 +197,13 @@ public class TagVisionSubsystem extends SubsystemBase {
       }
     }
 
-    // Sanity check: reject if pose is too far from current estimate
+    // Sanity check - reject if vision disagrees too much with current pose estimate
+    // This prevents bad measurements from corrupting odometry
     Pose2d currentPose = poseEstimator.getEstimatedPose();
     double distance = currentPose.getTranslation()
         .getDistance(visionResult.estimatedPose.getTranslation());
 
-    if (distance > MAX_POSE_DIFFERENCE_METERS) {
+    if (distance > MAX_POSE_DIFFERENCE_METERS) { // 2m threshold
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason",
           "Pose diff too large: " + distance + "m");
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedPoseDiff", distance);
@@ -214,14 +213,14 @@ public class TagVisionSubsystem extends SubsystemBase {
       return false;
     }
 
-    // ACCEPTED - Add measurement to pose estimator WITH CAMERA-SPECIFIC TRUST
+    // ACCEPTED - send to pose estimator with camera-specific quality weighting
     poseEstimator.addVisionMeasurement(
         visionResult.estimatedPose,
         visionResult.timestampSeconds,
         visionResult.tagCount,
-        camera.getName()); // NEW: Pass camera name for quality weighting
+        camera.getName()); // Camera name used to apply quality multiplier
 
-    // Log acceptance
+    // Log successful measurement
     Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", true);
     Logger.recordOutput("TagVision/" + camera.getName() + "/EstimatedPose", visionResult.estimatedPose);
     Logger.recordOutput("TagVision/" + camera.getName() + "/TagCount", visionResult.tagCount);

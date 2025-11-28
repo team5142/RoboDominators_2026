@@ -11,46 +11,38 @@ import org.photonvision.PhotonPoseEstimator;
 import org.photonvision.PhotonPoseEstimator.PoseStrategy;
 import org.photonvision.targeting.PhotonPipelineResult;
 
-/**
- * PhotonVision camera implementation for AprilTag detection.
- * Wraps PhotonVision API to work with our VisionCamera interface.
- */
+// PhotonVision camera wrapper - reads from PhotonVision coprocessor (OrangePi/RaspberryPi)
+// Uses PhotonLib to get pose estimates from camera's onboard processing
+// Supports multi-tag fusion (better than Limelight for multiple tags in view)
 public class PhotonVisionCamera implements VisionCamera {
-  private final String name;
-  private final PhotonCamera camera;
-  private final PhotonPoseEstimator poseEstimator;
-  private PhotonPipelineResult latestResult;
-  private boolean connectionWarningShown = false; // Prevent spam
+  private final String name; // Camera name in PhotonVision web UI
+  private final PhotonCamera camera; // PhotonLib camera object
+  private final PhotonPoseEstimator poseEstimator; // Handles 3D pose math
+  private PhotonPipelineResult latestResult; // Cached result for hasTarget() check
+  private boolean connectionWarningShown = false; // Throttle error messages
 
-  /**
-   * Create a PhotonVision camera for AprilTag pose estimation.
-   * 
-   * @param cameraName Name of the camera in PhotonVision
-   * @param pipelineName Name of the pipeline to use (e.g., "RLCalibratedAT")
-   * @param robotToCamera Transform from robot center to camera
-   * @param fieldLayout AprilTag field layout for 2025
-   */
+  // Create PhotonVision camera with robot-to-camera transform for pose estimation
   public PhotonVisionCamera(
       String cameraName,
-      String pipelineName,
-      Transform3d robotToCamera,
-      AprilTagFieldLayout fieldLayout) {
+      String pipelineName, // Pipeline name in PhotonVision UI (e.g. "RLCalibratedAT")
+      Transform3d robotToCamera, // Camera position/orientation relative to robot center
+      AprilTagFieldLayout fieldLayout) { // Official 2025 field tag locations
     this.name = cameraName;
     this.camera = new PhotonCamera(cameraName);
     
-    // Set the pipeline by name
-    camera.setPipelineIndex(getPipelineIndex(pipelineName));
+    camera.setPipelineIndex(getPipelineIndex(pipelineName)); // Set active pipeline
     
-    // Create pose estimator
+    // Create pose estimator with strategy based on camera name
+    // RLTagPV uses single-tag only (Tag 22 multi-tag causes issues)
+    // Others use multi-tag for better accuracy
     this.poseEstimator = new PhotonPoseEstimator(
         fieldLayout,
-        // TESTING: Use single-tag mode for RLTagPV to avoid Tag 22 multi-tag issues
         cameraName.equals("RLTagPV") 
-            ? PoseStrategy.LOWEST_AMBIGUITY  // Single-tag only for RLTagPV
-            : PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,  // Multi-tag for others
+            ? PoseStrategy.LOWEST_AMBIGUITY  // Single-tag only (best fit)
+            : PoseStrategy.MULTI_TAG_PNP_ON_COPROCESSOR,  // Multi-tag (most accurate)
         robotToCamera);
     
-    // Enable multi-tag fallback (only used if primary strategy is multi-tag)
+    // Enable fallback to single-tag if multi-tag fails
     if (!cameraName.equals("RLTagPV")) {
       poseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
     }
@@ -60,17 +52,10 @@ public class PhotonVisionCamera implements VisionCamera {
         + ", Strategy: " + (cameraName.equals("RLTagPV") ? "SINGLE_TAG" : "MULTI_TAG") + ")");
   }
 
-  /**
-   * Get pipeline index by name (PhotonVision API requires index, not name)
-   * For now, assumes pipeline 0 - you may need to adjust this based on your PhotonVision config
-   */
+  // Get pipeline index by name - PhotonVision API uses index not name
+  // For now assumes pipeline 0 (the calibrated AprilTag pipeline)
   private int getPipelineIndex(String pipelineName) {
-    // PhotonVision pipelines are indexed 0, 1, 2, etc.
-    // Since you're using "Duel Point Offset Mode", pipeline 0 should be the calibrated one
-    // If you have multiple pipelines, you'll need to map names to indices
-    
-    // For now, default to pipeline 0 (the calibrated AprilTag pipeline)
-    return 0;
+    return 0; // TODO: Map pipeline names to indices if you have multiple pipelines
   }
 
   @Override
@@ -83,7 +68,7 @@ public class PhotonVisionCamera implements VisionCamera {
     try {
       latestResult = camera.getLatestResult();
       
-      // DEBUG: Always log what we get (AdvantageScope only - no console spam)
+      // Debug logging - always log to AdvantageScope (no console spam)
       org.littletonrobotics.junction.Logger.recordOutput(
           "Vision/" + name + "/Debug/ResultExists", latestResult != null);
       org.littletonrobotics.junction.Logger.recordOutput(
@@ -93,7 +78,7 @@ public class PhotonVisionCamera implements VisionCamera {
         org.littletonrobotics.junction.Logger.recordOutput(
             "Vision/" + name + "/Debug/TargetCount", latestResult.getTargets().size());
         
-        // Log which tag IDs we see
+        // Log which tag IDs are visible
         var tagIds = latestResult.getTargets().stream()
             .mapToInt(target -> target.getFiducialId())
             .toArray();
@@ -107,11 +92,11 @@ public class PhotonVisionCamera implements VisionCamera {
         return Optional.empty();
       }
 
-      // Get pose estimate from PhotonVision
+      // Get pose estimate from PhotonVision's on-coprocessor processing
       Optional<EstimatedRobotPose> estimatedPose = poseEstimator.update(latestResult);
       
       if (estimatedPose.isEmpty()) {
-        // Log why PhotonVision rejected it
+        // PhotonVision rejected the measurement (ambiguity too high, tags too far, etc.)
         org.littletonrobotics.junction.Logger.recordOutput(
             "Vision/" + name + "/PhotonRejected", true);
         org.littletonrobotics.junction.Logger.recordOutput(
@@ -123,15 +108,14 @@ public class PhotonVisionCamera implements VisionCamera {
 
       EstimatedRobotPose robotPose = estimatedPose.get();
       
-      // Convert to 2D pose
-      Pose2d pose2d = robotPose.estimatedPose.toPose2d();
+      Pose2d pose2d = robotPose.estimatedPose.toPose2d(); // Convert 3D pose to 2D (drop Z)
       
-      // Extract which tag IDs were used
+      // Extract which tag IDs contributed to this pose
       List<Integer> usedTagIds = robotPose.targetsUsed.stream()
           .map(target -> target.getFiducialId())
           .collect(java.util.stream.Collectors.toList());
       
-      // SAFETY: Reject zero poses (0,0,0) - these are invalid
+      // SAFETY: Reject (0,0,0) poses - these are invalid/uninitialized
       if (Math.abs(pose2d.getX()) < 0.01 && Math.abs(pose2d.getY()) < 0.01) {
         org.littletonrobotics.junction.Logger.recordOutput(
             "Vision/" + name + "/RejectedZeroPose", true);
@@ -139,7 +123,7 @@ public class PhotonVisionCamera implements VisionCamera {
         return Optional.empty();
       }
       
-      // Calculate average distance to tags
+      // Calculate average distance to all tags used in pose estimate
       double avgDistance = robotPose.targetsUsed.stream()
           .mapToDouble(target -> target.getBestCameraToTarget().getTranslation().getNorm())
           .average()
@@ -147,7 +131,7 @@ public class PhotonVisionCamera implements VisionCamera {
       
       connectionWarningShown = false; // Reset warning
       
-      // DEBUG: Always log when PhotonVision camera gets a valid pose
+      // Debug - log all successful pose estimates
       org.littletonrobotics.junction.Logger.recordOutput(
           "Vision/" + name + "/ValidPoseReceived", true);
       org.littletonrobotics.junction.Logger.recordOutput(
@@ -156,16 +140,15 @@ public class PhotonVisionCamera implements VisionCamera {
           "Vision/" + name + "/UsedTagIDs", 
           usedTagIds.stream().map(String::valueOf).toArray(String[]::new));
       
-      // Create VisionResult
       return Optional.of(new VisionResult(
           pose2d,
           robotPose.timestampSeconds,
           robotPose.targetsUsed.size(),
           avgDistance,
-          usedTagIds)); // NEW: Pass tag IDs
+          usedTagIds));
       
     } catch (Exception e) {
-      // Camera disconnected or communication error
+      // Camera disconnected, coprocessor crash, or NetworkTables error
       if (!connectionWarningShown) {
         System.err.println("[WARNING] PhotonVision camera '" + name + "' error: " + e.getMessage());
         connectionWarningShown = true;
@@ -185,16 +168,12 @@ public class PhotonVisionCamera implements VisionCamera {
     }
   }
 
-  /**
-   * Get the raw PhotonVision camera for advanced usage
-   */
+  // Get raw PhotonVision camera for advanced usage (pipeline switching, LED control, etc.)
   public PhotonCamera getCamera() {
     return camera;
   }
 
-  /**
-   * Get the raw PhotonPoseEstimator for advanced usage
-   */
+  // Get raw PhotonPoseEstimator for advanced configuration
   public PhotonPoseEstimator getPoseEstimator() {
     return poseEstimator;
   }

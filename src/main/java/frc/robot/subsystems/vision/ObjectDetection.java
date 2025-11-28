@@ -3,22 +3,23 @@ package frc.robot.subsystems.vision;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 
-/**
- * Represents a detected game piece or object in field coordinates
- */
+// Container for detected game pieces - used by ObjectVisionSubsystem (object detection camera)
+// Stores field-relative position of coral/algae for autonomous game piece pickup
+// Currently set up for 2025 Reefscape - update ObjectType enum for 2026 game
 public class ObjectDetection {
+  // Game piece types - add 2026 game pieces here when game is revealed
   public enum ObjectType {
-    CORAL,
-    ALGAE,
-    UNKNOWN
+    CORAL,    // 2025: Orange coral game piece
+    ALGAE,    // 2025: Green algae game piece
+    UNKNOWN   // Unrecognized/low confidence detection
   }
 
-  private final ObjectType type;
-  private final Translation2d position;  // Field-relative position
-  private final double confidence;
-  private final double distanceMeters;
-  private final Rotation2d angleToTarget;
-  private final double timestampSeconds;
+  private final ObjectType type; // What kind of game piece
+  private final Translation2d position;  // Field-relative position (X, Y in meters)
+  private final double confidence; // Neural net confidence (0-1, higher = more certain)
+  private final double distanceMeters; // Distance from robot to object
+  private final Rotation2d angleToTarget; // Angle from robot heading to object
+  private final double timestampSeconds; // When detection was made (for staleness checks)
 
   public ObjectDetection(
       ObjectType type,

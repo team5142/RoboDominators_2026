@@ -18,6 +18,9 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotState;
 import org.littletonrobotics.junction.Logger;
 
+// Kalman filter-based pose estimator - fuses wheel odometry, vision, and QuestNav SLAM
+// Provides best estimate of robot position on field by weighting all sensor sources
+// More trusted sources (multi-tag vision) pull estimate more than less trusted (wheel odometry)
 public class PoseEstimatorSubsystem extends SubsystemBase {
   public enum InitializationState {
     WAITING_FOR_VISION,     // Haven't seen any vision yet

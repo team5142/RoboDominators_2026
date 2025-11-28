@@ -11,29 +11,25 @@ import org.littletonrobotics.junction.Logger;
 
 import java.util.function.Supplier;
 
-/**
- * Swerve drivetrain extending CTRE's CommandSwerveDrivetrain.
- * Integrates with custom GyroSubsystem for QuestNav/Pigeon failover.
- */
+// Swerve drivetrain subsystem - extends CTRE's CommandSwerveDrivetrain for low-level control
+// Adds custom gyro integration (QuestNav/Pigeon failover), SysId routines, and helper methods
+// This is the main interface for driving the robot in teleop and autonomous
 public class DriveSubsystem extends CommandSwerveDrivetrain {
-  private final GyroSubsystem gyro;
-  private final RobotState robotState;
+  private final GyroSubsystem gyro; // Hybrid QuestNav/Pigeon gyro with automatic failover
+  private final RobotState robotState; // Global state tracker
   
-  // Swerve requests for different drive modes
-  private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
-  private final SwerveRequest.RobotCentric robotCentricDrive = new SwerveRequest.RobotCentric();
+  // Swerve drive requests - CTRE's way of commanding robot motion
+  private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric(); // Joystick relative to field
+  private final SwerveRequest.RobotCentric robotCentricDrive = new SwerveRequest.RobotCentric(); // Joystick relative to robot
 
-  // SysId requests (directly from parent class)
+  // SysId requests (inherited from parent class) - used for motor characterization
   private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
   private final SwerveRequest.SysIdSwerveSteerGains m_steerCharacterization = new SwerveRequest.SysIdSwerveSteerGains();
   private final SwerveRequest.SysIdSwerveRotation m_rotationCharacterization = new SwerveRequest.SysIdSwerveRotation();
 
-  /**
-   * Constructs the drivetrain using Tuner X generated constants
-   */
+  // Constructs drivetrain using Tuner X generated constants (auto-generated code)
   public DriveSubsystem(RobotState robotState, GyroSubsystem gyro) {
-    // Call parent constructor with Tuner X constants
-    super(
+    super( // Call parent constructor with Tuner X module configs
         frc.robot.generated.TunerConstants.DrivetrainConstants,
         frc.robot.generated.TunerConstants.FrontLeft,
         frc.robot.generated.TunerConstants.FrontRight,
@@ -47,20 +43,20 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
 
   @Override
   public void periodic() {
-    super.periodic(); // CTRE's periodic (handles odometry, operator perspective, etc.)
+    super.periodic(); // CTRE's periodic (handles odometry, CAN updates, etc.)
     
-    // Additional logging
+    // Log gyro and pose for debugging
     Logger.recordOutput("Drive/GyroYawDeg", getGyroRotation().getDegrees());
     Logger.recordOutput("Drive/Pose", getState().Pose);
   }
 
-  /**
-   * Drive using field-relative or robot-relative control
-   */
+  // Main drive method - converts joystick inputs to robot motion
+  // fieldRelative: true = joystick forward always moves downfield (preferred)
+  //                false = joystick forward moves in robot's current direction
   public void drive(
-      double xVelocity,
-      double yVelocity,
-      double rotationalVelocity,
+      double xVelocity, // Forward/back speed (m/s)
+      double yVelocity, // Left/right speed (m/s)
+      double rotationalVelocity, // Rotation speed (rad/s)
       boolean fieldRelative) {
     
     if (fieldRelative) {
@@ -76,9 +72,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     }
   }
 
-  /**
-   * Drive using robot-relative chassis speeds (for PathPlanner)
-   */
+  // Drive using robot-relative chassis speeds - used by PathPlanner for autonomous
   public void driveRobotRelative(ChassisSpeeds speeds) {
     setControl(robotCentricDrive
         .withVelocityX(speeds.vxMetersPerSecond)
@@ -86,48 +80,33 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
         .withRotationalRate(speeds.omegaRadiansPerSecond));
   }
 
-  /**
-   * Get robot-relative chassis speeds (for PathPlanner)
-   */
+  // Get current robot speed - used by PathPlanner for path following
   public ChassisSpeeds getRobotRelativeSpeeds() {
     return super.getKinematics().toChassisSpeeds(getState().ModuleStates);
   }
 
-  /**
-   * Get swerve module positions (for pose estimator)
-   */
+  // Get swerve module positions - used by pose estimator for odometry
   public edu.wpi.first.math.kinematics.SwerveModulePosition[] getModulePositions() {
     return getState().ModulePositions;
   }
 
-  // DON'T add getKinematics() - it's already inherited from CommandSwerveDrivetrain
-  // The parent class already has it as public, so we can use it directly
-
-  /**
-   * Get gyro rotation (uses our hybrid QuestNav/Pigeon system)
-   */
+  // Get current gyro rotation - uses our hybrid QuestNav/Pigeon system
   public Rotation2d getGyroRotation() {
     return gyro.getRotation();
   }
 
-  /**
-   * Reset heading to zero
-   */
+  // Reset gyro heading to zero
   public void zeroHeading() {
     gyro.resetHeading();
   }
 
-  /**
-   * Create command to orient robot to field
-   * This sets the CURRENT direction as "forward" (0°) for field-relative driving
-   */
+  // Create command to orient robot to field - sets current direction as "forward" (0deg)
+  // This is the "field orient" button - after pressing, joystick forward always points downfield
   public Command createOrientToFieldCommand(RobotState robotState) {
     return runOnce(() -> {
-      // Reset gyro to 0°
-      gyro.resetHeading();
+      gyro.resetHeading(); // Reset gyro to 0deg
       
       // Tell CTRE framework that current direction is now "operator forward"
-      // This makes field-relative driving use this as the reference
       setOperatorPerspectiveForward(Rotation2d.fromDegrees(0.0));
       
       Logger.recordOutput("Drive/OrientToFieldButton", true);
@@ -135,18 +114,8 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     });
   }
 
-  // Add deadband to prevent wheel twitching at slow speeds
-  private SwerveModuleState applySteeringDeadband(SwerveModuleState state) {
-    // If speed is very slow, don't bother rotating wheels
-    if (Math.abs(state.speedMetersPerSecond) < 0.05) { // Less than 5cm/s
-      return new SwerveModuleState(0.0, state.angle); // Stop moving but keep current angle
-    }
-    return state;
-  }
-
-  /**
-   * Apply deadband to prevent wheel twitching at very slow speeds
-   */
+  // Apply deadband to prevent wheel micro-movements at very slow speeds
+  // When robot is barely moving (<3cm/s), don't rotate wheels - just hold current angle
   private SwerveModuleState[] applySteeringDeadband(SwerveModuleState[] states) {
     SwerveModuleState[] filteredStates = new SwerveModuleState[states.length];
     
@@ -156,28 +125,27 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       
       // If speed is very slow (<3cm/s), don't rotate wheels - just hold current angle
       if (Math.abs(speed) < 0.03) {
-        filteredStates[i] = new SwerveModuleState(0.0, angle); // Stop drive but keep angle
+        filteredStates[i] = new SwerveModuleState(0.0, angle);
       } else {
-        filteredStates[i] = states[i]; // Normal operation
+        filteredStates[i] = states[i];
       }
     }
     
     return filteredStates;
   }
 
-  /**
-   * SYSID: Test drive motors (translation)
-   * Use this to characterize kS, kV, kA for driving forward/backward
-   */
+  // SysId: Characterize drive motors (translation) - finds kS, kV, kA for driving
+  // Run Quasistatic (slow ramp) and Dynamic (fast step) in both directions
+  // Logs data to .hoot file for analysis in SysId tool
   public Command sysIdQuasistaticTranslation(SysIdRoutine.Direction direction) {
     return new SysIdRoutine(
         new SysIdRoutine.Config(
-            null,
-            edu.wpi.first.units.Units.Volts.of(4),
+            null, // Default ramp rate
+            edu.wpi.first.units.Units.Volts.of(4), // Max voltage (safe)
             null,
             state -> {
                 Logger.recordOutput("SysId/Translation/State", state.toString());
-                System.out.println("SysId State: " + state.toString()); // NEW: Debug print
+                System.out.println("SysId State: " + state.toString());
             }
         ),
         new SysIdRoutine.Mechanism(
@@ -196,7 +164,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
             null,
             state -> {
                 Logger.recordOutput("SysId/Translation/State", state.toString());
-                System.out.println("SysId State: " + state.toString()); // NEW: Debug print
+                System.out.println("SysId State: " + state.toString());
             }
         ),
         new SysIdRoutine.Mechanism(
@@ -207,15 +175,12 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     ).dynamic(direction);
   }
 
-  /**
-   * SYSID: Test steering motors
-   * Use this to characterize steering PID gains
-   */
+  // SysId: Characterize steering motors - finds steering PID gains
   public Command sysIdQuasistaticSteer(SysIdRoutine.Direction direction) {
     return new SysIdRoutine(
         new SysIdRoutine.Config(
             null,
-            edu.wpi.first.units.Units.Volts.of(7),
+            edu.wpi.first.units.Units.Volts.of(7), // Higher voltage OK for steering (lighter motors)
             null,
             state -> Logger.recordOutput("SysId/Steer/State", state.toString())
         ),
@@ -243,15 +208,13 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     ).dynamic(direction);
   }
 
-  /**
-   * SYSID: Test rotation (heading controller)
-   * Use this to characterize rotation PID for field-centric facing angle
-   */
+  // SysId: Characterize rotation heading controller - finds rotation PID for auto-rotation features
+  // Note: Uses rad/s but SysId framework expects "volts" - we pretend volts = rad/s
   public Command sysIdQuasistaticRotation(SysIdRoutine.Direction direction) {
     return new SysIdRoutine(
         new SysIdRoutine.Config(
-            edu.wpi.first.units.Units.Volts.of(Math.PI / 6).per(edu.wpi.first.units.Units.Second),
-            edu.wpi.first.units.Units.Volts.of(Math.PI),
+            edu.wpi.first.units.Units.Volts.of(Math.PI / 6).per(edu.wpi.first.units.Units.Second), // Ramp rate (rad/s^2)
+            edu.wpi.first.units.Units.Volts.of(Math.PI), // Max rate (rad/s)
             null,
             state -> Logger.recordOutput("SysId/Rotation/State", state.toString())
         ),

@@ -10,20 +10,22 @@ import frc.robot.subsystems.DriveSubsystem;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 
+// Joystick teleoperated driving - runs as default command on DriveSubsystem
+// Applies deadbands, squaring, direction smoothing to prevent wheel twitching
 public class DriveWithJoysticks extends Command {
   private final DriveSubsystem driveSubsystem;
   private final RobotState robotState;
-  private final DoubleSupplier xSupplier;
-  private final DoubleSupplier ySupplier;
-  private final DoubleSupplier omegaSupplier;
-  private final BooleanSupplier fieldRelativeSupplier;
-  private final BooleanSupplier precisionModeSupplier;
+  private final DoubleSupplier xSupplier; // Forward/back joystick axis
+  private final DoubleSupplier ySupplier; // Left/right joystick axis
+  private final DoubleSupplier omegaSupplier; // Rotation joystick axis
+  private final BooleanSupplier fieldRelativeSupplier; // Field-relative vs robot-relative toggle
+  private final BooleanSupplier precisionModeSupplier; // Slow mode toggle
 
-  // NEW: Track previous translation direction to prevent micro-steering
+  // Direction smoothing - prevents wheels from micro-steering on tiny stick movements
   private double lastTranslationX = 0.0;
   private double lastTranslationY = 0.0;
-  private static final double TRANSLATION_DEADBAND = 0.05; // INCREASED from 0.02 to 0.05 (5%)
-  private static final double SLOW_SPEED_THRESHOLD = 0.4; // INCREASED from 0.3 to 0.4 (40%)
+  private static final double TRANSLATION_DEADBAND = 0.05; // Ignore direction changes <5%
+  private static final double SLOW_SPEED_THRESHOLD = 0.4; // Apply smoothing below 40% speed
 
   public DriveWithJoysticks(
       DriveSubsystem driveSubsystem,
@@ -46,18 +48,17 @@ public class DriveWithJoysticks extends Command {
 
   @Override
   public void execute() {
-    // Apply deadband
+    // Apply deadband to ignore stick drift
     double x = MathUtil.applyDeadband(xSupplier.getAsDouble(), JOYSTICK_DEADBAND);
     double y = MathUtil.applyDeadband(ySupplier.getAsDouble(), JOYSTICK_DEADBAND);
     double omega = MathUtil.applyDeadband(omegaSupplier.getAsDouble(), JOYSTICK_DEADBAND);
 
-    // Square inputs for finer control while preserving sign
+    // Square inputs for finer control at low speeds (preserves sign)
     x = Math.copySign(x * x, x);
     y = Math.copySign(y * y, y);
     omega = Math.copySign(omega * omega, omega);
 
-    // NEW: Prevent steering micro-adjustments for tiny stick movements
-    // Only update translation direction if stick moved significantly
+    // Direction smoothing - prevents steering micro-adjustments during slow movement
     double translationMagnitude = Math.hypot(x, y);
     
     if (translationMagnitude > 0.0) {
@@ -68,42 +69,38 @@ public class DriveWithJoysticks extends Command {
       
       // If direction barely changed AND we're moving slowly, keep old direction
       if (directionChange < TRANSLATION_DEADBAND && translationMagnitude < SLOW_SPEED_THRESHOLD) {
-        // Use previous direction to prevent steering flutter
-        x = lastTranslationX;
+        x = lastTranslationX; // Use previous direction to prevent steering flutter
         y = lastTranslationY;
       } else {
-        // Significant direction change - allow steering adjustment
-        lastTranslationX = x;
+        lastTranslationX = x; // Significant direction change - allow steering adjustment
         lastTranslationY = y;
       }
     } else {
-      // Stopped - reset tracking
-      lastTranslationX = 0.0;
+      lastTranslationX = 0.0; // Stopped - reset tracking
       lastTranslationY = 0.0;
     }
 
-    // Desaturate combined translation + rotation to prevent jerky movement
+    // Desaturate combined translation + rotation to prevent module over-speed
     double combinedMagnitude = Math.hypot(translationMagnitude, omega);
     
     if (combinedMagnitude > 1.0) {
-      // Scale down to keep combined magnitude at 1.0
-      double scale = 1.0 / combinedMagnitude;
+      double scale = 1.0 / combinedMagnitude; // Scale down to keep magnitude at 1.0
       x *= scale;
       y *= scale;
       omega *= scale;
     }
 
-    // Convert to m/s and rad/s
+    // Convert normalized inputs to m/s and rad/s
     double xMetersPerSec = x * MAX_TRANSLATION_SPEED_MPS;
     double yMetersPerSec = y * MAX_TRANSLATION_SPEED_MPS;
     double omegaRadPerSec = omega * MAX_ANGULAR_SPEED_RAD_PER_SEC;
 
-    // Determine speed scale
+    // Apply speed scaling based on precision mode
     double speedScale = precisionModeSupplier.getAsBoolean() 
-        ? PRECISION_SPEED_SCALE 
-        : NORMAL_SPEED_SCALE;
+        ? PRECISION_SPEED_SCALE // Slow mode (30%)
+        : NORMAL_SPEED_SCALE; // Normal mode (60%)
 
-    // Drive
+    // Send drive command
     driveSubsystem.drive(
         xMetersPerSec * speedScale,
         yMetersPerSec * speedScale,
@@ -113,6 +110,6 @@ public class DriveWithJoysticks extends Command {
 
   @Override
   public void end(boolean interrupted) {
-    driveSubsystem.drive(0.0, 0.0, 0.0, true);
+    driveSubsystem.drive(0.0, 0.0, 0.0, true); // Stop robot when command ends
   }
 }
