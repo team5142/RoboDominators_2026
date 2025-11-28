@@ -8,6 +8,7 @@ import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
+import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
@@ -53,13 +54,12 @@ public class RobotContainer {
   // TODO: Add operator controller when manipulator subsystems ready (Port 1 + HTML touch interface)
 
   // Subsystems
-  private final RobotState robotState = new RobotState(); // Tracks robot mode and global state
-  private final GyroSubsystem gyro = new GyroSubsystem(); // Manages Pigeon2 + Quest3 gyro with failover
-  private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro); // CTRE swerve drive
-  private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro); // NEW: Pass gyro
-  private final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator); // AprilTag cameras
-  // private final ObjectVisionSubsystem objectVisionSubsystem = new ObjectVisionSubsystem(robotState); // DISABLED: Causing errors - re-enable later when ready
-  private final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem); // LED status indicators
+  private final RobotState robotState = new RobotState();
+  private final GyroSubsystem gyro = new GyroSubsystem();
+  private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
+  private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro);
+  private final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
+  private final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
 
   // Autonomous
   private final SendableChooser<Command> autoChooser; // Populated by PathPlanner
@@ -69,6 +69,9 @@ public class RobotContainer {
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Toggle between touchscreen and Xbox controller
 
   public RobotContainer() {
+    // NEW: Connect TagVision to PoseEstimator (avoids circular dependency)
+    poseEstimator.setTagVisionSubsystem(tagVisionSubsystem);
+    
     configurePathPlanner();
     configureDefaultCommands();
     configureButtonBindings();
@@ -84,6 +87,9 @@ public class RobotContainer {
     // Set SysID mode based on constant
     robotState.setSysIdMode(SYSID_MODE);
     
+    // NEW: Share auto chooser with PoseEstimator for validation
+    poseEstimator.setAutoChooser(autoChooser);
+
     // NEW: Monitor auto selection and update pose preview
     startAutoPreviewMonitor();
     
@@ -360,6 +366,13 @@ private void configureSysIdCommands() {
   // Public Accessors
   public Command getAutonomousCommand() { return autoChooser.getSelected(); } // Called by Robot.java at auto start
   public RobotState getRobotState() { return robotState; } // Global state tracker
+
+  /**
+   * Get the currently selected auto command (for pose validation)
+   */
+  public Command getSelectedAuto() {
+    return autoChooser.getSelected();
+  }
 
   /**
    * Monitors the auto chooser and updates the robot pose estimate

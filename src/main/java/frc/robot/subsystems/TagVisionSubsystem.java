@@ -23,27 +23,33 @@ import java.util.Map;
 import java.util.Optional;
 import org.littletonrobotics.junction.Logger;
 
-// AprilTag vision processing - manages 3 cameras (Limelight + 2 PhotonVision) for robot localization
-// Filters bad measurements and sends good ones to PoseEstimator with quality-weighted trust levels
+// AprilTag vision processing - provides current tag detection status to PoseEstimator
+// Exposes hasMultiTagDetection() and hasSingleTagDetection() for initialization checks
 public class TagVisionSubsystem extends SubsystemBase {
-  private final PoseEstimatorSubsystem poseEstimator; // Where we send vision measurements
-  private final AprilTagFieldLayout fieldLayout; // Official field tag positions (from WPILib)
-  private final List<VisionCamera> cameras; // All configured cameras
+  private final PoseEstimatorSubsystem poseEstimator;
+  private final GyroSubsystem gyroSubsystem;
+  private final AprilTagFieldLayout fieldLayout;
+  private final List<VisionCamera> cameras;
 
-  private boolean hasRecentPose = false; // True if any camera accepted this loop
+  private boolean hasRecentPose = false;
+  
+  // NEW: Track current detection state for PoseEstimator to check
+  private boolean currentlyHasMultiTag = false;
+  private boolean currentlyHasSingleTag = false;
+  private int currentBestTagCount = 0;
+  private double currentBestDistance = Double.MAX_VALUE;
 
-  private final Map<String, Double> lastConsoleOutputTime = new HashMap<>(); // Throttle console spam
-  private static final double CONSOLE_OUTPUT_INTERVAL_SECONDS = 3.0; // Print camera updates every 3s
+  private final Map<String, Double> lastConsoleOutputTime = new HashMap<>();
+  private static final double CONSOLE_OUTPUT_INTERVAL_SECONDS = 3.0;
 
-  // Test position validation - compares camera estimates to known test location
   private static final Pose2d EXPECTED_TEST_POSE = new Pose2d(3.57, 2.44, Rotation2d.fromDegrees(240.0));
-  private static final double POSITION_TOLERANCE_METERS = 0.15; // Accept if within 15cm
-  private static final double ROTATION_TOLERANCE_DEGREES = 5.0; // Accept if within 5 degrees
-
-  public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator) {
+  private static final double POSITION_TOLERANCE_METERS = 0.15;
+  private static final double ROTATION_TOLERANCE_DEGREES = 5.0;
+  
+  public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator, GyroSubsystem gyroSubsystem) {
     this.poseEstimator = poseEstimator;
+    this.gyroSubsystem = gyroSubsystem;
 
-    // Load 2025 Reefscape field layout - contains all AprilTag positions
     try {
       fieldLayout = AprilTagFields.k2025ReefscapeAndyMark.loadAprilTagLayoutField();
     } catch (Exception e) {
@@ -52,37 +58,34 @@ public class TagVisionSubsystem extends SubsystemBase {
 
     cameras = new ArrayList<>();
     
-    // Front Limelight 3 - front center of robot (no transform needed, configured in camera)
-    cameras.add(new LimelightCamera(LL_FRONT_NAME, 0)); // Pipeline 0
+    cameras.add(new LimelightCamera(LL_FRONT_NAME, 0));
     
-    // Back Left PhotonVision camera - back-left corner, angled forward-left
     cameras.add(new PhotonVisionCamera(
         PV_BACK_LEFT_NAME,
-        "RLCalibratedAT", // Pipeline name must match PhotonVision web UI
-        new Transform3d( // Camera position relative to robot center
-            new Translation3d(
-                BACK_LEFT_PV_X_METERS, // 11.5" behind center
-                BACK_LEFT_PV_Y_METERS, // 10" left of center
-                BACK_LEFT_PV_Z_METERS), // 8" above ground
-            new Rotation3d( // Camera orientation (roll, pitch, yaw)
-                Units.degreesToRadians(BACK_LEFT_PV_ROLL_DEG),
-                Units.degreesToRadians(BACK_LEFT_PV_PITCH_DEG), // 15deg up to see high tags
-                Units.degreesToRadians(BACK_LEFT_PV_YAW_DEG))), // 135deg (forward-left)
-        fieldLayout));
-    
-    // Back Right PhotonVision camera - back-right corner, angled forward-right
-    cameras.add(new PhotonVisionCamera(
-        PV_BACK_RIGHT_NAME,
-        "RRCalibratedAT", // Pipeline name must match PhotonVision web UI
+        "RLCalibratedAT",
         new Transform3d(
             new Translation3d(
-                BACK_RIGHT_PV_X_METERS, // 11.5" behind center
-                BACK_RIGHT_PV_Y_METERS, // 10" right of center
-                BACK_RIGHT_PV_Z_METERS), // 8" above ground
+                BACK_LEFT_PV_X_METERS,
+                BACK_LEFT_PV_Y_METERS,
+                BACK_LEFT_PV_Z_METERS),
+            new Rotation3d(
+                Units.degreesToRadians(BACK_LEFT_PV_ROLL_DEG),
+                Units.degreesToRadians(BACK_LEFT_PV_PITCH_DEG),
+                Units.degreesToRadians(BACK_LEFT_PV_YAW_DEG))),
+        fieldLayout));
+    
+    cameras.add(new PhotonVisionCamera(
+        PV_BACK_RIGHT_NAME,
+        "RRCalibratedAT",
+        new Transform3d(
+            new Translation3d(
+                BACK_RIGHT_PV_X_METERS,
+                BACK_RIGHT_PV_Y_METERS,
+                BACK_RIGHT_PV_Z_METERS),
             new Rotation3d(
                 Units.degreesToRadians(BACK_RIGHT_PV_ROLL_DEG),
-                Units.degreesToRadians(BACK_RIGHT_PV_PITCH_DEG), // 15deg up to see high tags
-                Units.degreesToRadians(BACK_RIGHT_PV_YAW_DEG))), // 225deg (forward-right)
+                Units.degreesToRadians(BACK_RIGHT_PV_PITCH_DEG),
+                Units.degreesToRadians(BACK_RIGHT_PV_YAW_DEG))),
         fieldLayout));
     
     System.out.println("TagVisionSubsystem initialized with 3 cameras:");
@@ -94,11 +97,16 @@ public class TagVisionSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     hasRecentPose = false;
-    int totalAccepted = 0; // How many cameras successfully updated pose this loop
-    int totalRejected = 0; // How many cameras saw tags but failed validation
-    int totalErrors = 0; // How many cameras threw exceptions
+    int totalAccepted = 0;
+    int totalRejected = 0;
+    int totalErrors = 0;
+    
+    // Reset detection flags each cycle
+    currentlyHasMultiTag = false;
+    currentlyHasSingleTag = false;
+    currentBestTagCount = 0;
+    currentBestDistance = Double.MAX_VALUE;
 
-    // Process each camera independently - failures don't affect other cameras
     for (VisionCamera camera : cameras) {
       try {
         boolean accepted = processVisionUpdate(camera);
@@ -106,24 +114,27 @@ public class TagVisionSubsystem extends SubsystemBase {
           totalAccepted++;
           hasRecentPose = true;
         } else if (camera.hasTarget()) {
-          totalRejected++; // Camera saw tags but measurement was rejected
+          totalRejected++;
         }
       } catch (Exception e) {
-        totalErrors++; // Camera error - log but continue with other cameras
+        totalErrors++;
         Logger.recordOutput("TagVision/" + camera.getName() + "/Error", e.getMessage());
         System.err.println("[WARNING] Vision camera '" + camera.getName() + "' error: " + e.getMessage());
       }
     }
 
-    // Summary logging - shows multi-camera health at a glance
     Logger.recordOutput("TagVision/HasAnyTarget", hasRecentPose);
     Logger.recordOutput("TagVision/AcceptedUpdates", totalAccepted);
     Logger.recordOutput("TagVision/RejectedUpdates", totalRejected);
     Logger.recordOutput("TagVision/ErrorCount", totalErrors);
     Logger.recordOutput("TagVision/ActiveCameras", getCameraCount() - totalErrors);
+    
+    // NEW: Log current detection state
+    Logger.recordOutput("TagVision/CurrentlyHasMultiTag", currentlyHasMultiTag);
+    Logger.recordOutput("TagVision/CurrentlyHasSingleTag", currentlyHasSingleTag);
+    Logger.recordOutput("TagVision/CurrentBestTagCount", currentBestTagCount);
   }
 
-  // Process vision measurement from one camera - returns true if accepted by pose estimator
   private boolean processVisionUpdate(VisionCamera camera) {
     Optional<VisionResult> result = camera.getLatestResult();
 
@@ -135,13 +146,11 @@ public class TagVisionSubsystem extends SubsystemBase {
 
     VisionResult visionResult = result.get();
 
-    // Log raw result BEFORE any filtering - useful for debugging rejected measurements
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/TagCount", visionResult.tagCount);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/EstimatedPose", visionResult.estimatedPose);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/AvgDistance", visionResult.averageTagDistance);
     Logger.recordOutput("TagVision/" + camera.getName() + "/RawResult/Timestamp", visionResult.timestampSeconds);
 
-    // Reject if no tags detected
     if (visionResult.tagCount == 0) {
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", "No tags");
       Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", false);
@@ -150,44 +159,62 @@ public class TagVisionSubsystem extends SubsystemBase {
 
     Pose2d estimatedPose = visionResult.estimatedPose;
     
-    // Calculate error from known test position - helps validate camera calibration
-    double positionError = estimatedPose.getTranslation().getDistance(EXPECTED_TEST_POSE.getTranslation());
-    double rotationError = Math.abs(
-        estimatedPose.getRotation().minus(EXPECTED_TEST_POSE.getRotation()).getDegrees());
+    // NEW: Update current detection state
+    if (visionResult.tagCount >= 2) {
+      currentlyHasMultiTag = true;
+      if (visionResult.tagCount > currentBestTagCount || 
+          (visionResult.tagCount == currentBestTagCount && visionResult.averageTagDistance < currentBestDistance)) {
+        currentBestTagCount = visionResult.tagCount;
+        currentBestDistance = visionResult.averageTagDistance;
+      }
+    } else if (visionResult.tagCount == 1 && visionResult.averageTagDistance < 2.0) {
+      currentlyHasSingleTag = true;
+      if (currentBestTagCount == 0 || visionResult.averageTagDistance < currentBestDistance) {
+        currentBestTagCount = 1;
+        currentBestDistance = visionResult.averageTagDistance;
+      }
+    }
     
-    // Log camera estimate with test validation metrics
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedX", estimatedPose.getX());
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedY", estimatedPose.getY());
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/EstimatedRotation", 
-        estimatedPose.getRotation().getDegrees());
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/PositionErrorMeters", positionError);
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/RotationErrorDegrees", rotationError);
-    Logger.recordOutput("TagVision/" + camera.getName() + "/Test/WithinTolerance", 
-        positionError < POSITION_TOLERANCE_METERS && rotationError < ROTATION_TOLERANCE_DEGREES);
+    // RELAXED initialization - accept single tag if close
+    boolean isMultiTag = visionResult.tagCount >= 2;
+    boolean isSingleTagClose = visionResult.tagCount == 1 && visionResult.averageTagDistance < 2.0;
+    boolean canInitialize = (isMultiTag || isSingleTagClose) &&
+                           poseEstimator.getInitializationState() == PoseEstimatorSubsystem.InitializationState.WAITING_FOR_VISION;
     
-    // Throttled console output - prevents spam while still showing periodic updates
-    double currentTime = Timer.getFPGATimestamp();
-    double lastOutputTime = lastConsoleOutputTime.getOrDefault(camera.getName(), 0.0);
-    
-    if (currentTime - lastOutputTime >= CONSOLE_OUTPUT_INTERVAL_SECONDS) {
-      String tagIdsStr = visionResult.tagIds.stream()
-          .map(String::valueOf)
-          .collect(java.util.stream.Collectors.joining(","));
+    if (canInitialize) {
+      edu.wpi.first.math.geometry.Pose3d pose3d = new edu.wpi.first.math.geometry.Pose3d(
+          estimatedPose.getX(),
+          estimatedPose.getY(),
+          0.0,
+          new edu.wpi.first.math.geometry.Rotation3d(0.0, 0.0, estimatedPose.getRotation().getRadians()));
       
-      System.out.println(String.format(
-          "[%s] ENABLED - Estimate: (%.3f, %.3f, %.1f°) | Tags: %d [%s] | AvgDist: %.2fm",
-          camera.getName(),
-          estimatedPose.getX(), estimatedPose.getY(), estimatedPose.getRotation().getDegrees(),
-          visionResult.tagCount,
-          tagIdsStr,
-          visionResult.averageTagDistance));
+      gyroSubsystem.setQuestNavPose(pose3d);
+      gyroSubsystem.setHeading(estimatedPose.getRotation().getDegrees());
       
-      lastConsoleOutputTime.put(camera.getName(), currentTime);
+      poseEstimator.setInitializedViaVision();
+      
+      if (isMultiTag) {
+        System.out.println("=== VISION READY: MULTI-TAG ===");
+        System.out.println("Tags: " + visionResult.tagCount);
+      } else {
+        System.out.println("=== VISION READY: SINGLE TAG (CLOSE) ===");
+        System.out.println("Distance: " + visionResult.averageTagDistance + "m");
+        System.err.println("WARNING: Single tag - verify position before driving!");
+      }
+      
+      System.out.println("QuestNav synced to: " + estimatedPose);
+      System.out.println("Pigeon2 synced to: " + estimatedPose.getRotation().getDegrees() + "°");
+      
+      Logger.recordOutput("TagVision/QuestNavCalibrated", true);
+      Logger.recordOutput("TagVision/PigeonCalibrated", true);
+      Logger.recordOutput("TagVision/CalibrationTagCount", visionResult.tagCount);
+      Logger.recordOutput("TagVision/CalibrationMethod", isMultiTag ? "Multi-tag" : "Single-tag");
     }
 
-    // Quality check for single-tag measurements - reject distant/unreliable detections
+    // ...existing validation and measurement code...
+    
     if (visionResult.tagCount == 1) {
-      if (visionResult.averageTagDistance > 20.0) { // 20m is unrealistically far
+      if (visionResult.averageTagDistance > 20.0) {
         Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", 
             "Too far: " + visionResult.averageTagDistance + "m");
         Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedDistance",
@@ -197,13 +224,11 @@ public class TagVisionSubsystem extends SubsystemBase {
       }
     }
 
-    // Sanity check - reject if vision disagrees too much with current pose estimate
-    // This prevents bad measurements from corrupting odometry
     Pose2d currentPose = poseEstimator.getEstimatedPose();
     double distance = currentPose.getTranslation()
         .getDistance(visionResult.estimatedPose.getTranslation());
 
-    if (distance > MAX_POSE_DIFFERENCE_METERS) { // 2m threshold
+    if (distance > MAX_POSE_DIFFERENCE_METERS) {
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason",
           "Pose diff too large: " + distance + "m");
       Logger.recordOutput("TagVision/" + camera.getName() + "/RejectedPoseDiff", distance);
@@ -213,14 +238,12 @@ public class TagVisionSubsystem extends SubsystemBase {
       return false;
     }
 
-    // ACCEPTED - send to pose estimator with camera-specific quality weighting
     poseEstimator.addVisionMeasurement(
         visionResult.estimatedPose,
         visionResult.timestampSeconds,
         visionResult.tagCount,
-        camera.getName()); // Camera name used to apply quality multiplier
+        camera.getName());
 
-    // Log successful measurement
     Logger.recordOutput("TagVision/" + camera.getName() + "/HasTarget", true);
     Logger.recordOutput("TagVision/" + camera.getName() + "/EstimatedPose", visionResult.estimatedPose);
     Logger.recordOutput("TagVision/" + camera.getName() + "/TagCount", visionResult.tagCount);
@@ -228,6 +251,16 @@ public class TagVisionSubsystem extends SubsystemBase {
     Logger.recordOutput("TagVision/" + camera.getName() + "/RejectionReason", "ACCEPTED");
 
     return true;
+  }
+
+  // NEW: Check if currently seeing 2+ tags (for PoseEstimator initialization check)
+  public boolean hasMultiTagDetection() {
+    return currentlyHasMultiTag;
+  }
+  
+  // NEW: Check if currently seeing 1 tag close enough (for PoseEstimator initialization check)
+  public boolean hasSingleTagDetection() {
+    return currentlyHasSingleTag && !currentlyHasMultiTag; // Only true if ONLY single tag
   }
 
   public boolean hasRecentTagPose() {
@@ -242,16 +275,10 @@ public class TagVisionSubsystem extends SubsystemBase {
         .orElse(false);
   }
   
-  /**
-   * Get total number of cameras configured
-   */
   public int getCameraCount() {
     return cameras.size();
   }
   
-  /**
-   * Get number of cameras currently seeing targets
-   */
   public int getActiveCameraCount() {
     return (int) cameras.stream()
         .filter(VisionCamera::hasTarget)
