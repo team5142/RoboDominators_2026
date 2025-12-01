@@ -176,19 +176,25 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         m_simNotifier.startPeriodic(kSimLoopPeriod);
     }
 
-    // Add vision measurement with timestamp conversion (WPILib uses FPGA time, we use current time)
+    // OVERRIDE: Prevent CTRE's internal pose estimator from using vision
+    // Vision goes to OUR PoseEstimatorSubsystem instead!
     @Override
     public void addVisionMeasurement(Pose2d visionRobotPoseMeters, double timestampSeconds) {
-        super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds));
+        // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
+        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds)); ← REMOVED!
+        
+        // No-op - vision handled by PoseEstimatorSubsystem
     }
 
-    // Add vision measurement with custom standard deviations (trust levels)
     @Override
     public void addVisionMeasurement(
         Pose2d visionRobotPoseMeters,
         double timestampSeconds,
-        Matrix<N3, N1> visionMeasurementStdDevs // [x, y, theta] - lower = more trust
+        Matrix<N3, N1> visionMeasurementStdDevs
     ) {
-        super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs);
+        // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
+        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs); ← REMOVED!
+        
+        // No-op - vision handled by PoseEstimatorSubsystem
     }
 }

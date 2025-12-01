@@ -1,9 +1,12 @@
 package frc.robot.subsystems;
 
 import com.ctre.phoenix6.swerve.SwerveRequest;
+import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
@@ -49,30 +52,71 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
   public void periodic() {
     super.periodic(); // CTRE's periodic (handles odometry, operator perspective, etc.)
     
-    // Additional logging
+    // Get current chassis speeds
+    ChassisSpeeds speeds = getRobotRelativeSpeeds();
+    
+    // Log chassis speeds
+    Logger.recordOutput("Drive/ChassisSpeed/VX", speeds.vxMetersPerSecond);
+    Logger.recordOutput("Drive/ChassisSpeed/VY", speeds.vyMetersPerSecond);
+    Logger.recordOutput("Drive/ChassisSpeed/Omega", speeds.omegaRadiansPerSecond);
+    
+    // Also log combined speed magnitude for easy debugging
+    double translationSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+    Logger.recordOutput("Drive/ChassisSpeed/TranslationMagnitude", translationSpeed);
+    
+    // Existing logging
     Logger.recordOutput("Drive/GyroYawDeg", getGyroRotation().getDegrees());
     Logger.recordOutput("Drive/Pose", getState().Pose);
+    
+    // NEW: Log field-relative "forward" direction for driver reference
+    // This is the direction that joystick-forward will move the robot
+    Rotation2d operatorForward = getOperatorPerspectiveForward();
+    
+    // Log as a pose arrow pointing downfield from robot's current position
+    Pose2d currentPose = robotState.getRobotPose();
+    Pose2d fieldForwardPose = new Pose2d(currentPose.getTranslation(), operatorForward);
+    
+    Logger.recordOutput("Drive/FieldForwardDirection", fieldForwardPose);
+    Logger.recordOutput("Drive/FieldForwardDegrees", operatorForward.getDegrees());
+    
+    SmartDashboard.putNumber("Drive/FieldForward", operatorForward.getDegrees());
+  }
+  
+  /**
+   * Get the current "forward" direction for field-relative driving
+   * Blue alliance: 0° (toward red wall)
+   * Red alliance: 180° (toward blue wall)
+   */
+  private Rotation2d getOperatorPerspectiveForward() {
+    // CTRE's internal state tracks this, but we need to expose it
+    // For now, infer from alliance
+    var alliance = DriverStation.getAlliance();
+    if (alliance.isPresent() && alliance.get() == DriverStation.Alliance.Red) {
+      return Rotation2d.fromDegrees(180.0); // Red faces blue wall
+    } else {
+      return Rotation2d.fromDegrees(0.0); // Blue faces red wall (default)
+    }
   }
 
   /**
    * Drive using field-relative or robot-relative control
    */
   public void drive(
-      double xVelocity,
-      double yVelocity,
-      double rotationalVelocity,
+      double xVelocity,           // LeftY from RobotContainer
+      double yVelocity,           // LeftX from RobotContainer
+      double rotationalVelocity,  // RightX from RobotContainer
       boolean fieldRelative) {
     
     if (fieldRelative) {
       setControl(fieldCentricDrive
-          .withVelocityX(xVelocity)
-          .withVelocityY(yVelocity)
-          .withRotationalRate(rotationalVelocity));
+          .withVelocityX(xVelocity)              // ORIGINAL - don't swap!
+          .withVelocityY(yVelocity)              // ORIGINAL - don't swap!
+          .withRotationalRate(rotationalVelocity)); // ORIGINAL - don't swap!
     } else {
       setControl(robotCentricDrive
-          .withVelocityX(xVelocity)
-          .withVelocityY(yVelocity)
-          .withRotationalRate(rotationalVelocity));
+          .withVelocityX(xVelocity)              // ORIGINAL - don't swap!
+          .withVelocityY(yVelocity)              // ORIGINAL - don't swap!
+          .withRotationalRate(rotationalVelocity)); // ORIGINAL - don't swap!
     }
   }
 
@@ -283,5 +327,18 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
             this
         )
     ).dynamic(direction);
+  }
+
+  /**
+   * Lock wheels in X-pattern to resist pushing/drift
+   * Used after precision positioning to hold position
+   */
+  public void lockWheels() {
+    // X-pattern: FL=45°, FR=-45°, BL=-45°, BR=45°
+    // This makes robot very resistant to being pushed
+    SwerveRequest.SwerveDriveBrake lockRequest = new SwerveRequest.SwerveDriveBrake();
+    setControl(lockRequest);
+    
+    Logger.recordOutput("Drive/WheelsLocked", true);
   }
 }

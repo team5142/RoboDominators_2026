@@ -12,6 +12,7 @@ import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Timer; // ADD THIS
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -40,6 +41,9 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import org.littletonrobotics.junction.Logger;
 
 import java.util.Map;
+import frc.robot.commands.auto.DriveToSavedPosition; // NEW: Add this import
+import com.pathplanner.lib.commands.FollowPathCommand;
+import com.pathplanner.lib.path.PathPlannerPath;
 
 // RobotContainer: Connects subsystems, controllers, and commands. Created once at robot boot.
 public class RobotContainer {
@@ -93,11 +97,7 @@ public class RobotContainer {
     // NEW: Monitor auto selection and update pose preview
     startAutoPreviewMonitor();
     
-    // Debug: Log available autos
     System.out.println("=== PathPlanner Autos Loaded ===");
-    System.out.println("Available autos in chooser (check deploy/pathplanner/autos/):");
-    System.out.println("  - LeftSide1Piece.auto should appear in SmartDashboard dropdown");
-    System.out.println("  - If not visible, verify .auto file is in src/main/deploy/pathplanner/autos/");
     System.out.println("================================");
     
     System.out.println("RobotContainer initialized - all subsystems and bindings ready!");
@@ -121,12 +121,65 @@ public class RobotContainer {
           driveSubsystem); // Subsystem requirement
       
       System.out.println("PathPlanner configured successfully!");
-      
     } catch (Exception e) {
       System.err.println("Failed to configure PathPlanner:");
       e.printStackTrace();
       DriverStation.reportWarning("PathPlanner config failed - auto may not work!", false);
     }
+  }
+
+  /**
+   * Wraps a PathPlanner path following command with start/end logging
+   * Records accuracy for each leg of the auto
+   */
+  private Command wrapPathWithLogging(Command pathCommand) {
+    // Extract path name if available
+    String pathName = "Unknown Path";
+    
+    // Try to get path name from command name
+    if (pathCommand.getName() != null && !pathCommand.getName().isEmpty()) {
+      pathName = pathCommand.getName();
+    }
+    
+    final String finalPathName = pathName; // For lambda capture
+    
+    return pathCommand
+        .beforeStarting(() -> {
+          // Log start of path segment
+          Pose2d startPose = poseEstimator.getEstimatedPose();
+          
+          System.out.println("========== PATH SEGMENT START ==========");
+          System.out.println("Segment: " + finalPathName);
+          System.out.println("Start pose: " + formatPose(startPose));
+          System.out.println("Time: " + Timer.getFPGATimestamp());
+          System.out.println("=======================================");
+          
+          Logger.recordOutput("Auto/CurrentSegment", finalPathName);
+          Logger.recordOutput("Auto/SegmentStart", startPose);
+          Logger.recordOutput("Auto/SegmentStartTime", Timer.getFPGATimestamp());
+        })
+        .finallyDo((interrupted) -> {
+          // Log end of path segment with accuracy
+          Pose2d endPose = poseEstimator.getEstimatedPose();
+          double endTime = Timer.getFPGATimestamp();
+          
+          System.out.println("========== PATH SEGMENT END ==========");
+          System.out.println("Segment: " + finalPathName);
+          System.out.println("End pose: " + formatPose(endPose));
+          System.out.println("Interrupted: " + interrupted);
+          System.out.println("Time: " + endTime);
+          
+          // TODO: Calculate accuracy vs expected end pose
+          // This requires storing target poses from .auto file
+          // For now, just log actual end pose
+          
+          Logger.recordOutput("Auto/SegmentEnd", endPose);
+          Logger.recordOutput("Auto/SegmentEndTime", endTime);
+          Logger.recordOutput("Auto/SegmentInterrupted", interrupted);
+          Logger.recordOutput("Auto/CurrentSegment", "None");
+          
+          System.out.println("======================================");
+        });
   }
 
   // Returns true if red alliance (flip paths), false if blue
@@ -192,27 +245,29 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kStart.value)
         .onTrue(new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, driveSubsystem, poseEstimator));
 
-    // X: Save current position to custom slot
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .onTrue(Commands.runOnce(() -> {
-          Pose2d currentPose = poseEstimator.getEstimatedPose();
-          SavedPositions.saveCustomPosition(currentPose);
-          System.out.println("Position saved: " + currentPose);
-        }));
-
-    // Y: Auto-drive to Blue Reef Tag 17 (hold to drive, release to stop)
+    // Y: Auto-drive to Blue Tag 17
     new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_REEF_TAG_17, "Blue Reef Tag 17", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(
+            BLUE_REEF_TAG_17,
+            "Blue Reef Tag 17",
+            poseEstimator));
 
-    // B: Auto-drive to Blue Reef Tag 18 position
+    // B: Auto-drive to Blue Tag 16
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_TAG_16, "Blue Tag 16", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(
+            BLUE_TAG_16,
+            "Blue Processor Station (Tag 16)",
+            poseEstimator));
 
-    // A: Auto-drive to Blue Reef Tag 21 position
+    // A: Auto-drive to Blue Tag 12
     new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(new DriveToSavedPosition(BLUE_TAG_12, "Blue Tag 12", poseEstimator));
+        .whileTrue(new DriveToSavedPosition(
+            BLUE_TAG_12,
+            "Blue Coral Station (Tag 12)",
+            poseEstimator));
 
     System.out.println("Button bindings configured");
+    System.out.println("Y/A/B: Simple PathPlanner pathfinding (QuestNav-only testing)");
   }
   
   private void configureSysIdButtons() {
@@ -364,15 +419,15 @@ private void configureSysIdCommands() {
   }
 
   // Public Accessors
-  public Command getAutonomousCommand() { return autoChooser.getSelected(); } // Called by Robot.java at auto start
-  public RobotState getRobotState() { return robotState; } // Global state tracker
-
-  /**
-   * Get the currently selected auto command (for pose validation)
-   */
-  public Command getSelectedAuto() {
-    return autoChooser.getSelected();
+  public Command getAutonomousCommand() { 
+    Command selectedAuto = autoChooser.getSelected();
+    // Wrap auto command with logging if it exists
+    if (selectedAuto != null) {
+      return wrapPathWithLogging(selectedAuto);
+    }
+    return selectedAuto;
   }
+  
 
   /**
    * Monitors the auto chooser and updates the robot pose estimate
@@ -415,6 +470,16 @@ private void configureSysIdCommands() {
         }
       }
     }).start();
+  }
+
+  /**
+   * Format a Pose2d for readable console output
+   */
+  private String formatPose(Pose2d pose) {
+    return String.format("(%.2f, %.2f, %.1f°)",
+        pose.getX(),
+        pose.getY(),
+        pose.getRotation().getDegrees());
   }
 
   /**

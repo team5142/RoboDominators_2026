@@ -14,6 +14,7 @@ public class Robot extends LoggedRobot {
   
   private Command autonomousCommand; // Selected auto routine
   private RobotContainer robotContainer; // Holds all subsystems and commands
+  private RobotState robotState; // Robot state tracker
   
   private boolean lowBatteryWarningShown = false; // Prevent spam
   private boolean criticalBatteryWarningShown = false;
@@ -36,9 +37,10 @@ public class Robot extends LoggedRobot {
     System.out.println("AdvantageKit logging: ACTIVE");
     System.out.println("Battery: " + getBatteryVoltage() + "V");
     System.out.println("========================================");
-
     try {
+      robotState = new RobotState();
       robotContainer = new RobotContainer();
+      System.out.println("Robot container initialized successfully");
       System.out.println("Robot container initialized successfully");
     } catch (Exception e) {
       System.err.println("FATAL ERROR during robot initialization:");
@@ -86,7 +88,8 @@ public class Robot extends LoggedRobot {
   @Override
   public void disabledInit() {
     matchActive = false; // Re-enable battery warnings
-    robotContainer.getRobotState().setEnabled(false);
+    robotState.setEnabled(false);
+    robotState.setMode(RobotState.Mode.DISABLED); // FIXED: Use DISABLED
     System.out.println("Robot DISABLED");
   }
 
@@ -101,8 +104,10 @@ public class Robot extends LoggedRobot {
   @Override
   public void autonomousInit() {
     matchActive = true; // Disable battery warnings during match
-    robotContainer.getRobotState().setEnabled(true);
-    robotContainer.getRobotState().setMode(RobotState.Mode.AUTO);
+    robotState.setEnabled(true);
+    robotState.setMode(RobotState.Mode.ENABLED_AUTO); // FIXED: Use ENABLED_AUTO
+    
+    System.out.println("========================================");
     
     System.out.println("========================================");
     System.out.println(">>> AUTONOMOUS MODE STARTED <<<");
@@ -140,12 +145,11 @@ public class Robot extends LoggedRobot {
     if (autonomousCommand != null) { // Stop auto if still running
       autonomousCommand.cancel();
       System.out.println("Auto command canceled - driver in control");
+      robotState.setEnabled(true);
+      robotState.setMode(RobotState.Mode.ENABLED_TELEOP); // FIXED: Use ENABLED_TELEOP
+      
+      System.out.println(">>> TELEOP started - driver has control");
     }
-    
-    robotContainer.getRobotState().setEnabled(true);
-    robotContainer.getRobotState().setMode(RobotState.Mode.TELEOP);
-    
-    System.out.println(">>> TELEOP started - driver has control");
   }
 
   @Override
@@ -153,10 +157,8 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void testInit() {
-    matchActive = true; // Disable battery warnings during test
-    
     CommandScheduler.getInstance().cancelAll(); // Stop all commands in test mode
-    robotContainer.getRobotState().setMode(RobotState.Mode.TEST);
+    robotState.setMode(RobotState.Mode.TEST); // TEST is still valid
     System.out.println("TEST mode started");
   }
 

@@ -365,10 +365,25 @@ public class GyroSubsystem extends SubsystemBase {
     }
   }
 
-  // Check if QuestNav is connected to NetworkTables (uses API method)
+  // Check if QuestNav is connected to NetworkTables (uses battery as proof of connection)
   private boolean isQuestNavConnected() {
     try {
+      // PRIMARY CHECK: Battery data proves NetworkTables is working
+      OptionalInt battery = questNav.getBatteryPercent();
+      if (battery.isPresent()) {
+        // Battery data available = Quest is on NetworkTables
+        return true;
+      }
+      
+      // SECONDARY CHECK: Frame count proves Quest is sending data
+      OptionalInt frameCount = questNav.getFrameCount();
+      if (frameCount.isPresent() && frameCount.getAsInt() >= 0) {
+        return true;
+      }
+      
+      // FALLBACK: Check built-in method (stricter - requires tracking)
       return questNav.isConnected();
+      
     } catch (Exception e) {
       Logger.recordOutput("Gyro/Debug/ConnectionCheckException", e.getMessage());
       return false;

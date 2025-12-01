@@ -25,9 +25,6 @@ import org.littletonrobotics.junction.Logger;
 import gg.questnav.questnav.PoseFrame;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
-// Kalman filter-based pose estimator - fuses wheel odometry, vision, and QuestNav SLAM
-// Uses LAZY INITIALIZATION - collects data while disabled, initializes when enabled
-// FIXED: Now checks TagVisionSubsystem for current detection status instead of circular init check
 public class PoseEstimatorSubsystem extends SubsystemBase {
   public enum InitializationState {
     WAITING_FOR_VISION,
@@ -40,13 +37,20 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final DriveSubsystem driveSubsystem;
   private final GyroSubsystem gyroSubsystem;
-  private TagVisionSubsystem tagVisionSubsystem; // NEW: Set after construction to avoid circular dependency
+  private TagVisionSubsystem tagVisionSubsystem;
 
   private InitializationState initState = InitializationState.WAITING_FOR_VISION;
   private final Timer visionWaitTimer = new Timer();
+  
+  private boolean hasEverBeenEnabled = false;
+  private boolean initializedFromAuto = false;
+  private RobotState.Mode lastMode = RobotState.Mode.DISABLED;
 
   private Pose2d lastPose = new Pose2d();
   private int visionUpdateCount = 0;
+  
+  private double lastGoodVisionTime = 0.0;
+  private static final double VISION_HIJACK_THRESHOLD_SECONDS = 0.5;
 
   private double lastQuestNavSyncTime = 0.0;
   private static final double QUESTNAV_SYNC_INTERVAL_SECONDS = 1.0;
@@ -56,11 +60,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   private static final boolean VISION_UPDATES_ENABLED = true;
 
-  private static final double LIMELIGHT_QUALITY = 1.0;
-  private static final double RR_TAG_PV_QUALITY = 1.5;
-  private static final double RL_TAG_PV_QUALITY = 2.0;
-
   private SendableChooser<Command> autoChooser;
+  
+  private int logCounter = 0;
+  private static final int LOG_SKIP_CYCLES = 4;
 
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
@@ -77,12 +80,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         driveSubsystem.getModulePositions(),
         new Pose2d(),
         VecBuilder.fill(ODOMETRY_STD_DEVS[0], ODOMETRY_STD_DEVS[1], ODOMETRY_STD_DEVS[2]),
-        VecBuilder.fill(VISION_STD_DEVS_SINGLE_TAG[0], VISION_STD_DEVS_SINGLE_TAG[1], VISION_STD_DEVS_SINGLE_TAG[2]));
+        VecBuilder.fill(LIMELIGHT_MULTI_TAG_STD_DEVS[0], LIMELIGHT_MULTI_TAG_STD_DEVS[1], LIMELIGHT_MULTI_TAG_STD_DEVS[2]));
 
     visionWaitTimer.start();
   }
   
-  // NEW: Set TagVisionSubsystem reference (called by RobotContainer after both subsystems created)
   public void setTagVisionSubsystem(TagVisionSubsystem tagVisionSubsystem) {
     this.tagVisionSubsystem = tagVisionSubsystem;
   }
@@ -96,92 +98,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   }
 
   public void addVisionMeasurement(Pose2d visionPose, double timestampSeconds, int tagCount, String cameraName) {
-    if (!VISION_UPDATES_ENABLED) {
-      Logger.recordOutput("PoseEstimator/VisionUpdatesDisabled", true);
-      Logger.recordOutput("PoseEstimator/VisionMeasurementIgnored", visionPose);
-      Logger.recordOutput("PoseEstimator/VisionTagCountIgnored", tagCount);
-      return;
-    }
-    
-    if (initState == InitializationState.WAITING_FOR_VISION) {
-      initState = InitializationState.VISION_INITIALIZED;
-      Logger.recordOutput("PoseEstimator/InitializedViaVision", true);
-      System.out.println("=== POSE INITIALIZED VIA VISION ===");
-      System.out.println("First vision pose: " + visionPose);
-      System.out.println("Tags seen: " + tagCount);
-      System.out.println("Time to initialize: " + visionWaitTimer.get() + "s");
-      
-      Pose3d pose3d = new Pose3d(
-          visionPose.getX(),
-          visionPose.getY(),
-          0.0,
-          new Rotation3d(0.0, 0.0, visionPose.getRotation().getRadians()));
-      gyroSubsystem.setQuestNavPose(pose3d);
-      lastQuestNavSyncTime = Timer.getFPGATimestamp();
-    }
-
-    Pose2d currentOdometry = poseEstimator.getEstimatedPosition();
-    double correctionDistance = currentOdometry.getTranslation()
-        .getDistance(visionPose.getTranslation());
-    double correctionAngle = Math.abs(
-        currentOdometry.getRotation().minus(visionPose.getRotation()).getDegrees());
-    
-    Logger.recordOutput("PoseEstimator/VisionCorrectionDistance", correctionDistance);
-    Logger.recordOutput("PoseEstimator/VisionCorrectionAngle", correctionAngle);
-    
-    double currentTime = Timer.getFPGATimestamp();
-    boolean shouldSync = (correctionDistance > 0.05 || correctionAngle > 2.0) &&
-                         (currentTime - lastQuestNavSyncTime >= QUESTNAV_SYNC_INTERVAL_SECONDS);
-    
-    if (shouldSync) {
-      Logger.recordOutput("PoseEstimator/SignificantVisionCorrection", true);
-      
-      Pose3d pose3d = new Pose3d(
-          visionPose.getX(),
-          visionPose.getY(),
-          0.0,
-          new Rotation3d(0.0, 0.0, visionPose.getRotation().getRadians()));
-      gyroSubsystem.setQuestNavPose(pose3d);
-      lastQuestNavSyncTime = currentTime;
-    }
-
-    double[] baseStdDevs = tagCount >= MIN_TAG_COUNT_FOR_MULTI 
-        ? VISION_STD_DEVS_MULTI_TAG
-        : VISION_STD_DEVS_SINGLE_TAG;
-
-    double qualityMultiplier = getCameraQualityMultiplier(cameraName);
-    double[] adjustedStdDevs = new double[] {
-        baseStdDevs[0] * qualityMultiplier,
-        baseStdDevs[1] * qualityMultiplier,
-        baseStdDevs[2] * qualityMultiplier
-    };
-
-    poseEstimator.addVisionMeasurement(
-        visionPose,
-        timestampSeconds,
-        VecBuilder.fill(adjustedStdDevs[0], adjustedStdDevs[1], adjustedStdDevs[2]));
-
-    visionUpdateCount++;
-    
-    Logger.recordOutput("PoseEstimator/VisionUpdate", visionPose);
-    Logger.recordOutput("PoseEstimator/VisionTagCount", tagCount);
-    Logger.recordOutput("PoseEstimator/VisionCamera", cameraName);
-    Logger.recordOutput("PoseEstimator/VisionQualityMultiplier", qualityMultiplier);
-    Logger.recordOutput("PoseEstimator/VisionStdDevX", adjustedStdDevs[0]);
-    Logger.recordOutput("PoseEstimator/TotalVisionUpdates", visionUpdateCount);
-  }
-
-  private double getCameraQualityMultiplier(String cameraName) {
-    switch (cameraName) {
-      case "limelight-front":
-        return LIMELIGHT_QUALITY;
-      case "RRTagPV":
-        return RR_TAG_PV_QUALITY;
-      case "RLTagPV":
-        return RL_TAG_PV_QUALITY;
-      default:
-        return 2.0;
-    }
+    // DISABLED: All vision updates disabled for QuestNav-only testing
+    Logger.recordOutput("PoseEstimator/VisionUpdatesDisabled", true);
+    Logger.recordOutput("PoseEstimator/VisionMeasurementIgnored", visionPose);
+    Logger.recordOutput("PoseEstimator/VisionTagCountIgnored", tagCount);
+    Logger.recordOutput("PoseEstimator/VisionCameraIgnored", cameraName);
+    return;
   }
 
   public Pose2d getEstimatedPose() {
@@ -222,12 +144,13 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       return;
     }
     
+    logCounter++;
+    
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     
     if (robotState.getMode() == RobotState.Mode.DISABLED) {
       updateInitializationReadiness();
       periodicPoseValidation();
-      return;
     }
     
     if (initState == InitializationState.WAITING_FOR_VISION) {
@@ -235,99 +158,136 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
     
     if (VISION_UPDATES_ENABLED && initState != InitializationState.WAITING_FOR_VISION) {
-      if (robotState.getMode() != RobotState.Mode.AUTO) {
-        processAllQuestNavFrames();
-      } else {
-        Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      }
+      processAllQuestNavFrames();
     }
     
     Pose2d currentPose = getEstimatedPose();
     robotState.setRobotPose(currentPose);
     
     double poseChange = currentPose.getTranslation().getDistance(lastPose.getTranslation());
-    Logger.recordOutput("PoseEstimator/PoseChangeMeters", poseChange);
     lastPose = currentPose;
     
     Logger.recordOutput("PoseEstimator/EstimatedPose", currentPose);
     Logger.recordOutput("PoseEstimator/InitState", initState.toString());
-    Logger.recordOutput("PoseEstimator/WaitingForVisionTime", 
-        initState == InitializationState.WAITING_FOR_VISION ? visionWaitTimer.get() : 0.0);
-    Logger.recordOutput("PoseEstimator/TotalVisionUpdates", visionUpdateCount);
+    
+    if (logCounter % (LOG_SKIP_CYCLES + 1) == 0) {
+      Logger.recordOutput("PoseEstimator/PoseChangeMeters", poseChange);
+      Logger.recordOutput("PoseEstimator/WaitingForVisionTime", 
+          initState == InitializationState.WAITING_FOR_VISION ? visionWaitTimer.get() : 0.0);
+      Logger.recordOutput("PoseEstimator/TotalVisionUpdates", visionUpdateCount);
+    }
+    
+    RobotState.Mode currentMode = robotState.getMode();
+    
+    if (currentMode != lastMode) {
+      onModeChange(lastMode, currentMode);
+      lastMode = currentMode;
+    }
   }
   
   private void updateInitializationReadiness() {
-    boolean hasMultiTagVision = checkForMultiTagVision();
-    boolean hasSingleTagVision = checkForSingleTagVision();
+    boolean hasMultiTagVision = false; // Vision disabled
+    boolean hasSingleTagVision = false; // Vision disabled
     Pose2d questNavPose = gyroSubsystem.getQuestNavPose2d();
     boolean hasQuestNavPose = (questNavPose != null);
     
-    if (hasMultiTagVision) {
-      SmartDashboard.putString("Pose/InitStatus", "Multi-tag vision ready");
-      SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
-    } else if (hasSingleTagVision) {
-      SmartDashboard.putString("Pose/InitStatus", "Single-tag only");
-      SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
-    } else if (hasQuestNavPose) {
-      SmartDashboard.putString("Pose/InitStatus", "QuestNav only (might be stale)");
+    if (hasQuestNavPose) {
+      SmartDashboard.putString("Pose/InitStatus", "QuestNav ONLY (Vision disabled for testing)");
       SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
     } else {
-      SmartDashboard.putString("Pose/InitStatus", "MANUAL RESET REQUIRED");
+      SmartDashboard.putString("Pose/InitStatus", "MANUAL RESET REQUIRED (Vision disabled)");
       SmartDashboard.putBoolean("Pose/ReadyToEnable", false);
     }
     
-    SmartDashboard.putBoolean("Vision/MultiTagReady", hasMultiTagVision);
-    SmartDashboard.putBoolean("Vision/SingleTagReady", hasSingleTagVision);
+    SmartDashboard.putBoolean("Vision/MultiTagReady", false);
+    SmartDashboard.putBoolean("Vision/SingleTagReady", false);
     SmartDashboard.putBoolean("QuestNav/Ready", hasQuestNavPose);
     
-    Logger.recordOutput("PoseEstimator/Readiness/MultiTag", hasMultiTagVision);
-    Logger.recordOutput("PoseEstimator/Readiness/SingleTag", hasSingleTagVision);
+    Logger.recordOutput("PoseEstimator/Readiness/VisionDisabled", true);
     Logger.recordOutput("PoseEstimator/Readiness/QuestNav", hasQuestNavPose);
   }
   
   private void attemptInitialization() {
-    if (checkForMultiTagVision()) {
-      System.out.println("=== INITIALIZED FROM MULTI-TAG VISION ===");
-      SmartDashboard.putString("Pose/InitMethod", "Multi-tag vision");
-      return;
-    }
-    
-    if (checkForSingleTagVision()) {
-      System.out.println("=== INITIALIZED FROM SINGLE-TAG VISION ===");
-      System.out.println("WARNING: Single tag - verify position!");
-      SmartDashboard.putString("Pose/InitMethod", "Single-tag vision");
-      return;
-    }
-    
-    Pose2d questNavPose = gyroSubsystem.getQuestNavPose2d();
-    if (questNavPose != null) {
-      resetPose(questNavPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
-      initState = InitializationState.VISION_INITIALIZED;
+    if (DriverStation.isAutonomousEnabled() || 
+        (DriverStation.isDisabled() && DriverStation.isFMSAttached())) {
       
-      System.out.println("=== INITIALIZED FROM QUESTNAV ===");
-      System.err.println("WARNING: QuestNav might be stale from previous run!");
-      System.out.println("Pose: " + questNavPose);
+      Pose2d autoStartPose = getExpectedAutoStartPose();
       
-      SmartDashboard.putString("Pose/InitMethod", "QuestNav (MIGHT BE STALE!)");
-      Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
-      return;
+      if (autoStartPose != null) {
+        resetPose(autoStartPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+        initState = InitializationState.VISION_INITIALIZED;
+        initializedFromAuto = true;
+        
+        System.out.println("=== INITIALIZED FROM AUTO STARTING POSE ===");
+        System.out.println("Auto: " + (autoChooser != null ? autoChooser.getSelected().getName() : "Unknown"));
+        System.out.println("Starting pose: " + autoStartPose);
+        System.out.println("QuestNav will track from here");
+        
+        SmartDashboard.putString("Pose/InitMethod", "Auto Starting Pose (QuestNav-only)");
+        Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
+        return;
+      }
     }
     
-    System.err.println("=== NO POSE AVAILABLE ===");
-    System.err.println("Press START button to set position manually");
-    System.err.println("Or move robot to see AprilTags");
+    if (DriverStation.isTeleopEnabled() || 
+        (DriverStation.isDisabled() && !DriverStation.isFMSAttached())) {
+      
+      Pose2d questNavPose = gyroSubsystem.getQuestNavPose2d();
+      if (questNavPose != null) {
+        resetPose(questNavPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+        initState = InitializationState.VISION_INITIALIZED;
+        
+        System.out.println("=== INITIALIZED FROM QUESTNAV (TELEOP START) ===");
+        System.out.println("TESTING: Vision disabled - QuestNav-only mode");
+        System.out.println("Pose: " + questNavPose);
+        
+        SmartDashboard.putString("Pose/InitMethod", "QuestNav ONLY (Vision disabled)");
+        Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
+        return;
+      }
+    }
     
-    SmartDashboard.putString("Pose/InitMethod", "BLOCKED - MANUAL RESET REQUIRED");
-    DriverStation.reportError("NO POSE - Press START to set position", false);
+    SmartDashboard.putString("Pose/InitMethod", "BLOCKED - MANUAL RESET REQUIRED (QuestNav-only mode)");
+    DriverStation.reportError("NO POSE - Press START to set position (Vision disabled)", false);
   }
   
-  // FIXED: Check TagVisionSubsystem's CURRENT detection status
+  private void onModeChange(RobotState.Mode from, RobotState.Mode to) {
+    if (to == RobotState.Mode.ENABLED_AUTO) {
+      System.out.println("=== AUTO ENABLED ===");
+      hasEverBeenEnabled = true;
+    }
+    
+    if (from == RobotState.Mode.ENABLED_AUTO && to == RobotState.Mode.ENABLED_TELEOP) {
+      System.out.println("=== AUTO → TELEOP TRANSITION ===");
+      System.out.println("KEEPING pose from auto - no reset!");
+      
+      Pose2d currentPose = getEstimatedPose();
+      System.out.println("Current pose: " + formatPose(currentPose));
+      System.out.println("Current heading: " + currentPose.getRotation().getDegrees() + "°");
+      
+      driveSubsystem.setOperatorPerspectiveForward(currentPose.getRotation());
+      
+      SmartDashboard.putString("Pose/AutoToTeleopTransition", "Pose preserved");
+      Logger.recordOutput("PoseEstimator/AutoToTeleopTransition", true);
+      Logger.recordOutput("PoseEstimator/TransitionPose", currentPose);
+    }
+    
+    if (to == RobotState.Mode.ENABLED_TELEOP && !hasEverBeenEnabled) {
+      System.out.println("=== TELEOP ENABLED (First Enable) ===");
+      hasEverBeenEnabled = true;
+      
+      if (initState == InitializationState.WAITING_FOR_VISION) {
+        System.err.println("WARNING: Enabled in teleop without pose!");
+        System.err.println("Move robot to see AprilTags to initialize position");
+      }
+    }
+  }
+  
   private boolean checkForMultiTagVision() {
     if (tagVisionSubsystem == null) return false;
     return tagVisionSubsystem.hasMultiTagDetection();
   }
   
-  // FIXED: Check TagVisionSubsystem's CURRENT detection status
   private boolean checkForSingleTagVision() {
     if (tagVisionSubsystem == null) return false;
     return tagVisionSubsystem.hasSingleTagDetection();
@@ -411,15 +371,18 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private edu.wpi.first.math.Matrix<edu.wpi.first.math.numbers.N3, edu.wpi.first.math.numbers.N1> 
       getSpeedAdaptiveQuestNavStdDevs(double speedMPS) {
     
-    double baseTrust = 0.02;
+    double baseTrustX = QUESTNAV_STD_DEVS[0];
+    double baseTrustY = QUESTNAV_STD_DEVS[1];
+    double baseTrustTheta = QUESTNAV_STD_DEVS[2];
+    
     double speedPenalty = 0.05 * speedMPS;
-    double xyTrust = baseTrust + speedPenalty;
-    double thetaTrust = baseTrust * 1.5 + (speedPenalty * 0.5);
+    double xyTrust = baseTrustX + speedPenalty;
+    double thetaTrust = baseTrustTheta + (speedPenalty * 0.5);
     
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/XY", xyTrust);
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/Theta", thetaTrust);
     
-    return edu.wpi.first.math.VecBuilder.fill(xyTrust, xyTrust, thetaTrust);
+    return VecBuilder.fill(xyTrust, xyTrust, thetaTrust);
   }
   
   public void setInitializedViaVision() {
@@ -480,7 +443,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
     System.out.println("=====================================");
     
-    SmartDashboard.putString("Pose/Validation", withinTolerance ? "✓ ALIGNED" : "✗ NOT ALIGNED");
+    SmartDashboard.putString("Pose/Validation", withinTolerance ? "ALIGNED" : "NOT ALIGNED");
     SmartDashboard.putBoolean("Pose/AutoAligned", withinTolerance);
     SmartDashboard.putNumber("Pose/PosError", posError);
     SmartDashboard.putNumber("Pose/RotError", rotError);
@@ -515,9 +478,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       }
     } catch (Exception e) {
       Logger.recordOutput("PoseValidation/GetPoseError", e.getMessage());
+    }
       return null;
     }
-  }
   
   private String formatPose(Pose2d pose) {
     return String.format("(%.2fm, %.2fm, %.1f°)", 

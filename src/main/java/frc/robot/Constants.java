@@ -54,33 +54,33 @@ public final class Constants {
     public static final int FRONT_LEFT_DRIVE_ID = 2;
     public static final int FRONT_LEFT_STEER_ID = 1;
     public static final int FRONT_LEFT_CANCODER_ID = 9;
-    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.484130859375;  // ✅ From Tuner X
+    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.484130859375;  //  From Tuner X
 
     // Front Right
     public static final int FRONT_RIGHT_DRIVE_ID = 4;
     public static final int FRONT_RIGHT_STEER_ID = 3;
     public static final int FRONT_RIGHT_CANCODER_ID = 10;
-    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.20703125;  // ✅ UPDATED (was 0.21533203125)
+    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.20703125;  //  UPDATED (was 0.21533203125)
 
     // Back Left
     public static final int BACK_LEFT_DRIVE_ID = 8;
     public static final int BACK_LEFT_STEER_ID = 7;
     public static final int BACK_LEFT_CANCODER_ID = 12;
-    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.30908203125;  // ✅ From Tuner X
+    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.30908203125;  //  From Tuner X
 
     // Back Right
     public static final int BACK_RIGHT_DRIVE_ID = 6;
     public static final int BACK_RIGHT_STEER_ID = 5;
     public static final int BACK_RIGHT_CANCODER_ID = 11;
-    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.396240234375;  // ✅ UPDATED (was 0.389892578125)
+    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.396240234375;  //  UPDATED (was 0.389892578125)
 
     // Motor inversions from Tuner X
     public static final boolean FRONT_LEFT_DRIVE_INVERTED = false; // kInvertLeftSide
-    public static final boolean FRONT_LEFT_STEER_INVERTED = true;  // ✅ Back to true
+    public static final boolean FRONT_LEFT_STEER_INVERTED = true;  //  Back to true
     public static final boolean FRONT_RIGHT_DRIVE_INVERTED = true; // kInvertRightSide
     public static final boolean FRONT_RIGHT_STEER_INVERTED = true;
     public static final boolean BACK_LEFT_DRIVE_INVERTED = false;
-    public static final boolean BACK_LEFT_STEER_INVERTED = true;   // ✅ Back to true
+    public static final boolean BACK_LEFT_STEER_INVERTED = true;   //  Back to true
     public static final boolean BACK_RIGHT_DRIVE_INVERTED = true;
     public static final boolean BACK_RIGHT_STEER_INVERTED = true;
 
@@ -187,16 +187,27 @@ public final class Constants {
 
     // Vision pose estimation tuning
     public static final double MAX_AMBIGUITY = 0.3;
-    public static final double MAX_POSE_DIFFERENCE_METERS = 2.0;
+    public static final double MAX_POSE_DIFFERENCE_METERS = 0.75;  // CHANGED: 75cm (was 2.0m - too loose!)
     public static final int MIN_TAG_COUNT_FOR_MULTI = 2;
 
-    // Standard deviations for pose estimation (adjust based on testing)
-    // [x, y, theta] - lower = trust more
+    // Standard deviations for pose estimation (lower = more trust)
+    // TRUST HIERARCHY: Multi-tag vision > Single-tag vision > QuestNav > Odometry
     
-    // UPDATED: Trust hierarchy: Vision > QuestNav > Odometry
-    public static final double[] VISION_STD_DEVS_SINGLE_TAG = {0.3, 0.3, 0.5};  // Single tag: medium trust
-    public static final double[] VISION_STD_DEVS_MULTI_TAG = {0.1, 0.1, 0.2};   // Multi tag: HIGHEST trust
-    public static final double[] ODOMETRY_STD_DEVS = {1.0, 1.0, 1.0};           // REDUCED trust (was 0.5) - odometry drifts a LOT
+    // Limelight 3 (BEST - pre-calibrated from factory)
+    public static final double[] LIMELIGHT_MULTI_TAG_STD_DEVS = {0.03, 0.03, 0.05};   // HIGHEST TRUST (3cm!)
+    public static final double[] LIMELIGHT_SINGLE_TAG_STD_DEVS = {0.1, 0.1, 0.15};     // HIGH TRUST
+    
+    // PhotonVision cameras (GOOD - calibrated by us)
+    public static final double[] PHOTON_MULTI_TAG_STD_DEVS = {0.05, 0.05, 0.1};   // VERY HIGH TRUST (5cm)
+    public static final double[] PHOTON_SINGLE_TAG_STD_DEVS = {0.15, 0.15, 0.25}; // MEDIUM TRUST
+    
+    // Legacy constants (deprecated)
+    @Deprecated
+    public static final double[] VISION_STD_DEVS_MULTI_TAG = PHOTON_MULTI_TAG_STD_DEVS;
+    @Deprecated
+    public static final double[] VISION_STD_DEVS_SINGLE_TAG = PHOTON_SINGLE_TAG_STD_DEVS;
+    
+    public static final double[] ODOMETRY_STD_DEVS = {1.0, 1.0, 1.0}; // LOWEST TRUST
 
     // ===================================================================
     // LIMELIGHT 3 - FRONT CAMERA
@@ -205,7 +216,7 @@ public final class Constants {
     public static final double FRONT_LL_Y_METERS = 0.0;
     public static final double FRONT_LL_Z_METERS = 0.2;
     public static final double FRONT_LL_ROLL_DEG = 0.0;
-    public static final double FRONT_LL_PITCH_DEG = 0.0;  // FIXED: No pitch (was -20.0)
+    public static final double FRONT_LL_PITCH_DEG = 10;  // CHANGED: Tilted back 7.5° looking up (was 0.0)
     public static final double FRONT_LL_YAW_DEG = 0.0;
 
     // ===================================================================
@@ -232,7 +243,7 @@ public final class Constants {
     public static final double BACK_RIGHT_PV_Y_METERS = Units.inchesToMeters(-10.0);
     public static final double BACK_RIGHT_PV_Z_METERS = Units.inchesToMeters(8.0);
     public static final double BACK_RIGHT_PV_ROLL_DEG = 0.0;
-    public static final double BACK_RIGHT_PV_PITCH_DEG = 15.0;  // Tilted backward to see up ✅
+    public static final double BACK_RIGHT_PV_PITCH_DEG = 15.0;  // Tilted backward to see up 
     public static final double BACK_RIGHT_PV_YAW_DEG = 225.0;  // Mounted on back, pointing forward-right
     public static final double BACK_RIGHT_PV_FOV_DEG = 100.0;
 
@@ -269,27 +280,22 @@ public final class Constants {
     public static final double MAX_ANGULAR_RATE_DEG_PER_SEC = 720.0;  // Reject unrealistic rates
     
     // Trust settings (for future pose estimation)
-    // UPDATED: Much higher trust - QuestNav is very accurate, should dominate odometry
-    public static final double[] QUESTNAV_STD_DEVS = {0.05, 0.05, 0.05};  // INCREASED trust (was 0.15) - 20x more trusted than odometry!
+    // QuestNav trust - BELOW vision (SLAM < physical measurements)
+    // Still better than odometry, but not as good as AprilTags
+    public static final double[] QUESTNAV_STD_DEVS = {0.12, 0.12, 0.2};  // MEDIUM-HIGH TRUST
   }
 
   public static final class Auto {
     // PathPlanner PID constants for holonomic drive controller
     
-    // BEFORE (very gentle but too slow to respond):
-    // public static final double TRANSLATION_KP = 0.5;
-    // public static final double TRANSLATION_KD = 0.0;
-    // public static final double ROTATION_KP = 0.5;
-    // public static final double ROTATION_KD = 0.0;
-    
-    // AFTER (more responsive, still smooth):
-    public static final double TRANSLATION_KP = 1.0;  // INCREASED from 0.5 - more responsive
+    // CHANGED: Increase P-gain for tighter path following
+    public static final double TRANSLATION_KP = 2.0;  // INCREASED from 1.0 - tighter position control
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.0;  // Keep at 0 - no damping
+    public static final double TRANSLATION_KD = 0.1;  // ADDED damping to prevent overshoot
     
-    public static final double ROTATION_KP = 1.0;     // INCREASED from 0.5 - more responsive heading
+    public static final double ROTATION_KP = 2.0;     // INCREASED from 1.0 - tighter heading control
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.0;     // Keep at 0 - no damping
+    public static final double ROTATION_KD = 0.1;     // ADDED damping for smooth rotation
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
@@ -310,10 +316,7 @@ public final class Constants {
     // Blue alliance starting positions (all in meters, degrees)
     
     /** Blue Reef Back - Tag 17 - Centered, against reef */
-    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.897, 2.957, Rotation2d.fromDegrees(60.0));
-    
-    /** Blue Reef Left - Tag 16 */
-    public static final Pose2d BLUE_REEF_TAG_16 = new Pose2d(3.897, 4.115, Rotation2d.fromDegrees(120.0));
+    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.657, 2.65, Rotation2d.fromDegrees(60.0));
     
     /** Blue Reef Right - Tag 18 */
     public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(3.897, 1.799, Rotation2d.fromDegrees(0.0));
@@ -331,10 +334,10 @@ public final class Constants {
     public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(3.5, 3.5, Rotation2d.fromDegrees(0.0)); // TODO: Measure actual position
     
     /** Blue Processor Station - Tag 16 */
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.9, 0.5, Rotation2d.fromDegrees(-90.0)); // TODO: Measure actual position
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.75, 0.8, Rotation2d.fromDegrees(-90.0)); // TODO: Measure actual position
     
     /** Blue Coral Station - Tag 12 (same as former INTAKE_POS) */
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.87, 0.73, Rotation2d.fromDegrees(-120));
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.59, 1.24, Rotation2d.fromDegrees(-120));
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed
