@@ -8,6 +8,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.GyroSubsystem;
+import frc.robot.subsystems.QuestNavSubsystem; // NEW
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import org.littletonrobotics.junction.Logger;
 
@@ -18,6 +19,7 @@ public class SetStartingPoseCommand extends Command {
   private final Pose2d targetPose; // Known starting position on field
   private final String positionName; // Human-readable name (e.g. "Blue Reef Tag 17")
   private final GyroSubsystem gyro; // Manages Pigeon2 + QuestNav
+  private final QuestNavSubsystem questNav; // NEW
   private final DriveSubsystem drive; // Provides module positions
   private final PoseEstimatorSubsystem poseEstimator; // Kalman filter
 
@@ -25,11 +27,13 @@ public class SetStartingPoseCommand extends Command {
       Pose2d targetPose,
       String positionName,
       GyroSubsystem gyro,
+      QuestNavSubsystem questNav, // NEW parameter
       DriveSubsystem drive,
       PoseEstimatorSubsystem poseEstimator) {
     this.targetPose = targetPose;
     this.positionName = positionName;
     this.gyro = gyro;
+    this.questNav = questNav; // NEW
     this.drive = drive;
     this.poseEstimator = poseEstimator;
     
@@ -50,14 +54,7 @@ public class SetStartingPoseCommand extends Command {
         drive.getModulePositions()); // Current wheel positions
     
     // Step 3: CRITICAL - Reset QuestNav to match
-    // If QuestNav isn't synced, it will "correct" the pose back to where it thinks it is
-    Pose3d targetPose3d = new Pose3d(
-        targetPose.getX(),
-        targetPose.getY(),
-        0.0, // Z = 0 (robot on ground)
-        new Rotation3d(0.0, 0.0, targetPose.getRotation().getRadians())); // Yaw only
-    
-    gyro.setQuestNavPose(targetPose3d);
+    // (PoseEstimator.resetPose() already calls questNav.initialize(), but we log here for clarity)
     
     // Log to AdvantageKit for analysis
     Logger.recordOutput("StartingPose/Name", positionName);
@@ -86,7 +83,7 @@ public class SetStartingPoseCommand extends Command {
     System.out.println("Position: " + positionName);
     System.out.println("Target: " + targetPose);
     System.out.println("Actual: " + actualPose);
-    System.out.println("QuestNav synced to: " + targetPose3d);
+    System.out.println("QuestNav synced via PoseEstimator.resetPose()");
     System.out.println("========================");
   }
 

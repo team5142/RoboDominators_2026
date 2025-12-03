@@ -181,7 +181,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     @Override
     public void addVisionMeasurement(Pose2d visionRobotPoseMeters, double timestampSeconds) {
         // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
-        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds)); ← REMOVED!
+        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds)); // REMOVED!
         
         // No-op - vision handled by PoseEstimatorSubsystem
     }
@@ -193,7 +193,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         Matrix<N3, N1> visionMeasurementStdDevs
     ) {
         // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
-        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs); ← REMOVED!
+        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs); // REMOVED!
         
         // No-op - vision handled by PoseEstimatorSubsystem
     }

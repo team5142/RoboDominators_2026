@@ -33,6 +33,7 @@ import frc.robot.subsystems.ObjectVisionSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.GyroSubsystem;
+import frc.robot.subsystems.QuestNavSubsystem; // NEW: Add this import
 import edu.wpi.first.networktables.BooleanSubscriber;
 import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.PubSubOption;
@@ -60,8 +61,9 @@ public class RobotContainer {
   // Subsystems
   private final RobotState robotState = new RobotState();
   private final GyroSubsystem gyro = new GyroSubsystem();
+  private final QuestNavSubsystem questNav = new QuestNavSubsystem(); // NEW
   private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
-  private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro);
+  private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro, questNav); // CHANGED: Added questNav parameter
   private final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
   private final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
 
@@ -243,7 +245,7 @@ public class RobotContainer {
 
     // START: Set starting position (drive to spot, press to save as starting pose)
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-        .onTrue(new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, driveSubsystem, poseEstimator));
+        .onTrue(new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, questNav, driveSubsystem, poseEstimator)); // CHANGED: Pass questNav
 
     // Y: Auto-drive to Blue Tag 17
     new JoystickButton(driverController, XboxController.Button.kY.value)
@@ -366,7 +368,7 @@ public class RobotContainer {
     new Thread(() -> {
       while (true) {
         if (setReef17Sub.get()) {
-          new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, driveSubsystem, poseEstimator).schedule();
+          new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, questNav, driveSubsystem, poseEstimator).schedule(); // FIXED: Added questNav parameter
           System.out.println("[Touchscreen] Set Reef 17 Start Position");
         }
         try {

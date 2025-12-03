@@ -162,7 +162,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     
     if (magnitude < 0.01) { // Less than 1cm - too close to robot center
       Logger.recordOutput("ObjectVision/Debug/RejectedZeroMagnitude", magnitude);
-      return Optional.empty(); // ← Return BEFORE creating Rotation2d
+      return Optional.empty(); // Return BEFORE creating Rotation2d
     }
     
     Translation2d robotRelativePosition = new Translation2d(robotRelativeX, robotRelativeY);
