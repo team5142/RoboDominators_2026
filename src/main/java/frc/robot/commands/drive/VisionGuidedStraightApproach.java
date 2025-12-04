@@ -199,7 +199,7 @@ public class VisionGuidedStraightApproach extends Command {
     while (thetaError > Math.PI) thetaError -= 2 * Math.PI;
     while (thetaError < -Math.PI) thetaError += 2 * Math.PI;
     
-    // PID control
+    // PID control in FIELD COORDINATES
     double xVelocity = xController.calculate(currentPose.getX(), targetPose.getX());
     double yVelocity = yController.calculate(currentPose.getY(), targetPose.getY());
     double thetaVelocity = thetaController.calculate(
@@ -212,12 +212,29 @@ public class VisionGuidedStraightApproach extends Command {
     thetaVelocity = Math.max(-MAX_ROTATION_RAD_PER_SEC, 
                              Math.min(MAX_ROTATION_RAD_PER_SEC, thetaVelocity));
     
-    // Field-relative drive
+    // ======================================================================
+    // PID TUNING MODE: DRIVE DIRECTLY IN FIELD COORDINATES
+    //
+    // For tuning, we want:
+    //   - Forward / backward tests to be pure X motion
+    //   - Left / right tests to be pure Y motion
+    // Using robot-relative here would rotate those vectors by heading.
+    //
+    // So we send the field-relative speeds straight to the drivetrain
+    // without applying an additional rotation transform.
+    //
+    // WARNING: BEFORE COMPETITION, RESTORE THE ORIGINAL FIELD-RELATIVE
+    //          TRANSFORM IF YOU WANT HEADING-CORRECTED MOTION.
+    // ======================================================================
     ChassisSpeeds fieldRelativeSpeeds = new ChassisSpeeds(xVelocity, yVelocity, thetaVelocity);
-    driveSubsystem.driveRobotRelative(
-        ChassisSpeeds.fromFieldRelativeSpeeds(
-            fieldRelativeSpeeds,
-            currentPose.getRotation()));
+    driveSubsystem.driveRobotRelative(fieldRelativeSpeeds);
+    // ======================================================================
+    // ORIGINAL CODE (FOR REFERENCE):
+    // driveSubsystem.driveRobotRelative(
+    //     ChassisSpeeds.fromFieldRelativeSpeeds(
+    //         fieldRelativeSpeeds,
+    //         currentPose.getRotation()));
+    // ======================================================================
     
     // ===== PROGRESS TRACKING =====
     double distanceRemaining = currentPose.getTranslation()

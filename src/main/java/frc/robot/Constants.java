@@ -282,20 +282,25 @@ public final class Constants {
     // Trust settings (for future pose estimation)
     // QuestNav trust - BELOW vision (SLAM < physical measurements)
     // Still better than odometry, but not as good as AprilTags
-    public static final double[] QUESTNAV_STD_DEVS = {0.12, 0.12, 0.2};  // MEDIUM-HIGH TRUST
+    public static final double[] QUESTNAV_STD_DEVS = {
+        0.08,  // was larger (e.g., 0.10–0.12)
+        0.08,
+        0.07   // radians (~4 deg)
+    };
   }
 
   public static final class Auto {
     // PathPlanner PID constants for holonomic drive controller
     
-    // CHANGED: Further reduce gains - 1.5 was still too aggressive
-    public static final double TRANSLATION_KP = 0.8;  // REDUCED from 1.5 - much gentler
+    // Slightly sharper translation, a bit less damping
+    public static final double TRANSLATION_KP = 1.6;  // was 1.2
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.3;  // INCREASED from 0.2 - more damping
+    public static final double TRANSLATION_KD = 0.17; // was 0.25
     
-    public static final double ROTATION_KP = 0.8;     // REDUCED from 1.5
+    // Keep rotation where it is for now
+    public static final double ROTATION_KP = 1.0;
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.3;     // INCREASED from 0.2
+    public static final double ROTATION_KD = 0.35;
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
@@ -338,10 +343,11 @@ public final class Constants {
     /** Auto Start Position Blue far right */
     public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.78, .43, Rotation2d.fromDegrees(180.0));
 
+    /** PID tuning Position */
+    public static final Pose2d PID_TUNING_POSITION  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(0));
     
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed  }
 
-  }
-}
+  }}

@@ -102,3 +102,26 @@ wpi.java.configureTestTasks(test)
 tasks.withType(JavaCompile) {
     options.compilerArgs.add '-XDstringConcat=inline'
 }
+
+// ======================================================================
+// BUILD TIMESTAMP LOGGING
+// Logs end time and success/failure for every Gradle build.
+// Also writes a short summary to build/buildStatus.txt.
+// ======================================================================
+
+// Note: In Gradle 8, buildFinished(Action<BuildResult>) is supported directly.
+gradle.buildFinished { buildResult ->
+    def ts = new Date().format("yyyy-MM-dd HH:mm:ss")
+    def status = buildResult.failure == null ? "SUCCESS" : "FAILED"
+    println "=== Gradle build ${status} at ${ts} ==="
+    if (buildResult.failure != null) {
+        println "Build failure: ${buildResult.failure.message}"
+    }
+
+    def statusFile = file("${buildDir}/buildStatus.txt")
+    statusFile.parentFile.mkdirs()
+    statusFile.text = "Status: ${status}\nTime: ${ts}\n"
+    if (buildResult.failure != null) {
+        statusFile << "Error: ${buildResult.failure.message}\n"
+    }
+}

@@ -248,8 +248,15 @@ public class QuestNavSubsystem extends SubsystemBase {
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       
+      // CHANGED: Only count frames received, not processed
+      // (PoseEstimator will only use the latest one)
       if (frames != null && frames.length > 0) {
-        totalFramesProcessed += frames.length;
+        totalFramesProcessed++; // Only increment by 1 since we only use latest
+        
+        // Log if we're discarding frames
+        if (frames.length > 1) {
+          Logger.recordOutput("QuestNav/FramesDiscarded", frames.length - 1);
+        }
       }
       
       return frames;

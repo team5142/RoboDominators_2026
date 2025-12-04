@@ -1,0 +1,305 @@
+********** Robot program starting **********
+NT: Listening on NT3 port 1735, NT4 port 5810
+NT: Got a NT4 connection from 10.51.42.201 port 64149
+NT: Got a NT4 connection from 10.51.42.201 port 64153
+NT: CONNECTED NT4 client 'AdvantageScope@1' (from 10.51.42.201:64153)
+NT: Got a NT4 connection from 10.51.42.201 port 64154
+NT: CONNECTED RTT client (from 10.51.42.201:64154)
+NT: Got a NT4 connection from 10.51.42.201 port 64148
+NT: Got a NT4 connection from 10.51.42.201 port 64151
+NT: Got a NT4 connection from 10.51.42.201 port 64147
+NT: Got a NT4 connection from 10.51.42.200 port 59034
+NT: CONNECTED NT4 client '/QuestNav@2' (from 10.51.42.200:59034)
+NT: Got a NT4 connection from 10.51.42.201 port 64150
+========================================
+RoboDominators 5142 - Lebron2
+AdvantageKit logging: ACTIVE
+[AdvantageKit] Logging to "/home/lvuser/logs/akit_d7416f77d3a21e63.wpilog"
+Battery: 12.328619873046875V
+========================================
+=== GyroSubsystem Initialization ===
+NT: Got a NT4 connection from 10.51.42.11 port 59812
+NT: CONNECTED NT4 client 'photonvision@3' (from 10.51.42.11:59812)
+Pigeon2 initialized on CAN ID: 14
+=====================================
+
+=== QuestNavSubsystem Initialization ===
+[OK] QuestNav object created successfully
+Robot-to-Quest transform: Transform3d(Translation3d(X: 0.36, Y: 0.01, Z: 0.00), Rotation3d(Quaternion(1.0, 0.0, 0.0, 0.0)))
+Using manual transform application (2025-2.1.0-beta API)
+
+--- QuestNav Connection Test ---
+Connection: USB > Ethernet Switch > RoboRIO
+Expected Quest IP: 10.51.42.X
+NetworkTables: RoboRIO (10.51.42.2:1735)
+
+Tracking: true
+Battery: 75%
+[OK] QuestNav is tracking!
+[OK] Received 20 pose frames!
+========================================
+
+PoseEstimatorSubsystem initialized (refactored with helpers)
+NT: Got a NT4 connection from 10.51.42.12 port 33978
+NT: CONNECTED NT4 client 'limelight-front@4' (from 10.51.42.12:33978)
+NT: DISCONNECTED NT4 client 'limelight-front@4' (from 10.51.42.12:33978): remote end closed connection
+NT: NT4 socket error: operation canceled
+TagVisionSubsystem initialized:
+  - limelight-front (Limelight 3) - ACTIVE
+  - RLTagPV (PhotonVision) - DISABLED (inaccurate)
+  - RRTagPV (PhotonVision) - DISABLED (inaccurate)
+  - QuestNav SLAM - ACTIVE
+PathPlanner configured successfully!
+=== SMART DRIVE: TWO-PHASE APPROACH ===
+Total distance: 4.82m
+Vision point: 0.75m from target
+Phase 1: Fast hook to vision point
+Phase 2: Precision straight to target
+=== SMART DRIVE: TWO-PHASE APPROACH ===
+Total distance: 2.57m
+Vision point: 0.75m from target
+Phase 1: Fast hook to vision point
+Phase 2: Precision straight to target
+=== SMART DRIVE: TWO-PHASE APPROACH ===
+Total distance: 5.38m
+Vision point: 0.75m from target
+Phase 1: Fast hook to vision point
+Phase 2: Precision straight to target
+=== SMART DRIVE: TWO-PHASE APPROACH ===
+Total distance: 2.57m
+Vision point: 0.75m from target
+Phase 1: Fast hook to vision point
+Phase 2: Precision straight to target
+Button bindings configured
+Y/B/A/X: SmartDrive PID tuning moves (absolute from TUNING_ORIGIN)
+Touchscreen operator interface configured
+=== SYSID MODE DISABLED ===
+=== PathPlanner Autos Loaded ===
+================================
+RobotContainer initialized - all subsystems and bindings ready!
+Robot container initialized successfully
+Robot container initialized successfully
+[Auto Preview] Selected: InstantCommand
+[Auto Preview] Unknown auto: InstantCommand
+********** Robot program startup complete **********
+Robot DISABLED
+Error at gg.questnav.questnav.QuestNav.commandPeriodic(QuestNav.java:526): QuestNav command failed!
+Pose Reset Command too old. Age: 60 ms > 50 ms
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	QuestNavSubsystem.periodic(): 0.034373s
+	LEDSubsystem.periodic(): 0.001262s
+	TagVisionSubsystem.periodic(): 0.000334s
+	GyroSubsystem.periodic(): 0.005509s
+	PoseEstimatorSubsystem.periodic(): 0.061883s
+	buttons.run(): 0.024467s
+DriveSubsystem.periodic(): 0.015025s
+
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	SmartDashboard.updateValues(): 0.001336s
+	disabledInit(): 0.004805s
+	robotPeriodic(): 0.229407s
+LiveWindow.updateValues(): 0.000093s
+	Shuffleboard.update(): 0.002875s
+	disabledPeriodic(): 0.000575s
+
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (0.00m, -0.00m, 0.0Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+CommandScheduler loop overrun
+CommandScheduler loop overrun
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+NT: Got a NT4 connection from 10.51.42.12 port 33994
+NT: CONNECTED NT4 client 'limelight-front@4' (from 10.51.42.12:33994)
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	SmartDashboard.updateValues(): 0.016880s
+robotPeriodic(): 0.019682s
+	LiveWindow.updateValues(): 0.000019s
+	Shuffleboard.update(): 0.000018s
+	disabledPeriodic(): 0.001298s
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	QuestNavSubsystem.periodic(): 0.002226s
+	LEDSubsystem.periodic(): 0.000037s
+TagVisionSubsystem.periodic(): 0.000055s
+	GyroSubsystem.periodic(): 0.000760s
+	PoseEstimatorSubsystem.periodic(): 0.019107s
+	buttons.run(): 0.000575s
+DriveSubsystem.periodic(): 0.004582s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	SmartDashboard.updateValues(): 0.002375s
+	robotPeriodic(): 0.109816s
+	LiveWindow.updateValues(): 0.000000s
+Shuffleboard.update(): 0.000018s
+	disabledPeriodic(): 0.000816s
+
+CommandScheduler loop overrun
+CommandScheduler loop overrun
+[AdvantageKit] Renaming log to "/home/lvuser/logs/akit_25-12-03_23-41-23.wpilog"
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	QuestNavSubsystem.periodic(): 0.015749s
+	LEDSubsystem.periodic(): 0.000037s
+	TagVisionSubsystem.periodic(): 0.000074s
+	GyroSubsystem.periodic(): 0.000464s
+	PoseEstimatorSubsystem.periodic(): 0.003302s
+	buttons.run(): 0.000056s
+DriveSubsystem.periodic(): 0.001651s
+
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	SmartDashboard.updateValues(): 0.001132s
+	robotPeriodic(): 0.041181s
+LiveWindow.updateValues(): 0.000000s
+	Shuffleboard.update(): 0.000018s
+	disabledPeriodic(): 0.001725s
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (0.00m, -0.00m, 0.0Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (-0.00m, -0.00m, 0.0Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (-0.00m, -0.00m, 0.0Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (0.00m, 0.01m, 0.0Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	teleopPeriodic(): 0.000557s
+	SmartDashboard.updateValues(): 0.007457s
+robotPeriodic(): 0.016268s
+	LiveWindow.updateValues(): 0.000019s
+	Shuffleboard.update(): 0.000000s
+
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	DriveWithJoysticks.execute(): 0.001669s
+	QuestNavSubsystem.periodic(): 0.003617s
+LEDSubsystem.periodic(): 0.000037s
+	TagVisionSubsystem.periodic(): 0.000037s
+	GyroSubsystem.periodic(): 0.000204s
+PoseEstimatorSubsystem.periodic(): 0.007865s
+	buttons.run(): 0.000056s
+	DriveSubsystem.periodic(): 0.007031s
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (2.29m, 1.91m, 1.1Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Error at frc.robot.subsystems.pose.PoseInitializer.attemptInitialization(PoseInitializer.java:120): NO POSE - Press START to set position (Vision disabled)
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+QuestNav initialized to: Pose2d(Translation2d(X: 3.32, Y: 4.00), Rotation2d(Rads: 0.00, Deg: 0.00))
+=== STARTING POSE SET ===
+Position: Blue Reef Tag 18
+Target: Pose2d(Translation2d(X: 3.32, Y: 4.00), Rotation2d(Rads: 0.00, Deg: 0.00))
+Actual: Pose2d(Translation2d(X: 3.32, Y: 4.00), Rotation2d(Rads: 0.00, Deg: 0.00))
+QuestNav synced via PoseEstimator.resetPose()
+========================
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	DriveWithJoysticks.execute(): 0.000112s
+	QuestNavSubsystem.periodic(): 0.000204s
+	LEDSubsystem.periodic(): 0.000018s
+TagVisionSubsystem.periodic(): 0.000037s
+	GyroSubsystem.periodic(): 0.000297s
+	PoseEstimatorSubsystem.periodic(): 0.000761s
+	SetStartingPoseCommand.end(false): 0.005342s
+SetStartingPoseCommand.execute(): 0.000649s
+	SetStartingPoseCommand.initialize(): 0.056949s
+	buttons.run(): 0.000018s
+	DriveSubsystem.periodic(): 0.000241s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	teleopPeriodic(): 0.001447s
+	SmartDashboard.updateValues(): 0.000241s
+	robotPeriodic(): 0.107961s
+	LiveWindow.updateValues(): 0.000204s
+	Shuffleboard.update(): 0.000000s
+Error at gg.questnav.questnav.QuestNav.commandPeriodic(QuestNav.java:526): QuestNav command failed!
+Pose Reset Command too old. Age: 105 ms > 50 ms
+CommandScheduler loop overrun
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (3.32m, 4.00m, -1.2Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+CommandScheduler loop overrun
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (1.26m, 2.25m, -3.2Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (1.28m, 2.21m, -1.6Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (1.27m, 2.21m, -0.1Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (1.26m, 2.22m, -0.6Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (1.27m, 2.22m, -0.6Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Warning at edu.wpi.first.wpilibj.IterativeRobotBase.printLoopOverrunMessage(IterativeRobotBase.java:436): Loop time of 0.02s overrun
+
+CommandScheduler loop overrun
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	QuestNavSubsystem.periodic(): 0.000538s
+	LEDSubsystem.periodic(): 0.001168s
+	TagVisionSubsystem.periodic(): 0.000037s
+GyroSubsystem.periodic(): 0.000204s
+	PoseEstimatorSubsystem.periodic(): 0.000557s
+SequentialCommandGroup.execute(): 0.045188s
+	buttons.run(): 0.000037s
+	DriveSubsystem.periodic(): 0.000353s
+Warning at edu.wpi.first.wpilibj.Tracer.lambda$printEpochs$0(Tracer.java:62): 	teleopPeriodic(): 0.000074s
+	SmartDashboard.updateValues(): 0.000649s
+	robotPeriodic(): 0.066409s
+	LiveWindow.updateValues(): 0.000019s
+	Shuffleboard.update(): 0.000000s
+CommandScheduler loop overrun
+=== VISION PRECISION APPROACH ===
+Target: (4.27m, 2.23m, 0.0Â°)
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (3.82m, 2.26m, -1.2Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================
+Robot stuck - aborting precision approach!
+Error at frc.robot.commands.drive.VisionGuidedStraightApproach.execute(VisionGuidedStraightApproach.java:179): Robot stuck during precision approach
+Robot stuck - aborting precision approach!
+Robot stuck - aborting precision approach!
+Robot stuck - aborting precision approach!
+Precision approach interrupted!
+========== POSE VALIDATION (No Auto) ==========
+Current pose: (4.02m, 2.25m, -0.6Â°)
+Auto: NONE SELECTED
+Ready for manual placement
+==============================================

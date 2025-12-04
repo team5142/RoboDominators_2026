@@ -64,52 +64,67 @@ public class QuestNavFusion {
       return;
     }
     
-    int framesProcessed = 0;
-    int framesRejected = 0;
+    // CHANGED: Only process the most recent frame (discard older ones)
+    PoseFrame latestFrame = frames[frames.length - 1];
+    
+    // Log how many frames we're skipping
+    if (frames.length > 1) {
+      Logger.recordOutput("PoseEstimator/QuestNavFramesSkipped", frames.length - 1);
+    }
     
     // Get current speed for adaptive trust
     ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
     double currentSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
     
-    for (PoseFrame frame : frames) {
-      if (frame == null) continue;
-      
-      // Get camera pose and transform to robot pose
-      Pose3d cameraPose3d = frame.questPose3d();
-      if (cameraPose3d == null) {
-        Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Pose3d");
-        framesRejected++;
-        continue;
-      }
-      
-      // Apply inverse transform to get robot pose
-      Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
-      
-      Pose2d questPose2d = new Pose2d(
-          robotPose3d.getX(),
-          robotPose3d.getY(),
-          robotPose3d.getRotation().toRotation2d());
-      
-      double timestamp = frame.dataTimestamp();
-      
-      // Innovation gating - reject outliers
-      if (!gateQuestNavMeasurement(questPose2d, timestamp, currentSpeed)) {
-        framesRejected++;
-        continue;
-      }
-      
-      // Get speed-adaptive standard deviations
-      Matrix<N3, N1> stdDevs = getSpeedAdaptiveStdDevs(currentSpeed);
-      
-      // Add to pose estimator
-      poseEstimator.addVisionMeasurement(questPose2d, timestamp, stdDevs);
-      framesProcessed++;
+    // Process only the latest frame
+    if (latestFrame == null) {
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Frame");
+      Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 0);
+      Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", 1);
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      return;
     }
     
-    Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", framesProcessed);
-    Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", framesRejected);
-    Logger.recordOutput("PoseEstimator/QuestNavUsed", framesProcessed > 0);
+    // Get camera pose and transform to robot pose
+    Pose3d cameraPose3d = latestFrame.questPose3d();
+    if (cameraPose3d == null) {
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Pose3d");
+      Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 0);
+      Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", 1);
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      return;
+    }
+    
+    // Apply inverse transform to get robot pose
+    Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
+    
+    Pose2d questPose2d = new Pose2d(
+        robotPose3d.getX(),
+        robotPose3d.getY(),
+        robotPose3d.getRotation().toRotation2d());
+    
+    double timestamp = latestFrame.dataTimestamp();
+    
+    // Innovation gating - reject outliers
+    if (!gateQuestNavMeasurement(questPose2d, timestamp, currentSpeed)) {
+      Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 0);
+      Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", 1);
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      return;
+    }
+    
+    // Get speed-adaptive standard deviations
+    Matrix<N3, N1> stdDevs = getSpeedAdaptiveStdDevs(currentSpeed);
+    
+    // Add to pose estimator
+    poseEstimator.addVisionMeasurement(questPose2d, timestamp, stdDevs);
+    
+    Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 1);
+    Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", 0);
+    Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
     Logger.recordOutput("PoseEstimator/CurrentSpeed", currentSpeed);
+    Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose2d);
+    Logger.recordOutput("PoseEstimator/QuestNav/LatestTimestamp", timestamp);
   }
   
   /**

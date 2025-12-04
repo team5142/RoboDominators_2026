@@ -22,7 +22,6 @@ import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.POVButton;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.NetworkTable;
-import frc.robot.commands.auto.FollowPreplannedPath;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.SnapToHeadingFixed;
 import frc.robot.commands.SetStartingPoseCommand;
@@ -45,6 +44,7 @@ import java.util.Map;
 import frc.robot.commands.auto.DriveToSavedPosition; // NEW: Add this import
 import com.pathplanner.lib.commands.FollowPathCommand;
 import com.pathplanner.lib.path.PathPlannerPath;
+import frc.robot.commands.drive.SmartDriveToPosition; // ADD: use SmartDriveToPosition instead
 
 // RobotContainer: Connects subsystems, controllers, and commands. Created once at robot boot.
 public class RobotContainer {
@@ -73,6 +73,10 @@ public class RobotContainer {
 
   // Touchscreen operator interface toggle
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Toggle between touchscreen and Xbox controller
+
+  // TUNING ORIGIN: Known field pose for straight-line tests
+  // Starting position: 1.27 x, 2.23 y, 0 deg
+  private static final Pose2d TUNING_ORIGIN = new Pose2d(1.27, 2.23, new Rotation2d(0.0));
 
   public RobotContainer() {
     // NEW: Connect TagVision to PoseEstimator (avoids circular dependency)
@@ -219,12 +223,6 @@ public class RobotContainer {
   // Button Bindings - Map controller buttons to commands
   private void configureButtonBindings() {
     
-    // Only add SysId bindings if in SysId mode
-    if (SYSID_MODE) {
-      configureSysIdButtons();
-      return; // Skip normal button bindings during SysId
-    }
-    
     // BACK: Reset field orientation (gyro zero)
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
@@ -245,62 +243,59 @@ public class RobotContainer {
 
     // START: Set starting position (drive to spot, press to save as starting pose)
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-        .onTrue(new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, questNav, driveSubsystem, poseEstimator)); // CHANGED: Pass questNav
+        .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID Tuning Position", gyro, questNav, driveSubsystem, poseEstimator)); // CHANGED: Pass questNav
 
-    // Y: Auto-drive to Blue Tag 17
+    // FIELD TARGETS (production behavior)
+    // Y: Drive to BLUE_REEF_TAG_17
     new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(new DriveToSavedPosition(
-            BLUE_REEF_TAG_17,
-            "Blue Reef Tag 17",
-            poseEstimator));
+        .whileTrue(
+            SmartDriveToPosition.create(
+                BLUE_REEF_TAG_17,
+                poseEstimator,
+                tagVisionSubsystem,
+                robotState,
+                driverController,
+                driveSubsystem,
+                questNav));
 
-    // B: Auto-drive to Blue Tag 16
+    // B: Drive to BLUE_TAG_16
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(new DriveToSavedPosition(
-            BLUE_TAG_16,
-            "Blue Processor Station (Tag 16)",
-            poseEstimator));
+        .whileTrue(
+            SmartDriveToPosition.create(
+                BLUE_TAG_16,
+                poseEstimator,
+                tagVisionSubsystem,
+                robotState,
+                driverController,
+                driveSubsystem,
+                questNav));
 
-    // A: Auto-drive to Blue Tag 12
+    // A: Drive to BLUE_TAG_12
     new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(new DriveToSavedPosition(
-            BLUE_TAG_12,
-            "Blue Coral Station (Tag 12)",
-            poseEstimator));
+        .whileTrue(
+            SmartDriveToPosition.create(
+                BLUE_TAG_12,
+                poseEstimator,
+                tagVisionSubsystem,
+                robotState,
+                driverController,
+                driveSubsystem,
+                questNav));
+
+    // X: Drive to BLUE_AUTO_START_POS_FAR_RIGHT
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .whileTrue(
+            SmartDriveToPosition.create(
+                BLUE_AUTO_START_POS_FAR_RIGHT,
+                poseEstimator,
+                tagVisionSubsystem,
+                robotState,
+                driverController,
+                driveSubsystem,
+                questNav));
 
     System.out.println("Button bindings configured");
-    System.out.println("Y/A/B: Simple PathPlanner pathfinding (QuestNav-only testing)");
-  }
-  
-  private void configureSysIdButtons() {
-    System.out.println("=== SysId Button Bindings Active ===");
-    System.out.println("Testing: DRIVE MOTORS (Translation)");
-    System.out.println("Using CTRE's built-in SysId routines (logs to .hoot file)");
-    
-    // Use parent class methods - these log to CTRE SignalLogger
-    // Y: Quasistatic Forward
-    new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
-    
-    // A: Quasistatic Reverse
-    new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
-    
-    // B: Dynamic Forward
-    new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kForward));
-    
-    // X: Dynamic Reverse
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .whileTrue(driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kReverse));
-    
-    System.out.println("Y = Quasistatic Forward");
-    System.out.println("A = Quasistatic Reverse");
-    System.out.println("B = Dynamic Forward");
-    System.out.println("X = Dynamic Reverse");
-    System.out.println("");
-    System.out.println("SysId data will be in .hoot file");
-    System.out.println("Look for 'SysIdTranslation_State' signal in Phoenix Tuner X");
+    System.out.println("Y: BLUE_REEF_TAG_17, B: BLUE_TAG_16, A: BLUE_TAG_12, X: BLUE_AUTO_START_POS_FAR_RIGHT");
   }
 
   private void configureTouchscreenInterface() {
@@ -405,20 +400,6 @@ public class RobotContainer {
   System.out.println("Touchscreen operator interface configured");
 }
 
-private void configureSysIdCommands() {
-    System.out.println("=== SysId Commands Available ===");
-    System.out.println("Check SmartDashboard for SysId buttons");
-    
-    // Translation characterization (drive motors)
-    SmartDashboard.putData("SysId/Quasistatic Forward", 
-        driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kForward));
-    SmartDashboard.putData("SysId/Quasistatic Reverse", 
-        driveSubsystem.sysIdQuasistatic(SysIdRoutine.Direction.kReverse));
-    SmartDashboard.putData("SysId/Dynamic Forward", 
-        driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kForward));
-    SmartDashboard.putData("SysId/Dynamic Reverse", 
-        driveSubsystem.sysIdDynamic(SysIdRoutine.Direction.kReverse));
-  }
 
   // Public Accessors
   public Command getAutonomousCommand() { 

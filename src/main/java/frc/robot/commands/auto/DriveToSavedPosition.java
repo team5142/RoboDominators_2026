@@ -21,8 +21,8 @@ public class DriveToSavedPosition extends Command {
 
   private final Timer settleTimer = new Timer(); // Tracks how long we've been at target
   private static final double SETTLE_TIME_SECONDS = 0.2; // Wait 200ms to confirm we're settled
-  private static final double POSITION_TOLERANCE_METERS = 0.15; // Accept if within 15cm
-  private static final double ROTATION_TOLERANCE_DEGREES = 10.0; // Accept if within 10 degrees
+  private static final double POSITION_TOLERANCE_METERS = 0.10; // was 0.15, now 10cm
+  private static final double ROTATION_TOLERANCE_DEGREES = 5.0; // was 10.0, now tighter
   private boolean settling = false; // Tracks if we're in settle phase
 
   public DriveToSavedPosition(Pose2d targetPose, String positionName, PoseEstimatorSubsystem poseEstimator) {
