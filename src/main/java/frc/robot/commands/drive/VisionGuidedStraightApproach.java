@@ -14,7 +14,8 @@ import frc.robot.RobotState;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
-import frc.robot.subsystems.GyroSubsystem; // ADD THIS
+import frc.robot.subsystems.GyroSubsystem; 
+import frc.robot.subsystems.QuestNavSubsystem; // ADD THIS
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -44,7 +45,7 @@ public class VisionGuidedStraightApproach extends Command {
   private final TagVisionSubsystem tagVision;
   private final RobotState robotState;
   private final XboxController driverController;
-  private final GyroSubsystem gyroSubsystem; // ADD THIS
+  private final QuestNavSubsystem questNavSubsystem; // CHANGED: Use QuestNav directly
   
   // Target
   private final Pose2d targetPose;
@@ -100,7 +101,7 @@ public class VisionGuidedStraightApproach extends Command {
       RobotState robotState,
       XboxController driverController,
       DriveSubsystem driveSubsystem,
-      GyroSubsystem gyroSubsystem) { // ADD THIS PARAMETER
+      QuestNavSubsystem questNavSubsystem) { // CHANGED: Accept QuestNavSubsystem instead
     
     this.targetPose = target;
     this.poseEstimator = poseEstimator;
@@ -108,7 +109,7 @@ public class VisionGuidedStraightApproach extends Command {
     this.robotState = robotState;
     this.driverController = driverController;
     this.driveSubsystem = driveSubsystem;
-    this.gyroSubsystem = gyroSubsystem; // ADD THIS
+    this.questNavSubsystem = questNavSubsystem; // CHANGED
     
     // PID controllers - AGGRESSIVE for fast precision approach
     // With P=2.5 and 1m error, we get 2.5 m/s command (clamped to 1.2 m/s max)
@@ -310,8 +311,8 @@ public class VisionGuidedStraightApproach extends Command {
     boolean hasActiveVision = (currentVisionQuality == VisionQuality.MULTI_TAG) ||
                               (currentVisionQuality == VisionQuality.SINGLE_TAG);
     
-    boolean hasQuestNav = gyroSubsystem.isUsingQuestNav() && 
-                          gyroSubsystem.getQuestNavPose2d() != null;
+    boolean hasQuestNav = questNavSubsystem.isCalibrated() && 
+                          questNavSubsystem.getRobotPose().isPresent(); // FIXED
     
     boolean hasPoseConfirmation = hasActiveVision || hasQuestNav;
     

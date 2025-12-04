@@ -19,6 +19,7 @@ import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.GyroSubsystem;
+import frc.robot.subsystems.QuestNavSubsystem; // ADD THIS
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -79,7 +80,7 @@ public class SmartDriveToPosition {
       RobotState robotState,
       XboxController driverController,
       DriveSubsystem driveSubsystem,
-      GyroSubsystem gyroSubsystem) { // ADD THIS PARAMETER
+      QuestNavSubsystem questNavSubsystem) { // CHANGED: Accept QuestNavSubsystem instead of GyroSubsystem
     
     Pose2d start = poseEstimator.getEstimatedPose();
     double distanceToTarget = start.getTranslation().getDistance(target.getTranslation());
@@ -137,7 +138,7 @@ public class SmartDriveToPosition {
               robotState,
               driverController,
               driveSubsystem,
-              gyroSubsystem) // ADD THIS
+              questNavSubsystem) // CHANGED: Pass questNavSubsystem instead of gyroSubsystem
       ).finallyDo((interrupted) -> {
         robotState.setNavigationPhase(RobotState.NavigationPhase.NONE);
         SmartDashboard.putString("SmartDrive/Status", interrupted ? "Interrupted" : "Complete");
@@ -206,7 +207,7 @@ public class SmartDriveToPosition {
             robotState,
             driverController, 
             driveSubsystem,
-            gyroSubsystem) // ADD THIS
+            questNavSubsystem) // CHANGED: Pass questNavSubsystem instead of gyroSubsystem
             .withTimeout(3.0) // Safety timeout for phase 2
     ).finallyDo((interrupted) -> {
       robotState.setNavigationPhase(RobotState.NavigationPhase.NONE);
