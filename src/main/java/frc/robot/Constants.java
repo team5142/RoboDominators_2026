@@ -288,14 +288,14 @@ public final class Constants {
   public static final class Auto {
     // PathPlanner PID constants for holonomic drive controller
     
-    // CHANGED: Increase P-gain for tighter path following
-    public static final double TRANSLATION_KP = 2.0;  // INCREASED from 1.0 - tighter position control
+    // CHANGED: Further reduce gains - 1.5 was still too aggressive
+    public static final double TRANSLATION_KP = 0.8;  // REDUCED from 1.5 - much gentler
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.1;  // ADDED damping to prevent overshoot
+    public static final double TRANSLATION_KD = 0.3;  // INCREASED from 0.2 - more damping
     
-    public static final double ROTATION_KP = 2.0;     // INCREASED from 1.0 - tighter heading control
+    public static final double ROTATION_KP = 0.8;     // REDUCED from 1.5
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.1;     // ADDED damping for smooth rotation
+    public static final double ROTATION_KD = 0.3;     // INCREASED from 0.2
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
@@ -315,32 +315,33 @@ public final class Constants {
   public static final class StartingPositions {
     // Blue alliance starting positions (all in meters, degrees)
     
-    /** Blue Reef Back - Tag 17 - Centered, against reef */
-    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.657, 2.65, Rotation2d.fromDegrees(60.0));
+    /** Blue Reef Back - Tag 17 - Centered, 1" from reef wall */
+    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(
+        3.84, 3.18, Rotation2d.fromDegrees(60.0));  // CORRECTED from 60° (was 180° wrong!)
     
-    /** Blue Reef Right - Tag 18 */
-    public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(3.897, 1.799, Rotation2d.fromDegrees(0.0));
-    
-    /** Blue Reef Tag 19 - Bottom left (disabled in UI) */
-    public static final Pose2d BLUE_REEF_TAG_19 = new Pose2d(3.2, 2.0, Rotation2d.fromDegrees(-60.0)); // TODO: Measure
-    
-    /** Blue Reef Tag 20 - Top left (disabled in UI) */
-    public static final Pose2d BLUE_REEF_TAG_20 = new Pose2d(3.2, 3.9, Rotation2d.fromDegrees(180.0)); // TODO: Measure
+    /** Blue Reef Right - Tag 18 - 1" from wall, 30mm Y buffer */
+    public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(
+        3.318, 3.996, Rotation2d.fromDegrees(0.0));  // CORRECTED: Facing 0° (downfield), not 180°
     
     /** Blue Reef Tag 21 - Top of reef */
-    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(3.5, 2.5, Rotation2d.fromDegrees(0.0)); // TODO: Measure actual position
+    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(5.661, 4.026, Rotation2d.fromDegrees(180.0));
     
     /** Blue Reef Tag 22 - Top right of reef */
-    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(3.5, 3.5, Rotation2d.fromDegrees(0.0)); // TODO: Measure actual position
+    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.075, 2.896, Rotation2d.fromDegrees(120.0));
     
     /** Blue Processor Station - Tag 16 */
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.75, 0.8, Rotation2d.fromDegrees(-90.0)); // TODO: Measure actual position
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.87, 0.31, Rotation2d.fromDegrees(-90.0));
     
     /** Blue Coral Station - Tag 12 (same as former INTAKE_POS) */
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.59, 1.24, Rotation2d.fromDegrees(-120));
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.0, .07, Rotation2d.fromDegrees(-130.0));
+
+    /** Auto Start Position Blue far right */
+    public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.78, .43, Rotation2d.fromDegrees(180.0));
+
+    
     
     // Red alliance positions (mirrored from blue)
-    // PathPlanner will handle flipping automatically if needed
-  }
+    // PathPlanner will handle flipping automatically if needed  }
 
+  }
 }
