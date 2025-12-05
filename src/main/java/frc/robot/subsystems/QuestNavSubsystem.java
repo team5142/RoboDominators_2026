@@ -26,6 +26,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   private final QuestNav questNav;
   private final Transform3d robotToQuest; // Robot center to Quest camera transform
   
+  // isCalibrated is no longer used to gate getRobotPose()
   private boolean isCalibrated = false;
   private int totalFramesProcessed = 0;
   
@@ -121,7 +122,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   /**
-   * Initialize QuestNav to a specific robot pose (manual transform)
+   * Initialize QuestNav to a specific robot pose (optional override).
    */
   public void initialize(Pose2d initialPose) {
     try {
@@ -148,7 +149,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   /**
-   * Calibrate from vision (manual transform)
+   * Calibrate from vision (optional override).
    */
   public void calibrateFromVision(Pose2d visionPose, double confidence) {
     if (confidence < 0.8) {
@@ -178,10 +179,6 @@ public class QuestNavSubsystem extends SubsystemBase {
    * Get robot pose (manual inverse transform)
    */
   public java.util.Optional<Pose2d> getRobotPose() {
-    if (!isCalibrated) {
-      return java.util.Optional.empty();
-    }
-    
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       if (frames == null || frames.length == 0) {
@@ -214,10 +211,6 @@ public class QuestNavSubsystem extends SubsystemBase {
    * Get robot pose 3D (manual inverse transform)
    */
   public java.util.Optional<Pose3d> getRobotPose3d() {
-    if (!isCalibrated) {
-      return java.util.Optional.empty();
-    }
-    
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       if (frames == null || frames.length == 0) {

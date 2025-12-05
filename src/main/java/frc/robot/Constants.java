@@ -345,6 +345,8 @@ public final class Constants {
 
     /** PID tuning Position */
     public static final Pose2d PID_TUNING_POSITION  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(0));
+    public static final Pose2d PID_TUNING_POSITIONLeft  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(-90));
+    public static final Pose2d PID_TUNING_POSITIONRight  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(90));
     
     
     // Red alliance positions (mirrored from blue)

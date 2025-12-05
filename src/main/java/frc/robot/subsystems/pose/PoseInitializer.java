@@ -4,6 +4,8 @@ import static frc.robot.Constants.StartingPositions.*;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -35,6 +37,14 @@ public class PoseInitializer {
   private InitializationState initState = InitializationState.WAITING_FOR_VISION;
   private SendableChooser<Command> autoChooser;
   private boolean initializedFromAuto = false;
+
+  // NEW: Only warn once when no pose is available
+  private boolean noPoseWarningShown = false;
+
+  // Simple field bounds (match SmartDrive)
+  private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
+  private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
+  private static final double FIELD_MARGIN_METERS = 0.3;
   
   public PoseInitializer(QuestNavSubsystem questNavSubsystem) {
     this.questNavSubsystem = questNavSubsystem;
@@ -80,7 +90,7 @@ public class PoseInitializer {
       
       Pose2d autoStartPose = getExpectedAutoStartPose();
       
-      if (autoStartPose != null) {
+      if (autoStartPose != null && isWithinField(autoStartPose.getTranslation())) {
         initState = InitializationState.VISION_INITIALIZED;
         initializedFromAuto = true;
         
@@ -101,7 +111,7 @@ public class PoseInitializer {
         (DriverStation.isDisabled() && !DriverStation.isFMSAttached())) {
       
       Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
-      if (questNavPose != null) {
+      if (questNavPose != null && isWithinField(questNavPose.getTranslation())) {
         initState = InitializationState.VISION_INITIALIZED;
         
         System.out.println("=== INITIALIZED FROM QUESTNAV (TELEOP START) ===");
@@ -117,7 +127,13 @@ public class PoseInitializer {
     
     // FAILED: No pose source available
     SmartDashboard.putString("Pose/InitMethod", "BLOCKED - MANUAL RESET REQUIRED (QuestNav-only mode)");
-    DriverStation.reportError("NO POSE - Press START to set position (Vision disabled)", false);
+    
+    // NEW: Only report this error once instead of every loop
+    if (!noPoseWarningShown) {
+      //DriverStation.reportError("NO POSE - Press START to set position (Vision disabled)", false);
+      Logger.recordOutput("PoseEstimator/NoPoseWarningShown", true);
+      noPoseWarningShown = true;
+    }
     
     return null;
   }
@@ -168,5 +184,13 @@ public class PoseInitializer {
   
   public double getWaitTime() {
     return initState == InitializationState.WAITING_FOR_VISION ? visionWaitTimer.get() : 0.0;
+  }
+
+  // Local field-bounds helper
+  private boolean isWithinField(Translation2d point) {
+    return point.getX() > FIELD_MARGIN_METERS &&
+           point.getX() < FIELD_LENGTH_METERS - FIELD_MARGIN_METERS &&
+           point.getY() > FIELD_MARGIN_METERS &&
+           point.getY() < FIELD_WIDTH_METERS - FIELD_MARGIN_METERS;
   }
 }

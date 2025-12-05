@@ -44,11 +44,11 @@ public class PoseValidator {
     Pose2d expectedPose = getExpectedAutoStartPose();
     
     if (expectedPose == null) {
-      System.out.println("========== POSE VALIDATION (No Auto) ==========");
+      /* System.out.println("========== POSE VALIDATION (No Auto) ==========");
       System.out.println("Current pose: " + formatPose(currentPose));
       System.out.println("Auto: NONE SELECTED");
       System.out.println("Ready for manual placement");
-      System.out.println("==============================================");
+      System.out.println("=============================================="); */
       
       SmartDashboard.putString("Pose/Validation", "No auto selected");
       SmartDashboard.putBoolean("Pose/AutoAligned", false);
