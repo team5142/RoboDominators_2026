@@ -3,32 +3,16 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 3.83,
-        "y": 2.89
+        "x": 6.0328125,
+        "y": 0.9845394736842104
       },
       "prevControl": null,
       "nextControl": {
-        "x": 3.916036184210526,
-        "y": 1.494490131578948
+        "x": 6.495268694427984,
+        "y": 0.6100498313843032
       },
       "isLocked": false,
-      "linkedName": "Reef 17"
-    },
-    {
-      "anchor": {
-        "x": 5.590213815789473,
-        "y": 0.8017269736842104
-      },
-      "prevControl": {
-        "x": 4.310526315789473,
-        "y": 1.1096217105263158
-      },
-      "nextControl": {
-        "x": 6.020634018793061,
-        "y": 0.6981672255931215
-      },
-      "isLocked": false,
-      "linkedName": null
+      "linkedName": "StageAutoRight"
     },
     {
       "anchor": {
@@ -36,25 +20,25 @@
         "y": 0.45
       },
       "prevControl": {
-        "x": 6.177138157894737,
-        "y": 0.6285361842105259
+        "x": 6.215610486712759,
+        "y": 0.45
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "SPFarLeft"
+      "linkedName": "PreciseAutoRight"
     }
   ],
   "rotationTargets": [
     {
-      "waypointRelativePos": 1,
+      "waypointRelativePos": 0.5,
       "rotationDegrees": 179.45948981286935
     }
   ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 1.5989304812834217,
-      "maxWaypointRelativePos": 2.0,
+      "minWaypointRelativePos": 0.8,
+      "maxWaypointRelativePos": 1.0,
       "constraints": {
         "maxVelocity": 0.4,
         "maxAcceleration": 0.4,
@@ -83,7 +67,7 @@
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 59.99999999999999
+    "rotation": 180.0
   },
   "useDefaultConstraints": true
 }

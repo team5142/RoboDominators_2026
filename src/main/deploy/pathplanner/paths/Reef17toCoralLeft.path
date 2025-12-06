@@ -3,32 +3,16 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 3.83,
-        "y": 2.89
+        "x": 3.8527683824435592,
+        "y": 2.9376880463094075
       },
       "prevControl": null,
       "nextControl": {
-        "x": 3.1751644736842106,
-        "y": 2.244983552631579
+        "x": 3.19793285612777,
+        "y": 2.2926715989409865
       },
       "isLocked": false,
       "linkedName": "Reef 17"
-    },
-    {
-      "anchor": {
-        "x": 2.4824013157894735,
-        "y": 1.6388157894736843
-      },
-      "prevControl": {
-        "x": 3.0789473684210527,
-        "y": 2.1583881578947364
-      },
-      "nextControl": {
-        "x": 2.1485669382518857,
-        "y": 1.348056815489334
-      },
-      "isLocked": false,
-      "linkedName": null
     },
     {
       "anchor": {
@@ -46,15 +30,15 @@
   ],
   "rotationTargets": [
     {
-      "waypointRelativePos": 1,
+      "waypointRelativePos": 0.5,
       "rotationDegrees": -130.0
     }
   ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 1.8,
-      "maxWaypointRelativePos": 2.0,
+      "minWaypointRelativePos": 0.9,
+      "maxWaypointRelativePos": 1.0,
       "constraints": {
         "maxVelocity": 0.5,
         "maxAcceleration": 0.5,

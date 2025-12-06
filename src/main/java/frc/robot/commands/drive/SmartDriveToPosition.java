@@ -4,7 +4,6 @@ import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
 import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -21,63 +20,39 @@ import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import org.littletonrobotics.junction.Logger;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-
 /**
- * Smart navigation to a target pose with safety checks and logging.
+ * Smart navigation to a target pose with optional precision path.
+ * 
+ * TWO-PHASE NAVIGATION:
+ * - Phase 1: Pathfind to staging pose (dynamic obstacle avoidance)
+ * - Phase 2: Follow pre-recorded GUI path for precision (if provided)
+ * 
+ * If precisionPathFile is null, only Phase 1 runs (direct pathfind to target).
  */
 public class SmartDriveToPosition {
   
-  // Speed multipliers, field bounds, etc.
-  private static final double IDEAL_VISION_DISTANCE_METERS = .75; // unused for now
-  private static final double FAST_SPEED_MULT = 0.40;
   private static final double PRECISION_SPEED_MULT = 0.4;
   private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
   private static final double FIELD_MARGIN_METERS = 0.3;
   private static final double MAX_PATH_DISTANCE_METERS = 10.0;
 
-  // Optional precision paths: targetPose -> (stagingPose, precisionPathName)
-  private static final Map<Pose2d, PrecisionPathConfig> PRECISION_PATHS = new HashMap<>();
-
-  // Simple container for precision config
-  private static class PrecisionPathConfig {
-    final Pose2d stagingPose;
-    final String pathFileName;
-    PrecisionPathConfig(Pose2d stagingPose, String pathFileName) {
-      this.stagingPose = stagingPose;
-      this.pathFileName = pathFileName;
-    }
-  }
-
-  static {
-    // EXAMPLE stub; you will fill this in once you have created the path in the GUI.
-    // Suppose you create a path named "BlueReef17_Precision" that starts at a staging pose
-    // about 1.5m away from BLUE_REEF_TAG_17.
-    //
-    // Replace the Pose2d below with the staging pose reported by the GUI,
-    // and "BlueReef17_Precision" with your actual path file name.
-    //
-    // PRECISION_PATHS.put(
-    //     Constants.StartingPositions.BLUE_REEF_TAG_17,
-    //     new PrecisionPathConfig(
-    //         new Pose2d(/* stagingX */, /* stagingY */, /* stagingHeading */),
-    //         "BlueReef17_Precision"));
-
-    // Precision path for BLUE_REEF_TAG_17:
-    //   Path file: "Stage17toPrecise17"
-    //   Staging pose: (3.359, 2.077, 60°)
-    PRECISION_PATHS.put(
-        Constants.StartingPositions.BLUE_REEF_TAG_17,
-        new PrecisionPathConfig(
-            new Pose2d(3.359, 2.077, Rotation2d.fromDegrees(60.0)),
-            "Stage17toPrecise17"));
-  }
-
+  /**
+   * Create a smart navigation command
+   * 
+   * @param stagingPose Target pose for Phase 1 pathfinding (also used as final target if no precision path)
+   * @param precisionPathFile Optional PathPlanner .path file for Phase 2 precision approach (null = skip Phase 2)
+   * @param poseEstimator Pose estimator subsystem
+   * @param tagVision Tag vision subsystem
+   * @param robotState Robot state
+   * @param driverController Driver controller
+   * @param driveSubsystem Drive subsystem
+   * @param questNavSubsystem QuestNav subsystem
+   * @return Command that navigates to the target
+   */
   public static Command create(
-      Pose2d target,
+      Pose2d stagingPose,
+      String precisionPathFile,
       PoseEstimatorSubsystem poseEstimator,
       TagVisionSubsystem tagVision,
       RobotState robotState,
@@ -86,7 +61,7 @@ public class SmartDriveToPosition {
       QuestNavSubsystem questNavSubsystem) {
     
     Pose2d start = poseEstimator.getEstimatedPose();
-    double distanceToTarget = start.getTranslation().getDistance(target.getTranslation());
+    double distanceToTarget = start.getTranslation().getDistance(stagingPose.getTranslation());
     
     // ===== PRE-FLIGHT CHECKS =====
     if (distanceToTarget > MAX_PATH_DISTANCE_METERS) {
@@ -104,7 +79,7 @@ public class SmartDriveToPosition {
       );
     }
     
-    if (!isWithinField(target.getTranslation())) {
+    if (!isWithinField(stagingPose.getTranslation())) {
       DriverStation.reportError("Target outside field boundaries", false);
       
       return new SequentialCommandGroup(
@@ -116,37 +91,38 @@ public class SmartDriveToPosition {
       );
     }
     
-    Logger.recordOutput("SmartDrive/TargetPose", target);
+    Logger.recordOutput("SmartDrive/StagingPose", stagingPose);
     Logger.recordOutput("SmartDrive/DistanceToTarget", distanceToTarget);
 
-    // ===== LOOK FOR A PRECISION PATH FOR THIS TARGET (optional) =====
-    PrecisionPathConfig precisionConfig = PRECISION_PATHS.get(target);
-    if (precisionConfig != null) {
+    // ===== TWO-PHASE PRECISION PATH (if precision file provided) =====
+    if (precisionPathFile != null && !precisionPathFile.isEmpty()) {
       Logger.recordOutput("SmartDrive/Precision/HasPrecisionPath", true);
-      Logger.recordOutput("SmartDrive/Precision/StagingPose", precisionConfig.stagingPose);
-      // Phase 1: pathfind to the staging pose
+      Logger.recordOutput("SmartDrive/Precision/PathFile", precisionPathFile);
+      
+      // Phase 1: Pathfind to staging pose
       Command toStaging = AutoBuilder.pathfindToPose(
-          precisionConfig.stagingPose,
+          stagingPose,
           createPrecisionConstraints())
           .withTimeout(8.0);
 
-      // Phase 2: follow the short GUI precision path
+      // Phase 2: Follow the pre-recorded precision path
       PathPlannerPath precisionPath;
       try {
-        precisionPath = PathPlannerPath.fromPathFile(precisionConfig.pathFileName);
+        precisionPath = PathPlannerPath.fromPathFile(precisionPathFile);
       } catch (Exception e) {
-        DriverStation.reportError("Failed to load precision path: " + precisionConfig.pathFileName, e.getStackTrace());
+        DriverStation.reportError("Failed to load precision path: " + precisionPathFile, e.getStackTrace());
         return Commands.none();
       }
+      
       Command followPrecision = AutoBuilder.followPath(precisionPath)
-          .withTimeout(5.0); // adjust if needed
+          .withTimeout(5.0);
 
       return new SequentialCommandGroup(
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
             SmartDashboard.putString("SmartDrive/Status", "Pathfind + PrecisionPath");
             SmartDashboard.putNumber("SmartDrive/Progress", 0.0);
-            Logger.recordOutput("SmartDrive/Mode", "PathfindThenPrecisionPath");
+            Logger.recordOutput("SmartDrive/Mode", "TwoPhase: " + precisionPathFile);
           }),
           toStaging,
           followPrecision
@@ -158,17 +134,17 @@ public class SmartDriveToPosition {
       });
     }
 
+    // ===== SINGLE-PHASE DIRECT PATH (no precision file) =====
     Logger.recordOutput("SmartDrive/Precision/HasPrecisionPath", false);
-
-    // ===== DEFAULT: SINGLE-PHASE DIRECT PATH TO TARGET =====
+    
     return new SequentialCommandGroup(
         Commands.runOnce(() -> {
           robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
-          SmartDashboard.putString("SmartDrive/Status", "Direct path to target");
+          SmartDashboard.putString("SmartDrive/Status", "Direct pathfind to target");
           SmartDashboard.putNumber("SmartDrive/Progress", 0.0);
-          Logger.recordOutput("SmartDrive/Mode", "SinglePhaseDirect");
+          Logger.recordOutput("SmartDrive/Mode", "SinglePhase");
         }),
-        AutoBuilder.pathfindToPose(target, createPrecisionConstraints())
+        AutoBuilder.pathfindToPose(stagingPose, createPrecisionConstraints())
             .withTimeout(8.0)
     ).finallyDo((interrupted) -> {
       robotState.setNavigationPhase(RobotState.NavigationPhase.NONE);
@@ -188,10 +164,10 @@ public class SmartDriveToPosition {
   
   private static PathConstraints createPrecisionConstraints() {
     return new PathConstraints(
-        Constants.Swerve.MAX_TRANSLATION_SPEED_MPS * PRECISION_SPEED_MULT, // 40% translational speed
-        3.5, // translational accel (m/s^2)
-        Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC * 0.8, // was 0.5 -> allow faster rotation
-        Math.PI // was PI/2 -> double angular accel (~180°/s^2)
+        Constants.Swerve.MAX_TRANSLATION_SPEED_MPS * PRECISION_SPEED_MULT,
+        3.5,
+        Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC * 0.8,
+        Math.PI
     );
   }
 }

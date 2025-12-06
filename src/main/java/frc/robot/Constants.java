@@ -319,37 +319,42 @@ public final class Constants {
 
   public static final class StartingPositions {
     // Blue alliance starting positions (all in meters, degrees)
+    // Updated to match PathPlanner GUI STAGING POSES (Phase 1 pathfind targets)
     
-    /** Blue Reef Back - Tag 17 - Centered, 1" from reef wall */
+    /** Blue Reef Back - Tag 17 - Staging pose from Stage17toPrecise17 */
     public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(
-        3.84, 3.18, Rotation2d.fromDegrees(60.0));  // CORRECTED from 60° (was 180° wrong!)
+        3.359, 2.077, Rotation2d.fromDegrees(60.0));
     
-    /** Blue Reef Right - Tag 18 - 1" from wall, 30mm Y buffer */
+    /** Blue Reef Right - Tag 18 - Staging pose from Stage18toPrecise18 */
     public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(
-        3.318, 3.996, Rotation2d.fromDegrees(0.0));  // CORRECTED: Facing 0° (downfield), not 180°
+        2.070, 4.027, Rotation2d.fromDegrees(0.0));
     
-    /** Blue Reef Tag 21 - Top of reef */
-    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(5.661, 4.026, Rotation2d.fromDegrees(180.0));
+    /** Blue Reef Tag 21 - Staging pose from Stage21toPrecise21 */
+    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(
+        6.889, 4.025, Rotation2d.fromDegrees(180.0));
     
-    /** Blue Reef Tag 22 - Top right of reef */
-    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.075, 2.896, Rotation2d.fromDegrees(120.0));
+    /** Blue Reef Tag 22 - Staging pose from Stage22toPrecise22 */
+    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(
+        5.552, 2.168, Rotation2d.fromDegrees(120.0));
     
-    /** Blue Processor Station - Tag 16 */
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.87, 0.31, Rotation2d.fromDegrees(-90.0));
+    /** Blue Processor Station - Tag 16 - Staging pose from Stage16toPrecise16 */
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(
+        5.990, 1.543, Rotation2d.fromDegrees(-90.0));
     
-    /** Blue Coral Station - Tag 12 (same as former INTAKE_POS) */
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.0, .07, Rotation2d.fromDegrees(-130.0));
+    /** Blue Coral Station - Tag 12 - Staging pose from Stage12toPrecise12 */
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(
+        2.300, 1.850, Rotation2d.fromDegrees(-130.0));
 
-    /** Auto Start Position Blue far right */
-    public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.78, .43, Rotation2d.fromDegrees(180.0));
+    /** Auto Start Position Blue far right - Staging pose from StageAutoRightToPreciseAutoRight */
+    public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(
+        6.033, 0.985, Rotation2d.fromDegrees(180.0));
 
     /** PID tuning Position */
-    public static final Pose2d PID_TUNING_POSITION  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(0));
-    public static final Pose2d PID_TUNING_POSITIONLeft  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(-90));
-    public static final Pose2d PID_TUNING_POSITIONRight  = new Pose2d(1.27, 2.23, Rotation2d.fromDegrees(90));
-    
+    public static final Pose2d PID_TUNING_POSITION = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d PID_TUNING_POSITIONLeft = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(-90.0));
+    public static final Pose2d PID_TUNING_POSITIONRight = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(90.0));
     
     // Red alliance positions (mirrored from blue)
-    // PathPlanner will handle flipping automatically if needed  }
-
-  }}
+    // PathPlanner will handle flipping automatically if needed
+  }
+}

@@ -170,10 +170,12 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kStart.value)
         .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID Tuning Position", gyro, questNav, driveSubsystem, poseEstimator));
 
+    // Y: Drive to BLUE_REEF_TAG_17 (with precision path)
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(
             SmartDriveToPosition.create(
-                BLUE_REEF_TAG_17,
+                BLUE_REEF_TAG_17,              // Staging pose
+                "Stage17toPrecise17",           // Precision path file
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -181,10 +183,12 @@ public class RobotContainer {
                 driveSubsystem,
                 questNav));
 
+    // B: Drive to BLUE_TAG_16 (with precision path)
     new JoystickButton(driverController, XboxController.Button.kB.value)
         .whileTrue(
             SmartDriveToPosition.create(
-                BLUE_TAG_16,
+                BLUE_TAG_16,                    // Staging pose
+                "Stage16toPrecise16",           // Precision path file
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -192,10 +196,12 @@ public class RobotContainer {
                 driveSubsystem,
                 questNav));
 
+    // A: Drive to BLUE_TAG_12 (with precision path)
     new JoystickButton(driverController, XboxController.Button.kA.value)
         .whileTrue(
             SmartDriveToPosition.create(
-                BLUE_TAG_12,
+                BLUE_TAG_12,                    // Staging pose
+                "Stage12toPrecise12",           // Precision path file
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -203,10 +209,12 @@ public class RobotContainer {
                 driveSubsystem,
                 questNav));
 
+    // X: Drive to BLUE_AUTO_START_POS_FAR_RIGHT (with precision path)
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .whileTrue(
             SmartDriveToPosition.create(
-                BLUE_AUTO_START_POS_FAR_RIGHT,
+                BLUE_AUTO_START_POS_FAR_RIGHT,         // Staging pose
+                "StageAutoRightToPreciseAutoRight",    // Precision path file
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -215,11 +223,21 @@ public class RobotContainer {
                 questNav));
 
     System.out.println("Button bindings configured");
-    System.out.println("Y: BLUE_REEF_TAG_17, B: BLUE_TAG_16, A: BLUE_TAG_12, X: BLUE_AUTO_START_POS_FAR_RIGHT");
+    System.out.println("Y: BLUE_REEF_TAG_17, B: BLUE_TAG_16, A: BLUE_TAG_12, X: BLUE_AUTO_START_POS_FAR_RIGHT (all 2-phase precision)");
   }
 
   private void configureTouchscreenInterface() {
     NetworkTable opTable = NetworkTableInstance.getDefault().getTable("OperatorInterface");
+    
+    // Map of position names to their precision path configs (stagingPose, pathFile)
+    Map<String, String> precisionPaths = Map.of(
+        "BLUE_REEF_TAG_17", "Stage17toPrecise17",
+        "BLUE_REEF_TAG_18", "Stage18toPrecise18",
+        "BLUE_REEF_TAG_21", "Stage21toPrecise21",
+        "BLUE_REEF_TAG_22", "Stage22toPrecise22",
+        "BLUE_TAG_16", "Stage16toPrecise16",
+        "BLUE_TAG_12", "Stage12toPrecise12"
+    );
     
     Map<String, Pose2d> positions = Map.of(
         "BLUE_REEF_TAG_17", BLUE_REEF_TAG_17,
@@ -230,6 +248,7 @@ public class RobotContainer {
         "BLUE_TAG_12", BLUE_TAG_12
     );
     
+    // Subscribe to drive-to-position commands - now using SmartDrive
     positions.forEach((positionName, pose) -> {
       BooleanSubscriber sub = opTable
           .getSubTable("DriveToPosition")
@@ -240,8 +259,21 @@ public class RobotContainer {
         while (true) {
           if (sub.get()) {
             String displayName = positionName.replace("_", " ").toLowerCase();
-            new DriveToSavedPosition(pose, displayName, poseEstimator).schedule();
-            System.out.println("[Touchscreen] Drive to: " + displayName);
+            String pathFile = precisionPaths.get(positionName);
+            
+            SmartDriveToPosition.create(
+                pose,
+                pathFile,
+                poseEstimator,
+                tagVisionSubsystem,
+                robotState,
+                driverController,
+                driveSubsystem,
+                questNav
+            ).schedule();
+            
+            System.out.println("[Touchscreen] SmartDrive to: " + displayName + 
+                             (pathFile != null ? " (2-phase precision)" : " (direct)"));
           }
           try {
             Thread.sleep(50);
