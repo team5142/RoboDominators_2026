@@ -17,6 +17,9 @@ import frc.robot.subsystems.pose.PoseInitializer;
 import frc.robot.subsystems.pose.QuestNavFusion;
 import frc.robot.subsystems.pose.PoseValidator;
 import org.littletonrobotics.junction.Logger;
+import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.numbers.N1;
+import edu.wpi.first.math.numbers.N3;
 
 /**
  * Pose Estimator Subsystem - Fuses odometry + QuestNav for accurate robot localization
@@ -76,9 +79,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         VecBuilder.fill(ODOMETRY_STD_DEVS[0], ODOMETRY_STD_DEVS[1], ODOMETRY_STD_DEVS[2]),
         VecBuilder.fill(LIMELIGHT_MULTI_TAG_STD_DEVS[0], LIMELIGHT_MULTI_TAG_STD_DEVS[1], LIMELIGHT_MULTI_TAG_STD_DEVS[2]));
 
-    // Create helper classes
-    this.initializer = new PoseInitializer(questNavSubsystem);
+    // Create helper classes - NOTE: questNavFusion needs to be created BEFORE initializer
     this.questNavFusion = new QuestNavFusion(questNavSubsystem, driveSubsystem, poseEstimator);
+    this.initializer = new PoseInitializer(questNavSubsystem, questNavFusion); // CHANGED: Pass questNavFusion
     this.validator = new PoseValidator();
     
     System.out.println("PoseEstimatorSubsystem initialized (refactored with helpers)");
@@ -152,7 +155,24 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     if (!initializer.isInitialized()) {
       Pose2d initPose = initializer.attemptInitialization();
       if (initPose != null) {
+        // NEW: Use VERY HIGH TRUST for initial QuestNav alignment
+        // This ensures the pose estimator starts with accurate position from QuestNav
+        Matrix<N3, N1> initialStdDevs = questNavFusion.getInitialAlignmentStdDevs();
+        
         resetPose(initPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+        
+        // CRITICAL: Immediately add a QuestNav measurement with VERY HIGH TRUST
+        // This locks in the initial position before auto starts
+        java.util.Optional<Pose2d> questPose = questNavSubsystem.getRobotPose();
+        if (questPose.isPresent()) {
+          poseEstimator.addVisionMeasurement(
+              questPose.get(),
+              edu.wpi.first.wpilibj.Timer.getFPGATimestamp(),
+              initialStdDevs); // VERY HIGH TRUST (1cm XY, 1 deg theta)
+          
+          Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentApplied", true);
+          System.out.println("QuestNav initial alignment applied with VERY HIGH TRUST");
+        }
       }
     }
     

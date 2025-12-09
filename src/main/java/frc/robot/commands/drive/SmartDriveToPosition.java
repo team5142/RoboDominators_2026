@@ -23,9 +23,10 @@ import org.littletonrobotics.junction.Logger;
 /**
  * Smart navigation to a target pose with optional precision path.
  * 
- * TWO-PHASE NAVIGATION:
+ * THREE-PHASE NAVIGATION:
  * - Phase 1: Pathfind to staging pose (dynamic obstacle avoidance)
  * - Phase 2: Follow pre-recorded GUI path for precision (if provided)
+ * - Phase 3: QuestNav-based final correction (< 3cm accuracy)
  * 
  * If precisionPathFile is null, only Phase 1 runs (direct pathfind to target).
  */
@@ -94,7 +95,7 @@ public class SmartDriveToPosition {
     Logger.recordOutput("SmartDrive/StagingPose", stagingPose);
     Logger.recordOutput("SmartDrive/DistanceToTarget", distanceToTarget);
 
-    // ===== TWO-PHASE PRECISION PATH (if precision file provided) =====
+    // ===== THREE-PHASE PRECISION PATH (if precision file provided) =====
     if (precisionPathFile != null && !precisionPathFile.isEmpty()) {
       Logger.recordOutput("SmartDrive/Precision/HasPrecisionPath", true);
       Logger.recordOutput("SmartDrive/Precision/PathFile", precisionPathFile);
@@ -117,15 +118,35 @@ public class SmartDriveToPosition {
       Command followPrecision = AutoBuilder.followPath(precisionPath)
           .withTimeout(5.0);
 
+      // Phase 3: QuestNav-based final correction
+      Command finalCorrection = PostPathCorrection.attemptCorrection(poseEstimator, questNavSubsystem);
+
       return new SequentialCommandGroup(
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
-            SmartDashboard.putString("SmartDrive/Status", "Pathfind + PrecisionPath");
+            SmartDashboard.putString("SmartDrive/Status", "Phase 1: Pathfinding");
             SmartDashboard.putNumber("SmartDrive/Progress", 0.0);
-            Logger.recordOutput("SmartDrive/Mode", "TwoPhase: " + precisionPathFile);
+            Logger.recordOutput("SmartDrive/Mode", "ThreePhase: " + precisionPathFile);
           }),
           toStaging,
-          followPrecision
+          Commands.runOnce(() -> {
+            robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
+            SmartDashboard.putString("SmartDrive/Status", "Phase 2: Precision path");
+            SmartDashboard.putNumber("SmartDrive/Progress", 0.5);
+          }),
+          followPrecision,
+          Commands.runOnce(() -> {
+            robotState.setNavigationPhase(RobotState.NavigationPhase.POST_CORRECTION);
+            SmartDashboard.putString("SmartDrive/Status", "Phase 3: QuestNav correction");
+            SmartDashboard.putNumber("SmartDrive/Progress", 0.9);
+          }),
+          finalCorrection,
+          Commands.runOnce(() -> {
+            robotState.setNavigationPhase(RobotState.NavigationPhase.LOCKED);
+            SmartDashboard.putString("SmartDrive/Status", "Complete - Locked");
+            SmartDashboard.putNumber("SmartDrive/Progress", 1.0);
+            driveSubsystem.lockWheels(); // X-pattern brake
+          })
       ).finallyDo((interrupted) -> {
         robotState.setNavigationPhase(RobotState.NavigationPhase.NONE);
         SmartDashboard.putString("SmartDrive/Status", interrupted ? "Interrupted" : "Complete");

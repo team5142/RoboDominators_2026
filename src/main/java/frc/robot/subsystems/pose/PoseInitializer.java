@@ -14,15 +14,6 @@ import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.QuestNavSubsystem;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * Handles pose estimation initialization logic
- * 
- * Responsibilities:
- * - Determine readiness to enable (do we have a pose?)
- * - Initialize from auto starting pose
- * - Initialize from QuestNav in teleop
- * - Provide user feedback on initialization status
- */
 public class PoseInitializer {
   
   public enum InitializationState {
@@ -32,22 +23,21 @@ public class PoseInitializer {
   }
   
   private final QuestNavSubsystem questNavSubsystem;
+  private final QuestNavFusion questNavFusion;
   private final Timer visionWaitTimer = new Timer();
   
   private InitializationState initState = InitializationState.WAITING_FOR_VISION;
   private SendableChooser<Command> autoChooser;
   private boolean initializedFromAuto = false;
-
-  // NEW: Only warn once when no pose is available
   private boolean noPoseWarningShown = false;
 
-  // Simple field bounds (match SmartDrive)
   private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
   private static final double FIELD_MARGIN_METERS = 0.3;
   
-  public PoseInitializer(QuestNavSubsystem questNavSubsystem) {
+  public PoseInitializer(QuestNavSubsystem questNavSubsystem, QuestNavFusion questNavFusion) {
     this.questNavSubsystem = questNavSubsystem;
+    this.questNavFusion = questNavFusion;
     visionWaitTimer.start();
   }
   
@@ -55,10 +45,6 @@ public class PoseInitializer {
     this.autoChooser = autoChooser;
   }
   
-  /**
-   * Update readiness indicators on SmartDashboard
-   * Called every cycle while disabled
-   */
   public void updateReadiness() {
     Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
     boolean hasQuestNavPose = (questNavPose != null);
@@ -79,12 +65,7 @@ public class PoseInitializer {
     Logger.recordOutput("PoseEstimator/Readiness/QuestNav", hasQuestNavPose);
   }
   
-  /**
-   * Attempt to initialize pose estimate
-   * Returns pose to initialize to, or null if can't initialize
-   */
   public Pose2d attemptInitialization() {
-    // AUTO MODE: Use starting pose from selected auto
     if (DriverStation.isAutonomousEnabled() || 
         (DriverStation.isDisabled() && DriverStation.isFMSAttached())) {
       
@@ -97,16 +78,16 @@ public class PoseInitializer {
         System.out.println("=== INITIALIZED FROM AUTO STARTING POSE ===");
         System.out.println("Auto: " + (autoChooser != null ? autoChooser.getSelected().getName() : "Unknown"));
         System.out.println("Starting pose: " + autoStartPose);
-        System.out.println("QuestNav will track from here");
+        System.out.println("QuestNav will track from here with INITIAL HIGH TRUST");
         
-        SmartDashboard.putString("Pose/InitMethod", "Auto Starting Pose (QuestNav-only)");
+        SmartDashboard.putString("Pose/InitMethod", "Auto Start + QuestNav Initial Alignment");
         Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
+        Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentUsed", true);
         
         return autoStartPose;
       }
     }
     
-    // TELEOP MODE: Use QuestNav current pose
     if (DriverStation.isTeleopEnabled() || 
         (DriverStation.isDisabled() && !DriverStation.isFMSAttached())) {
       
@@ -115,22 +96,20 @@ public class PoseInitializer {
         initState = InitializationState.VISION_INITIALIZED;
         
         System.out.println("=== INITIALIZED FROM QUESTNAV (TELEOP START) ===");
-        System.out.println("TESTING: Vision disabled - QuestNav-only mode");
+        System.out.println("TESTING: Vision disabled - QuestNav-only mode with INITIAL HIGH TRUST");
         System.out.println("Pose: " + questNavPose);
         
-        SmartDashboard.putString("Pose/InitMethod", "QuestNav ONLY (Vision disabled)");
+        SmartDashboard.putString("Pose/InitMethod", "QuestNav Initial Alignment (Vision disabled)");
         Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
+        Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentUsed", true);
         
         return questNavPose;
       }
     }
     
-    // FAILED: No pose source available
     SmartDashboard.putString("Pose/InitMethod", "BLOCKED - MANUAL RESET REQUIRED (QuestNav-only mode)");
     
-    // NEW: Only report this error once instead of every loop
     if (!noPoseWarningShown) {
-      //DriverStation.reportError("NO POSE - Press START to set position (Vision disabled)", false);
       Logger.recordOutput("PoseEstimator/NoPoseWarningShown", true);
       noPoseWarningShown = true;
     }
@@ -138,9 +117,6 @@ public class PoseInitializer {
     return null;
   }
   
-  /**
-   * Get expected starting pose for currently selected auto
-   */
   private Pose2d getExpectedAutoStartPose() {
     if (autoChooser == null) return null;
     
@@ -157,13 +133,25 @@ public class PoseInitializer {
         case "rightside1piece":
           return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
         default:
-          Logger.recordOutput("PoseValidation/UnknownAuto", autoName);
+          Logger.recordOutput("PoseInitializer/UnknownAuto", autoName);
           return null;
       }
     } catch (Exception e) {
-      Logger.recordOutput("PoseValidation/GetPoseError", e.getMessage());
+      Logger.recordOutput("PoseInitializer/GetPoseError", e.getMessage());
       return null;
     }
+  }
+  
+  private boolean isWithinField(Translation2d point) {
+    return point.getX() > FIELD_MARGIN_METERS &&
+           point.getX() < FIELD_LENGTH_METERS - FIELD_MARGIN_METERS &&
+           point.getY() > FIELD_MARGIN_METERS &&
+           point.getY() < FIELD_WIDTH_METERS - FIELD_MARGIN_METERS;
+  }
+  
+  public boolean isInitialized() {
+    return initState == InitializationState.VISION_INITIALIZED || 
+           initState == InitializationState.FALLBACK_USED;
   }
   
   public InitializationState getInitState() {
@@ -174,23 +162,7 @@ public class PoseInitializer {
     this.initState = state;
   }
   
-  public boolean isInitialized() {
-    return initState != InitializationState.WAITING_FOR_VISION;
-  }
-  
-  public boolean wasInitializedFromAuto() {
-    return initializedFromAuto;
-  }
-  
   public double getWaitTime() {
-    return initState == InitializationState.WAITING_FOR_VISION ? visionWaitTimer.get() : 0.0;
-  }
-
-  // Local field-bounds helper
-  private boolean isWithinField(Translation2d point) {
-    return point.getX() > FIELD_MARGIN_METERS &&
-           point.getX() < FIELD_LENGTH_METERS - FIELD_MARGIN_METERS &&
-           point.getY() > FIELD_MARGIN_METERS &&
-           point.getY() < FIELD_WIDTH_METERS - FIELD_MARGIN_METERS;
+    return visionWaitTimer.get();
   }
 }

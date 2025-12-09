@@ -99,15 +99,18 @@ public class RobotState {
    * Navigation phase - tracks SmartDriveToPosition progress (CURRENTLY ACTIVE)
    */
   public enum NavigationPhase {
-    NONE,              // Not navigating (driver control)
-    FAST_APPROACH,     // Phase 1 of SmartDrive - fast hook to vision point
-    PRECISION,         // Phase 2 of SmartDrive - slow precision approach
-    VISION_LOST,       // Vision was lost during precision phase - using odometry only
-    DRIVER_OVERRIDE,   // Driver took control during navigation
-    STUCK              // Robot detected as stuck (no movement for 2s)
+    NONE,              // Not navigating
+    FAST_APPROACH,     // Phase 1: Pathfinding to staging pose
+    PRECISION_PATH,    // Phase 2: Following predefined precision path
+    POST_CORRECTION,   // Phase 3: QuestNav-based final correction
+    PRECISION, 
+    VISION_LOST,
+    STUCK,
+    DRIVER_OVERRIDE,
+    LOCKED             // Navigation complete, wheels locked
   }
   
-  private NavigationPhase navPhase = NavigationPhase.NONE; //  Working now!
+  private NavigationPhase navigationPhase = NavigationPhase.NONE;
   
   // ===================================================================
   //  FUTURE MECHANISM STATES (Uncomment after 2026 game reveal)
@@ -305,12 +308,12 @@ public class RobotState {
   // ===================================================================
   
   public void setNavigationPhase(NavigationPhase navPhase) {
-    this.navPhase = navPhase;
-    log();
+    this.navigationPhase = navPhase;
+    Logger.recordOutput("RobotState/NavigationPhase", navPhase.toString());
   }
   
   public NavigationPhase getNavigationPhase() {
-    return navPhase;
+    return navigationPhase;
   }
   
   // ===================================================================
@@ -391,7 +394,7 @@ public class RobotState {
     Logger.recordOutput("RobotState/Mode", mode.toString());
     Logger.recordOutput("RobotState/AssistMode", assistMode.toString()); // Legacy
     Logger.recordOutput("RobotState/Intent", currentIntent.toString());
-    Logger.recordOutput("RobotState/NavigationPhase", navPhase.toString());
+    Logger.recordOutput("RobotState/NavigationPhase", navigationPhase.toString());
     Logger.recordOutput("RobotState/Enabled", enabled);
     
     //  FUTURE: Log mechanism states

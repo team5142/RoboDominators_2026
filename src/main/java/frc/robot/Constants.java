@@ -287,6 +287,36 @@ public final class Constants {
         0.08,
         0.07   // radians (~4 deg)
     };
+
+    // ===== LATENCY COMPENSATION =====
+    public static final double QUESTNAV_LATENCY_MS = 60.0; // Quest SLAM processing + network transmission
+    
+    // ===== VELOCITY GATING (STRICT - Option A) =====
+    public static final double QUESTNAV_MAX_LINEAR_SPEED_MPS = 0.05;   // 5cm/s (nearly stopped)
+    public static final double QUESTNAV_MAX_OMEGA_RAD_PER_SEC = 0.05;  // ~3 deg/s (very strict on rotation)
+    
+    // ===== TRUST LEVELS (Standard Deviations) =====
+    // Lower value = higher trust
+    
+    // When robot is completely stopped (used for post-path correction)
+    public static final double[] QUESTNAV_STD_DEVS_STOPPED = {
+        0.02,  // X: 2cm (high trust - QuestNav excels when stationary)
+        0.02,  // Y: 2cm (high trust)
+        0.03   // Theta: ~2 deg (high trust - QuestNav theta is excellent when stopped)
+    };
+    
+    // Initial alignment at auto start (very high trust - one-time)
+    public static final double[] QUESTNAV_STD_DEVS_INITIAL = {
+        0.01,  // X: 1cm (very high trust)
+        0.01,  // Y: 1cm (very high trust)
+        0.02   // Theta: ~1 deg (very high trust - QuestNav is best static theta source)
+    };
+    
+    // ===== POST-PATH CORRECTION =====
+    public static final double POST_PATH_CORRECTION_THRESHOLD_M = 0.03;   // 3cm - trigger correction
+    public static final double POST_PATH_CORRECTION_MAX_M = 0.15;         // 15cm - don't correct if too far off
+    public static final double POST_PATH_CORRECTION_TIMEOUT_S = 1.0;      // 1s max for correction move
+    public static final double POST_PATH_SETTLE_TIME_S = 0.5;             // Wait 0.5s after path for settling
   }
 
   public static final class Auto {
