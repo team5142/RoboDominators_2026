@@ -62,6 +62,11 @@ public class Robot extends LoggedRobot {
     
     Logger.recordOutput("Battery/Voltage", getBatteryVoltage());
     Logger.recordOutput("Battery/Current", RobotController.getInputCurrent());
+
+    // NEW: Update tunable PID values
+    if (robotContainer != null) {
+      robotContainer.periodic();
+    }
   }
 
   // Check battery and warn driver if low (only during disabled, prevents spam during match)

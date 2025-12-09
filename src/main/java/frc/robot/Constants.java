@@ -26,7 +26,7 @@ public final class Constants {
 
     // Speed limits from Tuner X
     public static final double MAX_TRANSLATION_SPEED_MPS = 5.21; // kSpeedAt12Volts
-    public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 2.0;
+    public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 4.0;
 
     public static final double NORMAL_SPEED_SCALE = 0.6;
     public static final double PRECISION_SPEED_SCALE = 0.3;
@@ -99,9 +99,9 @@ public final class Constants {
       // public static final double kD = 0.5;
       
       // AFTER (smoother, less twitchy):
-      public static final double kP = 50.0;  // REDUCED from 100.0 - less aggressive steering correction
+      public static final double kP = 100.0;
       public static final double kI = 0.0;
-      public static final double kD = 1.0;   // INCREASED from 0.5 - more damping to prevent oscillation
+      public static final double kD = 0.5;  
       public static final double kS = 0.1;
       public static final double kV = 2.66;
       public static final double kA = 0.0;
@@ -293,14 +293,14 @@ public final class Constants {
     // PathPlanner PID constants for holonomic drive controller
     
     // Slightly sharper translation, a bit less damping
-    public static final double TRANSLATION_KP = 1.6;  // was 1.2
+    public static final double TRANSLATION_KP = 8;  // was 1.2
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.17; // was 0.25
+    public static final double TRANSLATION_KD = 0.3; // was 0.25
     
     // Keep rotation where it is for now
-    public static final double ROTATION_KP = 1.0;
+    public static final double ROTATION_KP = 14.0;
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.35;
+    public static final double ROTATION_KD = 0.5;
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;

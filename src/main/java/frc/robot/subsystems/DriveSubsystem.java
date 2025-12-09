@@ -80,6 +80,44 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     Logger.recordOutput("Drive/FieldForwardDegrees", operatorForward.getDegrees());
     
     SmartDashboard.putNumber("Drive/FieldForward", operatorForward.getDegrees());
+    
+    // NEW: Log individual module states for PID tuning
+    SwerveModuleState[] moduleStates = getState().ModuleStates;
+    Logger.recordOutput("Drive/ModuleStates/FrontLeft/Angle", normalizeAngle(moduleStates[0].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleStates/FrontLeft/Speed", moduleStates[0].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleStates/FrontRight/Angle", normalizeAngle(moduleStates[1].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleStates/FrontRight/Speed", moduleStates[1].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleStates/BackLeft/Angle", normalizeAngle(moduleStates[2].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleStates/BackLeft/Speed", moduleStates[2].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleStates/BackRight/Angle", normalizeAngle(moduleStates[3].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleStates/BackRight/Speed", moduleStates[3].speedMetersPerSecond);
+    
+    // NEW: Calculate and log desired module states from current chassis speeds
+    // This shows what the modules SHOULD be doing based on commanded robot motion
+    SwerveModuleState[] desiredStates = getKinematics().toSwerveModuleStates(speeds);
+
+    // Optimize each state relative to current module angle (this is what CTRE does internally)
+    SwerveModuleState[] optimizedStates = new SwerveModuleState[4];
+    for (int i = 0; i < 4; i++) {
+      optimizedStates[i] = SwerveModuleState.optimize(desiredStates[i], moduleStates[i].angle);
+    }
+
+    // Log optimized setpoints (what PID is actually targeting)
+    Logger.recordOutput("Drive/ModuleSetpoints/FrontLeft/Angle", normalizeAngle(optimizedStates[0].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleSetpoints/FrontLeft/Speed", optimizedStates[0].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleSetpoints/FrontRight/Angle", normalizeAngle(optimizedStates[1].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleSetpoints/FrontRight/Speed", optimizedStates[1].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleSetpoints/BackLeft/Angle", normalizeAngle(optimizedStates[2].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleSetpoints/BackLeft/Speed", optimizedStates[2].speedMetersPerSecond);
+    Logger.recordOutput("Drive/ModuleSetpoints/BackRight/Angle", normalizeAngle(optimizedStates[3].angle.getDegrees()));
+    Logger.recordOutput("Drive/ModuleSetpoints/BackRight/Speed", optimizedStates[3].speedMetersPerSecond);
+    
+    // NEW: Log module positions (distance traveled by each wheel)
+    edu.wpi.first.math.kinematics.SwerveModulePosition[] modulePositions = getModulePositions();
+    Logger.recordOutput("Drive/ModulePositions/FrontLeft", modulePositions[0].distanceMeters);
+    Logger.recordOutput("Drive/ModulePositions/FrontRight", modulePositions[1].distanceMeters);
+    Logger.recordOutput("Drive/ModulePositions/BackLeft", modulePositions[2].distanceMeters);
+    Logger.recordOutput("Drive/ModulePositions/BackRight", modulePositions[3].distanceMeters);
   }
   
   /**
@@ -124,6 +162,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
    * Drive using robot-relative chassis speeds (for PathPlanner)
    */
   public void driveRobotRelative(ChassisSpeeds speeds) {
+    // Removed target state logging - now done in periodic()
     setControl(robotCentricDrive
         .withVelocityX(speeds.vxMetersPerSecond)
         .withVelocityY(speeds.vyMetersPerSecond)
@@ -340,5 +379,21 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     setControl(lockRequest);
     
     Logger.recordOutput("Drive/WheelsLocked", true);
+  }
+  
+  /**
+   * Normalize angle to [-180, +180] range for consistent graphing
+   */
+  private double normalizeAngle(double angleDegrees) {
+    // Reduce to [-180, +180] range
+    double normalized = angleDegrees % 360.0;
+    
+    if (normalized > 180.0) {
+      normalized -= 360.0;
+    } else if (normalized < -180.0) {
+      normalized += 360.0;
+    }
+    
+    return normalized;
   }
 }

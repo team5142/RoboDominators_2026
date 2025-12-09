@@ -36,6 +36,9 @@ public class QuestNavFusion {
   // Transform for manual application (older API)
   private final Transform3d robotToQuest;
   
+  // Speed threshold for accepting QuestNav
+  private static final double QUESTNAV_SPEED_THRESHOLD_MPS = 0.15; // Accept only when nearly stopped
+  
   public QuestNavFusion(
       QuestNavSubsystem questNavSubsystem,
       DriveSubsystem driveSubsystem,
@@ -57,6 +60,24 @@ public class QuestNavFusion {
    * Called every cycle from PoseEstimatorSubsystem.periodic()
    */
   public void processFrames() {
+    // Check current speed - only accept QuestNav when stopped/slow
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    double currentSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+    double rotationSpeed = Math.abs(speeds.omegaRadiansPerSecond);
+    
+    // Reject QuestNav if robot is moving or rotating quickly
+    if (currentSpeed > QUESTNAV_SPEED_THRESHOLD_MPS || rotationSpeed > 0.2) {
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
+          String.format("Moving too fast (speed=%.2f m/s, rotation=%.2f rad/s)", currentSpeed, rotationSpeed));
+      Logger.recordOutput("PoseEstimator/QuestNav/CurrentSpeed", currentSpeed);
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectedDueToSpeed", true);
+      return;
+    }
+    
+    // Robot is stopped - accept QuestNav
+    Logger.recordOutput("PoseEstimator/QuestNav/RejectedDueToSpeed", false);
+    
     PoseFrame[] frames = questNavSubsystem.getAllUnreadFrames();
     
     if (frames == null || frames.length == 0) {
@@ -64,19 +85,13 @@ public class QuestNavFusion {
       return;
     }
     
-    // CHANGED: Only process the most recent frame (discard older ones)
+    // Only process the most recent frame
     PoseFrame latestFrame = frames[frames.length - 1];
     
-    // Log how many frames we're skipping
     if (frames.length > 1) {
       Logger.recordOutput("PoseEstimator/QuestNavFramesSkipped", frames.length - 1);
     }
     
-    // Get current speed for adaptive trust
-    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
-    double currentSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
-    
-    // Process only the latest frame
     if (latestFrame == null) {
       Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Frame");
       Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 0);
@@ -85,7 +100,6 @@ public class QuestNavFusion {
       return;
     }
     
-    // Get camera pose and transform to robot pose
     Pose3d cameraPose3d = latestFrame.questPose3d();
     if (cameraPose3d == null) {
       Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Pose3d");
@@ -95,7 +109,6 @@ public class QuestNavFusion {
       return;
     }
     
-    // Apply inverse transform to get robot pose
     Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
     
     Pose2d questPose2d = new Pose2d(
@@ -105,7 +118,7 @@ public class QuestNavFusion {
     
     double timestamp = latestFrame.dataTimestamp();
     
-    // Innovation gating - reject outliers
+    // Innovation gating
     if (!gateQuestNavMeasurement(questPose2d, timestamp, currentSpeed)) {
       Logger.recordOutput("PoseEstimator/QuestNavFramesProcessed", 0);
       Logger.recordOutput("PoseEstimator/QuestNavFramesRejected", 1);
@@ -113,8 +126,8 @@ public class QuestNavFusion {
       return;
     }
     
-    // Get speed-adaptive standard deviations
-    Matrix<N3, N1> stdDevs = getSpeedAdaptiveStdDevs(currentSpeed);
+    // Get standard deviations (lower trust since robot is stopped - QuestNav is most reliable here)
+    Matrix<N3, N1> stdDevs = getStoppedQuestNavStdDevs();
     
     // Add to pose estimator
     poseEstimator.addVisionMeasurement(questPose2d, timestamp, stdDevs);
@@ -158,18 +171,13 @@ public class QuestNavFusion {
   }
   
   /**
-   * Get speed-adaptive standard deviations
-   * Higher speed = lower trust (QuestNav has more latency)
+   * Get standard deviations for stopped robot
+   * Higher trust (lower std dev) when robot is stopped since QuestNav is most accurate
    */
-  private Matrix<N3, N1> getSpeedAdaptiveStdDevs(double speedMPS) {
-    double baseTrustX = QUESTNAV_STD_DEVS[0];
-    double baseTrustY = QUESTNAV_STD_DEVS[1];
-    double baseTrustTheta = QUESTNAV_STD_DEVS[2];
-    
-    // Penalize trust at high speeds
-    double speedPenalty = 0.05 * speedMPS;
-    double xyTrust = baseTrustX + speedPenalty;
-    double thetaTrust = baseTrustTheta + (speedPenalty * 0.5);
+  private Matrix<N3, N1> getStoppedQuestNavStdDevs() {
+    // When stopped, trust QuestNav more (lower std dev = higher trust)
+    double xyTrust = QUESTNAV_STD_DEVS[0] * 0.5; // 50% of normal (higher trust)
+    double thetaTrust = QUESTNAV_STD_DEVS[2] * 0.5;
     
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/XY", xyTrust);
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/Theta", thetaTrust);
