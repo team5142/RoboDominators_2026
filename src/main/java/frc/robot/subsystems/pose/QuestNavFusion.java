@@ -69,22 +69,8 @@ public class QuestNavFusion {
    * to prevent accumulating stale measurements
    */
   public void processFrames() {
-    // STRICT VELOCITY GATING - only accept QuestNav when nearly stationary
-    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
-    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
-    double rotationSpeed = Math.abs(speeds.omegaRadiansPerSecond);
-    
-    // Reject if moving too fast (especially during rotation - latency kills accuracy)
-    if (linearSpeed > QUESTNAV_MAX_LINEAR_SPEED_MPS || rotationSpeed > QUESTNAV_MAX_OMEGA_RAD_PER_SEC) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
-          String.format("Moving (linear=%.3f m/s, omega=%.3f rad/s)", linearSpeed, rotationSpeed));
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectedDueToSpeed", true);
-      return;
-    }
-    
-    // Robot is nearly stopped - QuestNav is safe to use
-    Logger.recordOutput("PoseEstimator/QuestNav/RejectedDueToSpeed", false);
+    // REMOVED: Velocity gating - rely only on timestamp validation
+    // Timestamp validation (age < 0.5s) + Innovation gate (2m, 30°) are sufficient protection
     
     PoseFrame[] frames = questNavSubsystem.getAllUnreadFrames();
     
@@ -122,16 +108,43 @@ public class QuestNavFusion {
         robotPose3d.getY(),
         robotPose3d.getRotation().toRotation2d());
     
-    // LATENCY COMPENSATION - critical for preventing controller instability
+    // LATENCY COMPENSATION - QuestNav frames arrive nearly instantly
     double rawTimestamp = latestFrame.dataTimestamp();
-    double compensatedTimestamp = rawTimestamp - (QUESTNAV_LATENCY_MS / 1000.0);
+    
+    // FIX: dataTimestamp() is already FPGA time when frame arrived on RoboRIO
+    // ActualAge measurements show 2-5ms latency (network + processing)
+    // Don't subtract QUESTNAV_LATENCY_MS - it makes timestamps go into the future!
+    double captureTimestamp = rawTimestamp;  // Use raw timestamp directly
+    double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    
+    // Calculate actual age (for debugging)
+    double actualAge = currentTime - rawTimestamp;
     
     Logger.recordOutput("PoseEstimator/QuestNav/RawTimestamp", rawTimestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/CompensatedTimestamp", compensatedTimestamp);
+    Logger.recordOutput("PoseEstimator/QuestNav/CaptureTimestamp", captureTimestamp);
+    Logger.recordOutput("PoseEstimator/QuestNav/CurrentTime", currentTime);
+    Logger.recordOutput("PoseEstimator/QuestNav/ActualAge", actualAge);
     Logger.recordOutput("PoseEstimator/QuestNav/LatencyMS", QUESTNAV_LATENCY_MS);
     
+    // VALIDATION: Reject if timestamp is in the future (should never happen now)
+    if (captureTimestamp > currentTime) {
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
+          String.format("Future timestamp (capture=%.3f, current=%.3f, age=%.3f)", 
+              captureTimestamp, currentTime, actualAge));
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      return;
+    }
+    
+    // Reject if timestamp is too old (> 500ms)
+    if (actualAge > 0.5) {
+      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
+          String.format("Too old (age=%.3fs)", actualAge));
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+      return;
+    }
+    
     // Innovation gating - reject outliers
-    if (!gateQuestNavMeasurement(questPose2d, compensatedTimestamp)) {
+    if (!gateQuestNavMeasurement(questPose2d, captureTimestamp)) {
       Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
       return;
     }
@@ -139,13 +152,11 @@ public class QuestNavFusion {
     // Get trust level (stopped robot has high trust)
     Matrix<N3, N1> stdDevs = getStoppedQuestNavStdDevs();
     
-    // Add to pose estimator with latency-compensated timestamp
-    poseEstimator.addVisionMeasurement(questPose2d, compensatedTimestamp, stdDevs);
+    // Add to pose estimator with raw timestamp
+    poseEstimator.addVisionMeasurement(questPose2d, captureTimestamp, stdDevs);
     
     Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
     Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose2d);
-    Logger.recordOutput("PoseEstimator/QuestNav/LinearSpeed", linearSpeed);
-    Logger.recordOutput("PoseEstimator/QuestNav/RotationSpeed", rotationSpeed);
   }
   
   /**
@@ -158,8 +169,8 @@ public class QuestNavFusion {
     double rotError = Math.abs(measurement.getRotation().minus(predictedPose.getRotation()).getRadians());
     
     // Conservative gates (robot should be stopped, so error should be small)
-    double posGate = 0.5;  // 50cm max position error
-    double rotGate = Math.toRadians(15.0);  // 15 deg max rotation error
+    double posGate = 2;  // 50cm max position error
+    double rotGate = Math.toRadians(30.0);  // 15 deg max rotation error
     
     boolean passed = posError <= posGate && rotError <= rotGate;
     

@@ -99,9 +99,9 @@ public final class Constants {
       // public static final double kD = 0.5;
       
       // AFTER (smoother, less twitchy):
-      public static final double kP = 100.0;
+      public static final double kP = 60.0;
       public static final double kI = 0.0;
-      public static final double kD = 0.5;  
+      public static final double kD = 1.5;  
       public static final double kS = 0.1;
       public static final double kV = 2.66;
       public static final double kA = 0.0;
@@ -124,15 +124,17 @@ public final class Constants {
 
     /**
      * Creates a standard TalonFX configuration for drive motors
+     * NOW USES TUNABLE VALUES from AdvantageScope
      */
     public static TalonFXConfiguration createDriveMotorConfig() {
       TalonFXConfiguration config = new TalonFXConfiguration();
       
-      config.Slot0.kP = DriveGains.kP;
-      config.Slot0.kI = DriveGains.kI;
-      config.Slot0.kD = DriveGains.kD;
-      config.Slot0.kS = DriveGains.kS;
-      config.Slot0.kV = DriveGains.kV;
+      // Use tunable values instead of constants
+      config.Slot0.kP = TunableCTREGains.DRIVE_KP.get();
+      config.Slot0.kI = TunableCTREGains.DRIVE_KI.get();
+      config.Slot0.kD = TunableCTREGains.DRIVE_KD.get();
+      config.Slot0.kS = TunableCTREGains.DRIVE_KS.get();
+      config.Slot0.kV = TunableCTREGains.DRIVE_KV.get();
 
       config.ClosedLoopGeneral.ContinuousWrap = false;
       
@@ -141,21 +143,23 @@ public final class Constants {
 
     /**
      * Creates a standard TalonFX configuration for steer motors
+     * NOW USES TUNABLE VALUES from AdvantageScope
      */
     public static TalonFXConfiguration createSteerMotorConfig() {
       TalonFXConfiguration config = new TalonFXConfiguration();
       
-      config.Slot0.kP = SteerGains.kP;
-      config.Slot0.kI = SteerGains.kI;
-      config.Slot0.kD = SteerGains.kD;
-      config.Slot0.kS = SteerGains.kS;
-      config.Slot0.kV = SteerGains.kV;
-      config.Slot0.kA = SteerGains.kA;
+      // Use tunable values instead of constants
+      config.Slot0.kP = TunableCTREGains.STEER_KP.get();
+      config.Slot0.kI = TunableCTREGains.STEER_KI.get();
+      config.Slot0.kD = TunableCTREGains.STEER_KD.get();
+      config.Slot0.kS = TunableCTREGains.STEER_KS.get();
+      config.Slot0.kV = TunableCTREGains.STEER_KV.get();
+      config.Slot0.kA = TunableCTREGains.STEER_KA.get();
       config.Slot0.StaticFeedforwardSign = StaticFeedforwardSignValue.UseClosedLoopSign;
 
+      config.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.02;
       config.ClosedLoopGeneral.ContinuousWrap = true;
 
-      // Current limiting for steer motors
       config.CurrentLimits.StatorCurrentLimit = 60.0;
       config.CurrentLimits.StatorCurrentLimitEnable = true;
       
@@ -289,11 +293,14 @@ public final class Constants {
     };
 
     // ===== LATENCY COMPENSATION =====
-    public static final double QUESTNAV_LATENCY_MS = 60.0; // Quest SLAM processing + network transmission
+    // MEASURED: ActualAge averages 2-5ms (Quest frames arrive nearly instantly via USB/Ethernet)
+    // Quest SLAM processing happens BEFORE timestamp, so no additional compensation needed
+    public static final double QUESTNAV_LATENCY_MS = 5.0; // Was 60ms - FIXED based on ActualAge measurements
     
-    // ===== VELOCITY GATING (STRICT - Option A) =====
-    public static final double QUESTNAV_MAX_LINEAR_SPEED_MPS = 0.05;   // 5cm/s (nearly stopped)
-    public static final double QUESTNAV_MAX_OMEGA_RAD_PER_SEC = 0.05;  // ~3 deg/s (very strict on rotation)
+    // ===== VELOCITY GATING (PERMISSIVE - Rely on timestamp validation instead) =====
+    // Accept QuestNav during most motion, let timestamp validation reject stale data
+    public static final double QUESTNAV_MAX_LINEAR_SPEED_MPS = 3.0;    // Accept up to moderate speed (was 0.05)
+    public static final double QUESTNAV_MAX_OMEGA_RAD_PER_SEC = 2.0;   // Accept during most turns (was 0.05)
     
     // ===== TRUST LEVELS (Standard Deviations) =====
     // Lower value = higher trust
@@ -325,12 +332,12 @@ public final class Constants {
     // Slightly sharper translation, a bit less damping
     public static final double TRANSLATION_KP = 8;  // was 1.2
     public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.3; // was 0.25
+    public static final double TRANSLATION_KD = 0.15; // was 0.25
     
     // Keep rotation where it is for now
-    public static final double ROTATION_KP = 14.0;
+    public static final double ROTATION_KP = 9.0;
     public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.5;
+    public static final double ROTATION_KD = 0.2;
     
     // Path following constraints (should match Swerve max speeds)
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;

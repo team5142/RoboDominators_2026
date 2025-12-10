@@ -4,6 +4,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer; // ADD THIS
 import java.util.Optional;
 import java.util.List;
 
@@ -71,7 +72,14 @@ public class LimelightCamera implements VisionCamera {
         return Optional.empty();
       }
       
-      double timestamp = botpose[6]; // Latency in milliseconds (convert to seconds)
+      // FIXED: Latency compensation for timestamp
+      // botpose[6] is total latency (capture + processing + network) in MILLISECONDS
+      // We need to convert to FPGA timestamp by subtracting latency from current time
+      double latencyMs = botpose[6];  // Limelight provides total latency in ms
+      double latencySeconds = latencyMs / 1000.0;  // Convert to seconds
+      double currentTime = Timer.getFPGATimestamp();  // Current FPGA time
+      double captureTimestamp = currentTime - latencySeconds;  // When photo was actually taken
+      
       int tagCount = (int) table.getEntry("tid").getDouble(0) > 0 ? 1 : 0; // Limelight only reports 1 tag at a time
       double distance = Math.hypot(botpose[0], botpose[1]); // Rough distance estimate
       
@@ -79,9 +87,18 @@ public class LimelightCamera implements VisionCamera {
       int tagId = (int) table.getEntry("tid").getDouble(-1);
       List<Integer> tagIds = tagId > 0 ? java.util.List.of(tagId) : java.util.List.of();
 
+      // Debug logging for timestamp
+      org.littletonrobotics.junction.Logger.recordOutput(
+          "Vision/" + name + "/LatencyMs", latencyMs);
+      org.littletonrobotics.junction.Logger.recordOutput(
+          "Vision/" + name + "/CurrentTime", currentTime);
+      org.littletonrobotics.junction.Logger.recordOutput(
+          "Vision/" + name + "/CaptureTimestamp", captureTimestamp);
+
       connectionWarningShown = false; // Reset warning
       
-      return Optional.of(new VisionResult(pose, timestamp, tagCount, distance, tagIds));
+      // Return with CORRECTED timestamp (when photo was captured, not latency value)
+      return Optional.of(new VisionResult(pose, captureTimestamp, tagCount, distance, tagIds));
       
     } catch (Exception e) {
       // Limelight disconnected or NetworkTables error (network drop, camera reboot, etc.)

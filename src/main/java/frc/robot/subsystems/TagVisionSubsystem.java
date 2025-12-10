@@ -26,6 +26,13 @@ import org.littletonrobotics.junction.Logger;
 // AprilTag vision processing - provides current tag detection status to PoseEstimator
 // Exposes hasMultiTagDetection() and hasSingleTagDetection() for initialization checks
 public class TagVisionSubsystem extends SubsystemBase {
+  
+  // ===== FEATURE TOGGLE: LIMELIGHT VISION =====
+  // Set to false to disable Limelight (QuestNav-only mode)
+  // Set to true to re-enable Limelight fusion
+  private static final boolean LIMELIGHT_ENABLED = false; // CHANGED: Disabled for now
+  // ============================================
+  
   private final PoseEstimatorSubsystem poseEstimator;
   private final GyroSubsystem gyroSubsystem;
   private final AprilTagFieldLayout fieldLayout;
@@ -106,26 +113,59 @@ public class TagVisionSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // DISABLED: All vision processing disabled for QuestNav-only testing
-    // TODO: Re-enable after QuestNav baseline established
+    // EARLY RETURN: Limelight disabled via feature flag
+    if (!LIMELIGHT_ENABLED) {
+      Logger.recordOutput("TagVision/LimelightEnabled", false);
+      Logger.recordOutput("TagVision/PhotonVisionEnabled", false);
+      Logger.recordOutput("TagVision/DisabledViaFeatureFlag", true);
+      return;
+    }
     
-    hasRecentPose = false;
-    currentlyHasMultiTag = false;
-    currentlyHasSingleTag = false;
-    currentBestTagCount = 0;
-    currentBestDistance = Double.MAX_VALUE;
+    // LIMELIGHT ONLY - PhotonVision disabled for QuestNav-only testing
     
-    Logger.recordOutput("TagVision/AllVisionDisabled", true);
-    Logger.recordOutput("TagVision/HasAnyTarget", false);
-    Logger.recordOutput("TagVision/CurrentlyHasMultiTag", false);
-    Logger.recordOutput("TagVision/CurrentlyHasSingleTag", false);
+    // Process Limelight camera only
+    for (VisionCamera camera : cameras) {
+      // Skip PhotonVision cameras
+      if (!camera.getName().equals(LL_FRONT_NAME)) {
+        continue;
+      }
+      
+      Optional<VisionResult> result = camera.getLatestResult();
+      
+      if (result.isEmpty()) {
+        continue; // No tags visible
+      }
+      
+      VisionResult visionResult = result.get();
+      
+      // Add measurement to pose estimator
+      poseEstimator.addVisionMeasurement(
+          visionResult.estimatedPose,
+          visionResult.timestampSeconds,  // Now using latency-compensated timestamp!
+          visionResult.tagCount,
+          camera.getName());
+      
+      // Update state tracking
+      hasRecentPose = true;
+      if (visionResult.tagCount >= MIN_TAG_COUNT_FOR_MULTI) {
+        currentlyHasMultiTag = true;
+      } else {
+        currentlyHasSingleTag = true;
+      }
+      currentBestTagCount = Math.max(currentBestTagCount, visionResult.tagCount);
+      
+      // Logging
+      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/Pose", visionResult.estimatedPose);
+      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/TagCount", visionResult.tagCount);
+      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/Timestamp", visionResult.timestampSeconds);
+    }
     
-    // Skip all camera processing - QuestNav only!
-    return;
-    
-    /* COMMENTED OUT - Vision processing disabled
-    // ...existing vision processing code...
-    */
+    // Overall status
+    Logger.recordOutput("TagVision/LimelightEnabled", true);
+    Logger.recordOutput("TagVision/PhotonVisionEnabled", false);
+    Logger.recordOutput("TagVision/HasAnyTarget", hasRecentPose);
+    Logger.recordOutput("TagVision/CurrentlyHasMultiTag", currentlyHasMultiTag);
+    Logger.recordOutput("TagVision/CurrentlyHasSingleTag", currentlyHasSingleTag);
   }
 
   // NEW: Always return false - no vision available

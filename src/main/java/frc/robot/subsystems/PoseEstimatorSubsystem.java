@@ -20,6 +20,8 @@ import org.littletonrobotics.junction.Logger;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 
 /**
  * Pose Estimator Subsystem - Fuses odometry + QuestNav for accurate robot localization
@@ -101,11 +103,48 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   }
 
   public void addVisionMeasurement(Pose2d visionPose, double timestampSeconds, int tagCount, String cameraName) {
-    // Vision updates disabled for QuestNav-only testing
-    Logger.recordOutput("PoseEstimator/VisionUpdatesDisabled", true);
-    Logger.recordOutput("PoseEstimator/VisionMeasurementIgnored", visionPose);
-    Logger.recordOutput("PoseEstimator/VisionTagCountIgnored", tagCount);
-    Logger.recordOutput("PoseEstimator/VisionCameraIgnored", cameraName);
+    // LIMELIGHT ONLY - PhotonVision disabled for QuestNav-only testing
+    
+    // Reject PhotonVision measurements
+    if (!cameraName.equals(LL_FRONT_NAME)) {
+      Logger.recordOutput("PoseEstimator/PhotonVisionDisabled", true);
+      Logger.recordOutput("PoseEstimator/VisionMeasurementIgnored", visionPose);
+      Logger.recordOutput("PoseEstimator/VisionCameraIgnored", cameraName);
+      return;
+    }
+    
+    // Accept Limelight measurements with proper trust based on tag count
+    Matrix<N3, N1> stdDevs;
+    
+    if (tagCount >= MIN_TAG_COUNT_FOR_MULTI) {
+      // Multi-tag: High trust (Limelight factory calibrated)
+      stdDevs = VecBuilder.fill(
+          LIMELIGHT_MULTI_TAG_STD_DEVS[0],
+          LIMELIGHT_MULTI_TAG_STD_DEVS[1],
+          LIMELIGHT_MULTI_TAG_STD_DEVS[2]);
+      
+      Logger.recordOutput("PoseEstimator/VisionType", "Limelight_MultiTag");
+    } else {
+      // Single-tag: Lower trust
+      stdDevs = VecBuilder.fill(
+          LIMELIGHT_SINGLE_TAG_STD_DEVS[0],
+          LIMELIGHT_SINGLE_TAG_STD_DEVS[1],
+          LIMELIGHT_SINGLE_TAG_STD_DEVS[2]);
+      
+      Logger.recordOutput("PoseEstimator/VisionType", "Limelight_SingleTag");
+    }
+    
+    // Add vision measurement with appropriate trust
+    poseEstimator.addVisionMeasurement(visionPose, timestampSeconds, stdDevs);
+    
+    // Logging
+    Logger.recordOutput("PoseEstimator/LimelightEnabled", true);
+    Logger.recordOutput("PoseEstimator/PhotonVisionEnabled", false);
+    Logger.recordOutput("PoseEstimator/VisionMeasurement", visionPose);
+    Logger.recordOutput("PoseEstimator/VisionTagCount", tagCount);
+    Logger.recordOutput("PoseEstimator/VisionCamera", cameraName);
+    Logger.recordOutput("PoseEstimator/VisionStdDevXY", stdDevs.get(0, 0));
+    Logger.recordOutput("PoseEstimator/VisionStdDevTheta", stdDevs.get(2, 0));
   }
 
   public Pose2d getEstimatedPose() {
@@ -162,7 +201,6 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         resetPose(initPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
         
         // CRITICAL: Immediately add a QuestNav measurement with VERY HIGH TRUST
-        // This locks in the initial position before auto starts
         java.util.Optional<Pose2d> questPose = questNavSubsystem.getRobotPose();
         if (questPose.isPresent()) {
           poseEstimator.addVisionMeasurement(
@@ -173,6 +211,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentApplied", true);
           System.out.println("QuestNav initial alignment applied with VERY HIGH TRUST");
         }
+        
+        // NEW: SCENARIO-BASED OPERATOR PERSPECTIVE (THIS WAS MISSING!)
+        setOperatorPerspectiveBasedOnScenario(initPose, questPose.orElse(null));
       }
     }
     
@@ -248,5 +289,76 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         pose.getX(), 
         pose.getY(), 
         pose.getRotation().getDegrees());
+  }
+  
+  /**
+   * Set operator perspective based on initialization scenario
+   */
+  private void setOperatorPerspectiveBasedOnScenario(Pose2d initPose, Pose2d questNavPose) {
+    boolean isAutoOrFMS = DriverStation.isAutonomousEnabled() || DriverStation.isFMSAttached();
+    
+    if (isAutoOrFMS) {
+      // AUTO/FMS: Trust robot is facing downfield, let CTRE handle it
+      System.out.println("=== OPERATOR PERSPECTIVE (AUTO/FMS) ===");
+      System.out.println("Mode: Competition / Practice Auto");
+      System.out.println("Action: Using alliance-based perspective (CTRE default)");
+      
+      var alliance = DriverStation.getAlliance();
+      if (alliance.isPresent()) {
+        String allianceName = alliance.get() == Alliance.Red ? "Red" : "Blue";
+        double expectedPerspective = alliance.get() == Alliance.Red ? 180.0 : 0.0;
+        System.out.println("Alliance: " + allianceName);
+        System.out.println("Expected downfield: " + expectedPerspective + " deg");
+      }
+      System.out.println("======================================");
+      
+      Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Auto/FMS");
+      
+    } else {
+      // TELEOP PRACTICE: Use QuestNav heading to calculate perspective
+      System.out.println("=== OPERATOR PERSPECTIVE (TELEOP PRACTICE) ===");
+      System.out.println("Mode: Teleop practice (random field position)");
+      
+      if (questNavPose != null) {
+        setOperatorPerspectiveFromPose(questNavPose);
+        Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Teleop");
+      } else {
+        System.err.println("WARNING: QuestNav unavailable - using CTRE default");
+        Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Teleop (QuestNav unavailable)");
+      }
+    }
+  }
+  
+  /**
+   * Calculate operator perspective from QuestNav pose (Teleop scenario)
+   * Snaps to 5° increments to prevent micro-drift
+   */
+  private void setOperatorPerspectiveFromPose(Pose2d robotPose) {
+    var alliance = DriverStation.getAlliance();
+    Rotation2d downfieldDirection = alliance.isPresent() && alliance.get() == Alliance.Red
+        ? Rotation2d.fromDegrees(180)
+        : Rotation2d.fromDegrees(0);
+    
+    Rotation2d robotHeading = robotPose.getRotation();
+    Rotation2d operatorPerspective = downfieldDirection.minus(robotHeading);
+    
+    // SNAP to nearest 5° to prevent micro-drift
+    double perspectiveDeg = operatorPerspective.getDegrees();
+    double snappedDeg = Math.round(perspectiveDeg / 5.0) * 5.0;
+    Rotation2d snappedPerspective = Rotation2d.fromDegrees(snappedDeg);
+    
+    driveSubsystem.setOperatorPerspectiveForward(snappedPerspective);
+    
+    System.out.println("Robot heading (QuestNav): " + robotHeading.getDegrees() + " deg");
+    System.out.println("Downfield direction: " + downfieldDirection.getDegrees() + " deg");
+    System.out.println("Calculated perspective: " + perspectiveDeg + " deg");
+    System.out.println("Snapped perspective: " + snappedDeg + " deg (nearest 5 deg)");
+    System.out.println("============================================");
+    
+    Logger.recordOutput("PoseEstimator/RobotHeading", robotHeading.getDegrees());
+    Logger.recordOutput("PoseEstimator/DownfieldDirection", downfieldDirection.getDegrees());
+    Logger.recordOutput("PoseEstimator/OperatorPerspective/Calculated", perspectiveDeg);
+    Logger.recordOutput("PoseEstimator/OperatorPerspective/Snapped", snappedDeg);
+    Logger.recordOutput("PoseEstimator/OperatorPerspective/Applied", true);
   }
 }

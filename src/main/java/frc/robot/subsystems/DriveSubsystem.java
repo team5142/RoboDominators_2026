@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
+import frc.robot.TunableCTREGains; // ADD THIS
 import org.littletonrobotics.junction.Logger;
 
 import java.util.function.Supplier;
@@ -21,6 +22,9 @@ import java.util.function.Supplier;
 public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final GyroSubsystem gyro;
   private final RobotState robotState;
+  
+  // NEW: Track if we've manually set operator perspective from QuestNav pose
+  private boolean operatorPerspectiveSetFromPose = false;
   
   // Swerve requests for different drive modes
   private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
@@ -50,7 +54,11 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
 
   @Override
   public void periodic() {
-    super.periodic(); // CTRE's periodic (handles odometry, operator perspective, etc.)
+    // DON'T call super.periodic() if we've manually set operator perspective from QuestNav
+    // This prevents CTRE from overwriting our calculated perspective
+    if (!operatorPerspectiveSetFromPose) {
+      super.periodic(); // Let CTRE set alliance-based perspective
+    }
     
     // Get current chassis speeds
     ChassisSpeeds speeds = getRobotRelativeSpeeds();
@@ -118,6 +126,32 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     Logger.recordOutput("Drive/ModulePositions/FrontRight", modulePositions[1].distanceMeters);
     Logger.recordOutput("Drive/ModulePositions/BackLeft", modulePositions[2].distanceMeters);
     Logger.recordOutput("Drive/ModulePositions/BackRight", modulePositions[3].distanceMeters);
+
+    // NEW: Live-update CTRE gains when changed in AdvantageScope
+    if (TunableCTREGains.hasChanged()) {
+      System.out.println("CTRE gains updated from AdvantageScope:");
+      System.out.println("  Steer: kP=" + TunableCTREGains.STEER_KP.get() + 
+                         " kD=" + TunableCTREGains.STEER_KD.get());
+      System.out.println("  Drive: kP=" + TunableCTREGains.DRIVE_KP.get() + 
+                         " kV=" + TunableCTREGains.DRIVE_KV.get());
+      System.out.println("  → Apply new gains manually or restart robot to apply");
+      
+      // TODO: Optionally re-apply configs here
+      // This requires access to TalonFX objects which CommandSwerveDrivetrain hides
+      // For now, gains update on next robot reboot
+    }
+  }
+  
+  // NEW: Override setOperatorPerspectiveForward to track when we manually set it
+  @Override
+  public void setOperatorPerspectiveForward(Rotation2d fieldDirection) {
+    super.setOperatorPerspectiveForward(fieldDirection);
+    operatorPerspectiveSetFromPose = true; // Lock CTRE's auto-setting
+    
+    Logger.recordOutput("Drive/OperatorPerspectiveLocked", true);
+    Logger.recordOutput("Drive/OperatorPerspectiveForward", fieldDirection.getDegrees());
+    
+    System.out.println("[DriveSubsystem] Operator perspective manually set and locked to: " + fieldDirection.getDegrees() + " deg");
   }
   
   /**
