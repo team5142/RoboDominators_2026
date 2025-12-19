@@ -12,6 +12,8 @@ import edu.wpi.first.math.kinematics.SwerveModulePosition;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
+import edu.wpi.first.wpilibj.smartdashboard.Field2d;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.RobotState;
 import frc.robot.subsystems.pose.PoseInitializer;
 import frc.robot.subsystems.pose.QuestNavFusion;
@@ -60,6 +62,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private int logCounter = 0;
   private static final int LOG_SKIP_CYCLES = 4;
 
+  private final Field2d field = new Field2d();
+
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
       RobotState robotState,
@@ -85,6 +89,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     this.questNavFusion = new QuestNavFusion(questNavSubsystem, driveSubsystem, poseEstimator);
     this.initializer = new PoseInitializer(questNavSubsystem, questNavFusion); // CHANGED: Pass questNavFusion
     this.validator = new PoseValidator();
+    
+    // NEW: Publish field to SmartDashboard/Elastic
+    SmartDashboard.putData("Field", field);
     
     System.out.println("PoseEstimatorSubsystem initialized (refactored with helpers)");
   }
@@ -226,6 +233,26 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     Pose2d currentPose = getEstimatedPose();
     robotState.setRobotPose(currentPose);
     
+    // ===== FIELD VISUALIZATION =====
+    
+    // 1. Robot's estimated pose (fused odometry + QuestNav)
+    field.setRobotPose(currentPose);
+    
+    // 2. QuestNav pose (green robot - raw SLAM estimate)
+    questNavSubsystem.getRobotPose().ifPresent(questPose -> {
+      field.getObject("QuestNav").setPose(questPose);
+    });
+    
+    // 3. Target pose (if navigating)
+    if (robotState.getNavigationPhase() != RobotState.NavigationPhase.NONE) {
+      // You'd get this from your SmartDriveToPosition command
+      // For now, just show it exists
+      field.getObject("Target").setPoses(); // Clear when not navigating
+    }
+    
+    // 4. Trajectory preview (optional - shows PathPlanner path)
+    // This requires PathPlanner integration - we can add later
+    
     // Logging
     double poseChange = currentPose.getTranslation().getDistance(lastPose.getTranslation());
     lastPose = currentPose;
@@ -338,6 +365,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     Rotation2d downfieldDirection = alliance.isPresent() && alliance.get() == Alliance.Red
         ? Rotation2d.fromDegrees(180)
         : Rotation2d.fromDegrees(0);
+    
     
     Rotation2d robotHeading = robotPose.getRotation();
     Rotation2d operatorPerspective = downfieldDirection.minus(robotHeading);

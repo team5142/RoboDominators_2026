@@ -19,6 +19,8 @@ import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import org.littletonrobotics.junction.Logger;
+import edu.wpi.first.math.kinematics.SwerveModuleState;
+import com.ctre.phoenix6.swerve.SwerveRequest;
 
 /**
  * Smart navigation to a target pose with optional precision path.
@@ -37,6 +39,7 @@ public class SmartDriveToPosition {
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
   private static final double FIELD_MARGIN_METERS = 0.3;
   private static final double MAX_PATH_DISTANCE_METERS = 10.0;
+  private static final double QUESTNAV_SETTLE_TIME_SECONDS = 0.33; // NEW: Wait for QuestNav to update
 
   /**
    * Create a smart navigation command
@@ -129,6 +132,35 @@ public class SmartDriveToPosition {
             Logger.recordOutput("SmartDrive/Mode", "ThreePhase: " + precisionPathFile);
           }),
           toStaging,
+          
+          // FIXED: ALIGN WHEELS FORWARD BEFORE PAUSE
+          Commands.runOnce(() -> {
+            System.out.println("Aligning wheels forward for QuestNav settle...");
+            Logger.recordOutput("SmartDrive/Phase", "WheelAlignment");
+            
+            // Stop all motion - wheels will align to maintain current angle
+            driveSubsystem.driveRobotRelative(
+                new edu.wpi.first.math.kinematics.ChassisSpeeds(0, 0, 0));
+          }),
+          Commands.waitSeconds(0.1), // Brief wait for robot to stop (100ms)
+          
+          // PAUSE FOR QUESTNAV TO SETTLE
+          Commands.runOnce(() -> {
+            SmartDashboard.putString("SmartDrive/Status", "Pausing for QuestNav settle");
+            Logger.recordOutput("SmartDrive/Phase", "QuestNavSettle");
+            System.out.println("Pausing " + QUESTNAV_SETTLE_TIME_SECONDS + "s for QuestNav to update...");
+          }),
+          Commands.waitSeconds(QUESTNAV_SETTLE_TIME_SECONDS), // NEW: 0.33s pause
+          Commands.runOnce(() -> {
+            Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
+            if (questNavPose != null) {
+              System.out.println("QuestNav pose after settle: " + formatPose(questNavPose));
+              Logger.recordOutput("SmartDrive/QuestNavPoseAfterSettle", questNavPose);
+            } else {
+              System.err.println("WARNING: No QuestNav pose after settle!");
+            }
+          }),
+          
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
             SmartDashboard.putString("SmartDrive/Status", "Phase 2: Precision path");
@@ -190,5 +222,13 @@ public class SmartDriveToPosition {
         Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC * 0.8,
         Math.PI
     );
+  }
+  
+  // NEW: Format pose for logging
+  private static String formatPose(Pose2d pose) {
+    return String.format("(%.2fm, %.2fm, %.1f°)",
+        pose.getX(),
+        pose.getY(),
+        pose.getRotation().getDegrees());
   }
 }

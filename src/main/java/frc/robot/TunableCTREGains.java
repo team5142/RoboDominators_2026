@@ -12,7 +12,7 @@ import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
  */
 public class TunableCTREGains {
   
-  // ===== STEER MOTOR GAINS =====
+  // ===== STEER MOTOR GAINS (SysId-tuned) =====
   public static final LoggedNetworkNumber STEER_KP = 
       new LoggedNetworkNumber("CTRE/Steer/kP", Constants.Swerve.SteerGains.kP);
   public static final LoggedNetworkNumber STEER_KI = 
@@ -26,7 +26,7 @@ public class TunableCTREGains {
   public static final LoggedNetworkNumber STEER_KA = 
       new LoggedNetworkNumber("CTRE/Steer/kA", Constants.Swerve.SteerGains.kA);
   
-  // ===== DRIVE MOTOR GAINS =====
+  // ===== DRIVE MOTOR GAINS (SysId-tuned) =====
   public static final LoggedNetworkNumber DRIVE_KP = 
       new LoggedNetworkNumber("CTRE/Drive/kP", Constants.Swerve.DriveGains.kP);
   public static final LoggedNetworkNumber DRIVE_KI = 
@@ -37,6 +37,8 @@ public class TunableCTREGains {
       new LoggedNetworkNumber("CTRE/Drive/kS", Constants.Swerve.DriveGains.kS);
   public static final LoggedNetworkNumber DRIVE_KV = 
       new LoggedNetworkNumber("CTRE/Drive/kV", Constants.Swerve.DriveGains.kV);
+  public static final LoggedNetworkNumber DRIVE_KA =  // NEW: Added Drive kA
+      new LoggedNetworkNumber("CTRE/Drive/kA", Constants.Swerve.DriveGains.kA);
   
   // Track last values to detect changes
   private static double lastSteerKP = Constants.Swerve.SteerGains.kP;

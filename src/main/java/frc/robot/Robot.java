@@ -9,6 +9,9 @@ import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 import frc.robot.util.ConsoleLogger;
+import edu.wpi.first.cameraserver.CameraServer;
+import edu.wpi.first.cscore.HttpCamera;
+import edu.wpi.first.cscore.MjpegServer;
 
 // Main robot class - runs on boot, manages all modes (auto/teleop/test), 20ms loop
 public class Robot extends LoggedRobot {
@@ -20,6 +23,7 @@ public class Robot extends LoggedRobot {
   private boolean lowBatteryWarningShown = false; // Prevent spam
   private boolean criticalBatteryWarningShown = false;
   private boolean matchActive = false; // Track if we're in a match (auto/teleop/test)
+  private ElasticDashboard elasticDashboard; // NEW
 
   // Runs ONCE at robot boot - setup logging and create subsystems
   @Override
@@ -43,10 +47,43 @@ public class Robot extends LoggedRobot {
       robotContainer = new RobotContainer();
       ConsoleLogger.log("Robot container initialized successfully");
       ConsoleLogger.log("Robot container initialized successfully");
+      
+      // NEW: Setup Limelight video stream
+      setupLimelightStream();
+      
+      // NEW: Initialize Elastic Dashboard after RobotContainer
+      elasticDashboard = new ElasticDashboard(
+          robotContainer.robotState,          // You'll need to expose these
+          robotContainer.poseEstimator,       // as public getters in RobotContainer
+          robotContainer.questNav,
+          robotContainer.tagVisionSubsystem,
+          robotContainer.driveSubsystem);
     } catch (Exception e) {
       ConsoleLogger.logError("FATAL ERROR during robot initialization: " + e.getMessage());
       //e.printStackTrace();
       //DriverStation.reportError("Robot failed to initialize: " + e.getMessage(), true);
+    }
+  }
+
+  /**
+   * Setup Limelight camera stream for dashboards
+   */
+  private void setupLimelightStream() {
+    try {
+      // Create HTTP camera source from Limelight (using mDNS hostname)
+      HttpCamera limelightCamera = new HttpCamera(
+          "Limelight", 
+          "http://limelight-front.local:5800/stream.mjpg"); // CHANGED: Use mDNS hostname
+      
+      // Publish to CameraServer (makes it available to all dashboards)
+      MjpegServer server = CameraServer.addServer("Limelight Stream", 1181);
+      server.setSource(limelightCamera);
+      
+      ConsoleLogger.log("Limelight camera stream published on port 1181");
+      ConsoleLogger.log("  Stream URL: http://limelight-front.local:5800");
+      
+    } catch (Exception e) {
+      ConsoleLogger.logError("Failed to setup Limelight stream: " + e.getMessage());
     }
   }
 
@@ -67,6 +104,9 @@ public class Robot extends LoggedRobot {
     if (robotContainer != null) {
       robotContainer.periodic();
     }
+    
+    // NEW: Update Elastic Dashboard
+    elasticDashboard.update();
   }
 
   // Check battery and warn driver if low (only during disabled, prevents spam during match)

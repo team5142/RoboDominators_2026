@@ -49,30 +49,30 @@ public final class Constants {
     // Pigeon 2
     public static final int PIGEON_CAN_ID = 14;
 
-    // Module CAN IDs and offsets from Tuner X - UPDATED from latest TunerConstants
+    // Module CAN IDs and offsets from Tuner X - UPDATED POST-MECHANICAL WORK
     // Front Left
     public static final int FRONT_LEFT_DRIVE_ID = 2;
     public static final int FRONT_LEFT_STEER_ID = 1;
     public static final int FRONT_LEFT_CANCODER_ID = 9;
-    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.484130859375;  //  From Tuner X
+    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.48779296875;  // UPDATED (was 0.484130859375)
 
     // Front Right
     public static final int FRONT_RIGHT_DRIVE_ID = 4;
     public static final int FRONT_RIGHT_STEER_ID = 3;
     public static final int FRONT_RIGHT_CANCODER_ID = 10;
-    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.20703125;  //  UPDATED (was 0.21533203125)
+    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.209228515625;  // UPDATED (was 0.20703125)
 
     // Back Left
     public static final int BACK_LEFT_DRIVE_ID = 8;
     public static final int BACK_LEFT_STEER_ID = 7;
     public static final int BACK_LEFT_CANCODER_ID = 12;
-    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.30908203125;  //  From Tuner X
+    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.296142578125;  // UPDATED (was -0.30908203125)
 
     // Back Right
     public static final int BACK_RIGHT_DRIVE_ID = 6;
     public static final int BACK_RIGHT_STEER_ID = 5;
     public static final int BACK_RIGHT_CANCODER_ID = 11;
-    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.396240234375;  //  UPDATED (was 0.389892578125)
+    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.3994140625;  // UPDATED (was 0.396240234375)
 
     // Motor inversions from Tuner X
     public static final boolean FRONT_LEFT_DRIVE_INVERTED = false; // kInvertLeftSide
@@ -92,27 +92,25 @@ public final class Constants {
     // Slip current
     public static final Current SLIP_CURRENT = Amps.of(120.0);
 
-    // PID Gains from Tuner X
+    // PID Gains - UPDATED WITH SYSID CHARACTERIZATION
     public static final class SteerGains {
-      // BEFORE (twitchy at slow speeds):
-      // public static final double kP = 100.0;
-      // public static final double kD = 0.5;
-      
-      // AFTER (smoother, less twitchy):
-      public static final double kP = 60.0;
+      // SysId-tuned values from test project (post-mechanical maintenance)
+      public static final double kP = 48.633;   // Was 60.0
       public static final double kI = 0.0;
-      public static final double kD = 1.5;  
-      public static final double kS = 0.1;
-      public static final double kV = 2.66;
-      public static final double kA = 0.0;
+      public static final double kD = 3.2691;   // Was 1.5
+      public static final double kS = 0.0782;   // Was 0.1
+      public static final double kV = 2.6267;   // Was 2.66
+      public static final double kA = 0.11226;  // Was 0.0 (NEW!)
     }
 
     public static final class DriveGains {
-      public static final double kP = 0.1;
+      // SysId-tuned values from test project (post-mechanical maintenance)
+      public static final double kP = 0.16077;  // Was 0.1
       public static final double kI = 0.0;
       public static final double kD = 0.0;
-      public static final double kS = 0.0;
-      public static final double kV = 0.124;
+      public static final double kS = 0.17399;  // Was 0.0 (NEW!)
+      public static final double kV = 0.11894;  // Was 0.124
+      public static final double kA = 0.003069; // NEW constant (add to createDriveMotorConfig())
     }
 
     // Control output types
@@ -129,12 +127,12 @@ public final class Constants {
     public static TalonFXConfiguration createDriveMotorConfig() {
       TalonFXConfiguration config = new TalonFXConfiguration();
       
-      // Use tunable values instead of constants
       config.Slot0.kP = TunableCTREGains.DRIVE_KP.get();
       config.Slot0.kI = TunableCTREGains.DRIVE_KI.get();
       config.Slot0.kD = TunableCTREGains.DRIVE_KD.get();
       config.Slot0.kS = TunableCTREGains.DRIVE_KS.get();
       config.Slot0.kV = TunableCTREGains.DRIVE_KV.get();
+      config.Slot0.kA = TunableCTREGains.DRIVE_KA.get();  // NEW: Added kA support
 
       config.ClosedLoopGeneral.ContinuousWrap = false;
       

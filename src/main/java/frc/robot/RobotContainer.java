@@ -58,14 +58,14 @@ public class RobotContainer {
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT); // Port 0
   // TODO: Add operator controller when manipulator subsystems ready (Port 1 + HTML touch interface)
 
-  // Subsystems
-  private final RobotState robotState = new RobotState();
-  private final GyroSubsystem gyro = new GyroSubsystem();
-  private final QuestNavSubsystem questNav = new QuestNavSubsystem(); // NEW
-  private final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
-  private final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro, questNav); // CHANGED: Added questNav parameter
-  private final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
-  private final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
+  // Subsystems - CHANGED: Package-private for Elastic Dashboard access
+  final RobotState robotState = new RobotState();
+  final GyroSubsystem gyro = new GyroSubsystem();
+  final QuestNavSubsystem questNav = new QuestNavSubsystem(); // NEW
+  final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
+  final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro, questNav); // CHANGED: Added questNav parameter
+  final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
+  final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
 
   // Autonomous
   private final SendableChooser<Command> autoChooser; // Populated by PathPlanner
