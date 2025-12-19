@@ -2,7 +2,10 @@ package frc.robot.commands.drive;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
-import com.pathplanner.lib.path.PathPlannerPath;
+import com.therekrab.autopilot.APConstraints;
+import com.therekrab.autopilot.APProfile;
+import com.therekrab.autopilot.APTarget;
+import com.therekrab.autopilot.Autopilot;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
@@ -21,6 +24,8 @@ import frc.robot.subsystems.QuestNavSubsystem;
 import org.littletonrobotics.junction.Logger;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import com.ctre.phoenix6.swerve.SwerveRequest;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import java.util.List;
 
 /**
  * Smart navigation to a target pose with optional precision path.
@@ -40,12 +45,16 @@ public class SmartDriveToPosition {
   private static final double FIELD_MARGIN_METERS = 0.3;
   private static final double MAX_PATH_DISTANCE_METERS = 10.0;
   private static final double QUESTNAV_SETTLE_TIME_SECONDS = 0.33; // NEW: Wait for QuestNav to update
+  private static final double AUTOPILOT_MAX_VELOCITY = 2.0; // Max velocity in meters per second
+  private static final double AUTOPILOT_MAX_ACCELERATION = 1.0; // Max acceleration in meters per second squared
+  private static final boolean ENABLE_PHASE_3_CORRECTION = false; // Set to true to re-enable
 
   /**
    * Create a smart navigation command
    * 
-   * @param stagingPose Target pose for Phase 1 pathfinding (also used as final target if no precision path)
-   * @param precisionPathFile Optional PathPlanner .path file for Phase 2 precision approach (null = skip Phase 2)
+   * @param stagingPose Target pose for Phase 1 pathfinding (intermediate waypoint)
+   * @param finalTargetPose Target pose for Phase 2 AutoPilot (final precision target)
+   * @param precisionPathFile Optional PathPlanner .path file (currently unused, will be removed later)
    * @param poseEstimator Pose estimator subsystem
    * @param tagVision Tag vision subsystem
    * @param robotState Robot state
@@ -56,6 +65,7 @@ public class SmartDriveToPosition {
    */
   public static Command create(
       Pose2d stagingPose,
+      Pose2d finalTargetPose, // NEW: Separate target for AutoPilot
       String precisionPathFile,
       PoseEstimatorSubsystem poseEstimator,
       TagVisionSubsystem tagVision,
@@ -102,6 +112,7 @@ public class SmartDriveToPosition {
     if (precisionPathFile != null && !precisionPathFile.isEmpty()) {
       Logger.recordOutput("SmartDrive/Precision/HasPrecisionPath", true);
       Logger.recordOutput("SmartDrive/Precision/PathFile", precisionPathFile);
+      Logger.recordOutput("SmartDrive/FinalTargetPose", finalTargetPose); // NEW
       
       // Phase 1: Pathfind to staging pose
       Command toStaging = AutoBuilder.pathfindToPose(
@@ -109,27 +120,20 @@ public class SmartDriveToPosition {
           createPrecisionConstraints())
           .withTimeout(8.0);
 
-      // Phase 2: Follow the pre-recorded precision path
-      PathPlannerPath precisionPath;
-      try {
-        precisionPath = PathPlannerPath.fromPathFile(precisionPathFile);
-      } catch (Exception e) {
-        DriverStation.reportError("Failed to load precision path: " + precisionPathFile, e.getStackTrace());
-        return Commands.none();
-      }
-      
-      Command followPrecision = AutoBuilder.followPath(precisionPath)
-          .withTimeout(5.0);
+      // Phase 2: AutoPilot to final target pose (NOT staging pose!)
+      Command followPrecision = createAutoPilotCommand(finalTargetPose, driveSubsystem); // CHANGED
 
-      // Phase 3: QuestNav-based final correction
-      Command finalCorrection = PostPathCorrection.attemptCorrection(poseEstimator, questNavSubsystem);
+      // Phase 3: QuestNav-based final correction (OPTIONAL)
+      Command finalCorrection = ENABLE_PHASE_3_CORRECTION 
+          ? PostPathCorrection.attemptCorrection(poseEstimator, questNavSubsystem)
+          : Commands.none(); // Skip Phase 3 if disabled
 
       return new SequentialCommandGroup(
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
             SmartDashboard.putString("SmartDrive/Status", "Phase 1: Pathfinding");
             SmartDashboard.putNumber("SmartDrive/Progress", 0.0);
-            Logger.recordOutput("SmartDrive/Mode", "ThreePhase: " + precisionPathFile);
+            Logger.recordOutput("SmartDrive/Mode", "ThreePhase: AutoPilot");
           }),
           toStaging,
           
@@ -163,16 +167,27 @@ public class SmartDriveToPosition {
           
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
-            SmartDashboard.putString("SmartDrive/Status", "Phase 2: Precision path");
+            SmartDashboard.putString("SmartDrive/Status", "Phase 2: AutoPilot precision path");
             SmartDashboard.putNumber("SmartDrive/Progress", 0.5);
+            System.out.println("[SmartDrive] AutoPilot targeting: " + formatPose(finalTargetPose)); // NEW
           }),
           followPrecision,
+          
+          // Phase 3: Conditional final correction
           Commands.runOnce(() -> {
-            robotState.setNavigationPhase(RobotState.NavigationPhase.POST_CORRECTION);
-            SmartDashboard.putString("SmartDrive/Status", "Phase 3: QuestNav correction");
-            SmartDashboard.putNumber("SmartDrive/Progress", 0.9);
+            if (ENABLE_PHASE_3_CORRECTION) {
+              robotState.setNavigationPhase(RobotState.NavigationPhase.POST_CORRECTION);
+              SmartDashboard.putString("SmartDrive/Status", "Phase 3: QuestNav correction");
+              SmartDashboard.putNumber("SmartDrive/Progress", 0.9);
+            } else {
+              System.out.println("[SmartDrive] Phase 3 DISABLED - AutoPilot complete");
+              robotState.setNavigationPhase(RobotState.NavigationPhase.LOCKED);
+              SmartDashboard.putString("SmartDrive/Status", "Complete - AutoPilot only");
+              SmartDashboard.putNumber("SmartDrive/Progress", 1.0);
+            }
           }),
-          finalCorrection,
+          finalCorrection, // No-op if disabled
+          
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.LOCKED);
             SmartDashboard.putString("SmartDrive/Status", "Complete - Locked");
@@ -184,6 +199,7 @@ public class SmartDriveToPosition {
         SmartDashboard.putString("SmartDrive/Status", interrupted ? "Interrupted" : "Complete");
         Logger.recordOutput("SmartDrive/Interrupted", interrupted);
         Logger.recordOutput("SmartDrive/Complete", !interrupted);
+        Logger.recordOutput("SmartDrive/Phase3Enabled", ENABLE_PHASE_3_CORRECTION);
       });
     }
 
@@ -205,6 +221,29 @@ public class SmartDriveToPosition {
       Logger.recordOutput("SmartDrive/Interrupted", interrupted);
       Logger.recordOutput("SmartDrive/Complete", !interrupted);
     });
+  }
+
+  private static Command createAutoPilotCommand(Pose2d targetPose, DriveSubsystem driveSubsystem) {
+    // Define AutoPilot constraints
+    APConstraints constraints = new APConstraints(AUTOPILOT_MAX_VELOCITY, AUTOPILOT_MAX_ACCELERATION);
+
+    return Commands.sequence(
+        // Start AutoPilot
+        Commands.runOnce(() -> {
+          driveSubsystem.startAutoPilot(targetPose, constraints);
+          System.out.println("[SmartDrive] AutoPilot started to " + formatPose(targetPose));
+        }),
+        
+        // Wait until AutoPilot reaches target
+        Commands.waitUntil(() -> driveSubsystem.isAutoPilotAtTarget())
+            .withTimeout(5.0),
+        
+        // Stop AutoPilot
+        Commands.runOnce(() -> {
+          driveSubsystem.stopAutoPilot();
+          System.out.println("[SmartDrive] AutoPilot completed");
+        })
+    );
   }
 
   // ===== FIELD VALIDATION HELPERS =====

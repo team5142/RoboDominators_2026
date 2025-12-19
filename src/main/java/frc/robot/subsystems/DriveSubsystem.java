@@ -13,7 +13,16 @@ import frc.robot.RobotState;
 import frc.robot.TunableCTREGains; // ADD THIS
 import org.littletonrobotics.junction.Logger;
 
+import com.therekrab.autopilot.APConstraints;
+import com.therekrab.autopilot.APProfile;
+import com.therekrab.autopilot.APTarget;
+import com.therekrab.autopilot.Autopilot;
+
+import java.util.Optional;
 import java.util.function.Supplier;
+
+import static edu.wpi.first.units.Units.Meters;
+import static edu.wpi.first.units.Units.Degrees;
 
 /**
  * Swerve drivetrain extending CTRE's CommandSwerveDrivetrain.
@@ -35,6 +44,23 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final SwerveRequest.SysIdSwerveSteerGains m_steerCharacterization = new SwerveRequest.SysIdSwerveSteerGains();
   private final SwerveRequest.SysIdSwerveRotation m_rotationCharacterization = new SwerveRequest.SysIdSwerveRotation();
 
+  // NEW: AutoPilot integration
+  private Autopilot autopilot;
+  private APTarget currentTarget = null;
+  private boolean autopilotActive = false;
+
+  // AutoPilot error tolerances - AGGRESSIVE for <3cm precision
+  private static final double AUTOPILOT_ERROR_XY_METERS = 0.03; // 3cm translation tolerance (was 5cm)
+  private static final double AUTOPILOT_ERROR_THETA_DEGREES = 1.0; // 1° rotation tolerance (was 2°)
+  private static final double AUTOPILOT_BEELINE_RADIUS_METERS = 0.3; // 30cm beeline radius
+  
+  // Rotation PID gains - Added damping to prevent oscillation
+  private static final double AUTOPILOT_ROTATION_KP = 3.0; // Proportional gain
+  private static final double AUTOPILOT_ROTATION_KD = 0.5; // Derivative gain (damping)
+  
+  // Track previous angle error for derivative calculation
+  private double lastAngleError = 0.0;
+
   /**
    * Constructs the drivetrain using Tuner X generated constants
    */
@@ -50,6 +76,9 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     
     this.robotState = robotState;
     this.gyro = gyro;
+
+    // AutoPilot will be initialized when we start navigation
+    this.autopilot = null;
   }
 
   @Override
@@ -140,6 +169,62 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       // This requires access to TalonFX objects which CommandSwerveDrivetrain hides
       // For now, gains update on next robot reboot
     }
+
+    // NEW: Run AutoPilot if active
+    if (autopilotActive && currentTarget != null && autopilot != null) {
+      Pose2d currentRobotPose = getState().Pose;
+      ChassisSpeeds robotRelativeSpeeds = getRobotRelativeSpeeds();
+      
+      // Calculate next velocity using AutoPilot
+      Autopilot.APResult result = autopilot.calculate(currentRobotPose, robotRelativeSpeeds, currentTarget);
+      
+      // Calculate rotational velocity to reach target angle with damping
+      double currentAngle = currentRobotPose.getRotation().getRadians();
+      double targetAngle = result.targetAngle().getRadians();
+      double angleError = targetAngle - currentAngle;
+      
+      // Normalize angle error to [-π, π]
+      while (angleError > Math.PI) angleError -= 2 * Math.PI;
+      while (angleError < -Math.PI) angleError += 2 * Math.PI;
+      
+      // Calculate derivative (rate of change of error)
+      double angleErrorDerivative = (angleError - lastAngleError) / 0.02; // 20ms loop time
+      lastAngleError = angleError;
+      
+      // PD control for rotation (proportional + derivative damping)
+      double omega = (angleError * AUTOPILOT_ROTATION_KP) - (angleErrorDerivative * AUTOPILOT_ROTATION_KD);
+      
+      // Convert result to ChassisSpeeds (field-relative velocities + rotation)
+      ChassisSpeeds targetSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
+          result.vx().in(edu.wpi.first.units.Units.MetersPerSecond),
+          result.vy().in(edu.wpi.first.units.Units.MetersPerSecond),
+          omega, // Use PD-controlled rotation velocity
+          currentRobotPose.getRotation()
+      );
+      
+      // Apply the calculated speeds
+      driveRobotRelative(targetSpeeds);
+      
+      // Log AutoPilot state
+      Logger.recordOutput("AutoPilot/Active", true);
+      Logger.recordOutput("AutoPilot/CurrentPose", currentRobotPose);
+      Logger.recordOutput("AutoPilot/TargetPose", currentTarget.getReference());
+      Logger.recordOutput("AutoPilot/TargetRotation", result.targetAngle().getDegrees());
+      Logger.recordOutput("AutoPilot/AngleError", Math.toDegrees(angleError));
+      Logger.recordOutput("AutoPilot/AngleErrorDerivative", angleErrorDerivative);
+      Logger.recordOutput("AutoPilot/Omega", omega);
+      Logger.recordOutput("AutoPilot/VX", result.vx().in(edu.wpi.first.units.Units.MetersPerSecond));
+      Logger.recordOutput("AutoPilot/VY", result.vy().in(edu.wpi.first.units.Units.MetersPerSecond));
+      Logger.recordOutput("AutoPilot/AtTarget", autopilot.atTarget(currentRobotPose, currentTarget));
+      
+      // Check if we've reached the target
+      if (autopilot.atTarget(currentRobotPose, currentTarget)) {
+        stopAutoPilot();
+      }
+    } else {
+      Logger.recordOutput("AutoPilot/Active", false);
+      lastAngleError = 0.0; // Reset derivative tracking when inactive
+    }
   }
   
   // NEW: Override setOperatorPerspectiveForward to track when we manually set it
@@ -168,6 +253,81 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     } else {
       return Rotation2d.fromDegrees(0.0); // Blue faces red wall (default)
     }
+  }
+
+  /**
+   * Start AutoPilot navigation to a target pose
+   * @param targetPose The pose to navigate to
+   * @param constraints Motion constraints (max velocity, acceleration)
+   */
+  public void startAutoPilot(Pose2d targetPose, APConstraints constraints) {
+    // Create profile with constraints and error tolerances
+    APProfile profile = new APProfile(constraints)
+        .withErrorXY(Meters.of(AUTOPILOT_ERROR_XY_METERS))
+        .withErrorTheta(Degrees.of(AUTOPILOT_ERROR_THETA_DEGREES))
+        .withBeelineRadius(Meters.of(AUTOPILOT_BEELINE_RADIUS_METERS));
+    
+    // Create AutoPilot instance with profile
+    autopilot = new Autopilot(profile);
+    
+    // Create target from pose (using constructor that takes Pose2d)
+    currentTarget = new APTarget(targetPose);
+    
+    // Reset derivative tracking
+    lastAngleError = 0.0;
+    
+    autopilotActive = true;
+    
+    System.out.println("[AutoPilot] Started navigation to " + formatPose(targetPose));
+    System.out.println("  Error tolerances: XY=" + AUTOPILOT_ERROR_XY_METERS + "m (" + 
+                       (AUTOPILOT_ERROR_XY_METERS * 100) + "cm), Theta=" + 
+                       AUTOPILOT_ERROR_THETA_DEGREES + "°");
+    System.out.println("  Rotation PID: kP=" + AUTOPILOT_ROTATION_KP + ", kD=" + AUTOPILOT_ROTATION_KD);
+    Logger.recordOutput("AutoPilot/Started", true);
+  }
+
+  /**
+   * Stop AutoPilot navigation
+   */
+  public void stopAutoPilot() {
+    autopilotActive = false;
+    currentTarget = null;
+    autopilot = null;
+    lastAngleError = 0.0; // Reset derivative tracking
+    
+    // Stop the robot
+    driveRobotRelative(new ChassisSpeeds(0, 0, 0));
+    
+    System.out.println("[AutoPilot] Stopped");
+    Logger.recordOutput("AutoPilot/Stopped", true);
+  }
+
+  /**
+   * Check if AutoPilot is currently active
+   */
+  public boolean isAutoPilotActive() {
+    return autopilotActive;
+  }
+
+  /**
+   * Check if AutoPilot has reached its target
+   */
+  public boolean isAutoPilotAtTarget() {
+    if (!autopilotActive || autopilot == null || currentTarget == null) {
+      return false;
+    }
+    Pose2d currentPose = getState().Pose;
+    return autopilot.atTarget(currentPose, currentTarget);
+  }
+
+  /**
+   * Format pose for logging
+   */
+  private String formatPose(Pose2d pose) {
+    return String.format("(%.2fm, %.2fm, %.1f°)",
+        pose.getX(),
+        pose.getY(),
+        pose.getRotation().getDegrees());
   }
 
   /**

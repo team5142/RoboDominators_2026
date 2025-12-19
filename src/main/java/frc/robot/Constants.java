@@ -389,6 +389,21 @@ public final class Constants {
     public static final Pose2d PID_TUNING_POSITIONLeft = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(-90.0));
     public static final Pose2d PID_TUNING_POSITIONRight = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(90.0));
     
+    // ===== PRECISION TARGET POSES (AutoPilot Phase 2 final targets) =====
+    // These are the END poses extracted from PathPlanner precision paths
+    
+    /** Precise12 - Final target from Stage12toPrecise12.path */
+    public static final Pose2d PRECISE_12_POSE = new Pose2d(
+        1.35, 1.07, Rotation2d.fromDegrees(-130.0));
+    
+    /** Precise16 - Final target from Stage16toPrecise16.path */
+    public static final Pose2d PRECISE_16_POSE = new Pose2d(
+        5.99, 0.56, Rotation2d.fromDegrees(-90.0));
+    
+    /** Precise17 - Final target from Stage17toPrecise17.path */
+    public static final Pose2d PRECISE_17_POSE = new Pose2d(
+        3.92, 2.9, Rotation2d.fromDegrees(60.0));
+    
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed
   }

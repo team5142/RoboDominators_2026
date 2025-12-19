@@ -260,7 +260,8 @@ public class RobotContainer {
         .whileTrue(
             SmartDriveToPosition.create(
                 BLUE_REEF_TAG_17,
-                "Stage17toPrecise17", // Precision path name
+                PRECISE_17_POSE, // From Constants.StartingPositions
+                "Stage17toPrecise17",
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -273,7 +274,8 @@ public class RobotContainer {
         .whileTrue(
             SmartDriveToPosition.create(
                 BLUE_TAG_16,
-                "Stage16toPrecise16", // Precision path name
+                PRECISE_16_POSE, // From Constants.StartingPositions
+                "Stage16toPrecise16",
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
@@ -286,7 +288,8 @@ public class RobotContainer {
         .whileTrue(
             SmartDriveToPosition.create(
                 BLUE_TAG_12,
-                "Stage12toPrecise12", // Precision path name
+                PRECISE_12_POSE, // From Constants.StartingPositions
+                "Stage12toPrecise12",
                 poseEstimator,
                 tagVisionSubsystem,
                 robotState,
