@@ -26,6 +26,7 @@ import edu.wpi.first.math.kinematics.SwerveModuleState;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import java.util.List;
+import frc.robot.commands.drive.AutoPilotToTargetCommand; // ADD THIS
 
 /**
  * Smart navigation to a target pose with optional precision path.
@@ -39,14 +40,16 @@ import java.util.List;
  */
 public class SmartDriveToPosition {
   
-  private static final double PRECISION_SPEED_MULT = 0.4;
+  private static final double PRECISION_SPEED_MULT = 0.6; // CHANGED: 60% speed (was 0.4 - 40%)
   private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
   private static final double FIELD_MARGIN_METERS = 0.3;
   private static final double MAX_PATH_DISTANCE_METERS = 10.0;
-  private static final double QUESTNAV_SETTLE_TIME_SECONDS = 0.33; // NEW: Wait for QuestNav to update
+  private static final double QUESTNAV_SETTLE_TIME_SECONDS = 0.5; // CHANGED: Max wait time (was 0.33s)
+  private static final int QUESTNAV_MAX_WAIT_LOOPS = 25; // NEW: 25 loops * 20ms = 500ms max
   private static final double AUTOPILOT_MAX_VELOCITY = 2.0; // Max velocity in meters per second
   private static final double AUTOPILOT_MAX_ACCELERATION = 1.0; // Max acceleration in meters per second squared
+  private static final double AUTOPILOT_MAX_JERK = 3.0; // m/s³ (NEW)
   private static final boolean ENABLE_PHASE_3_CORRECTION = false; // Set to true to re-enable
 
   /**
@@ -120,8 +123,14 @@ public class SmartDriveToPosition {
           createPrecisionConstraints())
           .withTimeout(8.0);
 
-      // Phase 2: AutoPilot to final target pose (NOT staging pose!)
-      Command followPrecision = createAutoPilotCommand(finalTargetPose, driveSubsystem); // CHANGED
+      // Phase 2: Use AutoPilot COMMAND instead of DriveSubsystem method
+      Command followPrecision = new AutoPilotToTargetCommand(
+          finalTargetPose, 
+          driveSubsystem, 
+          poseEstimator,
+          AUTOPILOT_MAX_VELOCITY,
+          AUTOPILOT_MAX_ACCELERATION,
+          AUTOPILOT_MAX_JERK);
 
       // Phase 3: QuestNav-based final correction (OPTIONAL)
       Command finalCorrection = ENABLE_PHASE_3_CORRECTION 
@@ -137,39 +146,41 @@ public class SmartDriveToPosition {
           }),
           toStaging,
           
-          // FIXED: ALIGN WHEELS FORWARD BEFORE PAUSE
+          // IMPROVED: FORCE-ACCEPT QUESTNAV POSE (no waiting!)
           Commands.runOnce(() -> {
-            System.out.println("Aligning wheels forward for QuestNav settle...");
-            Logger.recordOutput("SmartDrive/Phase", "WheelAlignment");
+            System.out.println("========== FORCE QUESTNAV POSE UPDATE ==========");
+            Logger.recordOutput("SmartDrive/Phase", "ForceQuestNavUpdate");
             
-            // Stop all motion - wheels will align to maintain current angle
-            driveSubsystem.driveRobotRelative(
-                new edu.wpi.first.math.kinematics.ChassisSpeeds(0, 0, 0));
-          }),
-          Commands.waitSeconds(0.1), // Brief wait for robot to stop (100ms)
-          
-          // PAUSE FOR QUESTNAV TO SETTLE
-          Commands.runOnce(() -> {
-            SmartDashboard.putString("SmartDrive/Status", "Pausing for QuestNav settle");
-            Logger.recordOutput("SmartDrive/Phase", "QuestNavSettle");
-            System.out.println("Pausing " + QUESTNAV_SETTLE_TIME_SECONDS + "s for QuestNav to update...");
-          }),
-          Commands.waitSeconds(QUESTNAV_SETTLE_TIME_SECONDS), // NEW: 0.33s pause
-          Commands.runOnce(() -> {
-            Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
-            if (questNavPose != null) {
-              System.out.println("QuestNav pose after settle: " + formatPose(questNavPose));
-              Logger.recordOutput("SmartDrive/QuestNavPoseAfterSettle", questNavPose);
+            // Stop motion completely
+            driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
+            
+            // Force-accept QuestNav pose with very high trust
+            boolean success = poseEstimator.forceAcceptQuestNavPose();
+            
+            if (success) {
+              Pose2d updatedPose = poseEstimator.getEstimatedPose();
+              System.out.println("Pose force-updated to: " + formatPose(updatedPose));
+              Logger.recordOutput("SmartDrive/ForcedPose", updatedPose);
             } else {
-              System.err.println("WARNING: No QuestNav pose after settle!");
+              System.err.println("WARNING: Failed to force-accept QuestNav pose!");
+              System.err.println("Proceeding with current estimate (may be inaccurate)");
+              Logger.recordOutput("SmartDrive/ForceFailed", true);
             }
+            
+            System.out.println("===============================================");
           }),
+          
+          // Small delay to ensure pose is fully settled (100ms)
+          Commands.waitSeconds(0.1),
           
           Commands.runOnce(() -> {
             robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
             SmartDashboard.putString("SmartDrive/Status", "Phase 2: AutoPilot precision path");
             SmartDashboard.putNumber("SmartDrive/Progress", 0.5);
-            System.out.println("[SmartDrive] AutoPilot targeting: " + formatPose(finalTargetPose)); // NEW
+            
+            Pose2d startingPose = poseEstimator.getEstimatedPose();
+            System.out.println("[SmartDrive] Starting AutoPilot from: " + formatPose(startingPose));
+            System.out.println("[SmartDrive] AutoPilot targeting: " + formatPose(finalTargetPose));
           }),
           followPrecision,
           
@@ -221,29 +232,6 @@ public class SmartDriveToPosition {
       Logger.recordOutput("SmartDrive/Interrupted", interrupted);
       Logger.recordOutput("SmartDrive/Complete", !interrupted);
     });
-  }
-
-  private static Command createAutoPilotCommand(Pose2d targetPose, DriveSubsystem driveSubsystem) {
-    // Define AutoPilot constraints
-    APConstraints constraints = new APConstraints(AUTOPILOT_MAX_VELOCITY, AUTOPILOT_MAX_ACCELERATION);
-
-    return Commands.sequence(
-        // Start AutoPilot
-        Commands.runOnce(() -> {
-          driveSubsystem.startAutoPilot(targetPose, constraints);
-          System.out.println("[SmartDrive] AutoPilot started to " + formatPose(targetPose));
-        }),
-        
-        // Wait until AutoPilot reaches target
-        Commands.waitUntil(() -> driveSubsystem.isAutoPilotAtTarget())
-            .withTimeout(5.0),
-        
-        // Stop AutoPilot
-        Commands.runOnce(() -> {
-          driveSubsystem.stopAutoPilot();
-          System.out.println("[SmartDrive] AutoPilot completed");
-        })
-    );
   }
 
   // ===== FIELD VALIDATION HELPERS =====

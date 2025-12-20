@@ -45,6 +45,7 @@ import java.util.Map;
 import frc.robot.commands.auto.DriveToSavedPosition; // NEW: Add this import
 import com.pathplanner.lib.commands.FollowPathCommand;
 import com.pathplanner.lib.path.PathPlannerPath;
+import frc.robot.commands.drive.AutoPilot1mTestingCommand; // CHANGED
 
 // RobotContainer: Connects subsystems, controllers, and commands. Created once at robot boot.
 public class RobotContainer {
@@ -237,19 +238,18 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
 
-    // D-PAD: Snap to cardinal directions (hold to maintain heading)
-    new POVButton(driverController, 0) // UP: Face 0deg (forward)
-        .whileTrue(new SnapToHeadingFixed(driveSubsystem, robotState,
-            () -> -driverController.getLeftY(), () -> -driverController.getLeftX(), () -> 0.0));
-    new POVButton(driverController, 90) // RIGHT: Face -90deg
-        .whileTrue(new SnapToHeadingFixed(driveSubsystem, robotState,
-            () -> -driverController.getLeftY(), () -> -driverController.getLeftX(), () -> -90.0));
-    new POVButton(driverController, 180) // DOWN: Face 180deg (backward)
-        .whileTrue(new SnapToHeadingFixed(driveSubsystem, robotState,
-            () -> -driverController.getLeftY(), () -> -driverController.getLeftX(), () -> 180.0));
-    new POVButton(driverController, 270) // LEFT: Face 90deg
-        .whileTrue(new SnapToHeadingFixed(driveSubsystem, robotState,
-            () -> -driverController.getLeftY(), () -> -driverController.getLeftX(), () -> 90.0));
+    // D-PAD: AutoPilot 1m testing - NOW USING PROPER COMMAND CLASS
+    new POVButton(driverController, 0) // UP
+        .whileTrue(new AutoPilot1mTestingCommand("forward", driveSubsystem, poseEstimator));
+    
+    new POVButton(driverController, 90) // RIGHT
+        .whileTrue(new AutoPilot1mTestingCommand("right", driveSubsystem, poseEstimator));
+    
+    new POVButton(driverController, 180) // DOWN
+        .whileTrue(new AutoPilot1mTestingCommand("backward", driveSubsystem, poseEstimator));
+    
+    new POVButton(driverController, 270) // LEFT
+        .whileTrue(new AutoPilot1mTestingCommand("left", driveSubsystem, poseEstimator));
 
     // START: Set starting position (drive to spot, press to save as starting pose)
     new JoystickButton(driverController, XboxController.Button.kStart.value)
@@ -310,6 +310,7 @@ public class RobotContainer {
         }));
 
     System.out.println("Button bindings configured");
+    System.out.println("D-Pad: AutoPilot 1m test (HOLD to move, RELEASE to stop)");
     System.out.println("Y: SmartDrive to Tag 17 (Stage17toPrecise17)");
     System.out.println("B: SmartDrive to Tag 16 (Stage16toPrecise16)");
     System.out.println("A: SmartDrive to Tag 12 (Stage12toPrecise12)");

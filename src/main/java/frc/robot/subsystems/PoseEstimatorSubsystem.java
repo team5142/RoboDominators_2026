@@ -24,6 +24,7 @@ import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Timer;
 
 /**
  * Pose Estimator Subsystem - Fuses odometry + QuestNav for accurate robot localization
@@ -63,6 +64,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private static final int LOG_SKIP_CYCLES = 4;
 
   private final Field2d field = new Field2d();
+
+  private double m_lastUpdateTime = 0.0; // NEW: Track last fusion time
 
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
@@ -143,6 +146,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     // Add vision measurement with appropriate trust
     poseEstimator.addVisionMeasurement(visionPose, timestampSeconds, stdDevs);
+    m_lastUpdateTime = Timer.getFPGATimestamp(); // Update timestamp whenever we add a measurement
     
     // Logging
     Logger.recordOutput("PoseEstimator/LimelightEnabled", true);
@@ -273,6 +277,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
   }
   
+  // NEW: Get time since last pose update (for QuestNav settle)
+  public double getTimeSinceLastUpdate() {
+    return Timer.getFPGATimestamp() - m_lastUpdateTime;
+  }
+  
   private void onModeChange(RobotState.Mode from, RobotState.Mode to) {
     if (to == RobotState.Mode.ENABLED_AUTO) {
       System.out.println("=== AUTO ENABLED ===");
@@ -388,5 +397,53 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     Logger.recordOutput("PoseEstimator/OperatorPerspective/Calculated", perspectiveDeg);
     Logger.recordOutput("PoseEstimator/OperatorPerspective/Snapped", snappedDeg);
     Logger.recordOutput("PoseEstimator/OperatorPerspective/Applied", true);
+  }
+  
+  /**
+   * Force-accept the next QuestNav pose with very high trust.
+   * Bypasses normal Kalman filtering - use only when robot is stopped and QuestNav is tracking!
+   * 
+   * @return true if QuestNav pose was force-accepted, false if QuestNav unavailable
+   */
+  public boolean forceAcceptQuestNavPose() {
+    // Check if QuestNav is available and tracking
+    if (!questNavSubsystem.isTracking()) {
+      System.err.println("[ForceUpdate] QuestNav not tracking - cannot force update!");
+      Logger.recordOutput("PoseEstimator/ForceUpdate/Failed", "Not tracking");
+      return false;
+    }
+    
+    // Get current QuestNav pose
+    var questPose = questNavSubsystem.getRobotPose();
+    if (!questPose.isPresent()) {
+      System.err.println("[ForceUpdate] QuestNav has no pose available!");
+      Logger.recordOutput("PoseEstimator/ForceUpdate/Failed", "No pose");
+      return false;
+    }
+    
+    Pose2d forcedPose = questPose.get();
+    
+    // Use VERY HIGH TRUST standard deviations (1cm XY, 1° theta)
+    var veryHighTrust = VecBuilder.fill(0.01, 0.01, Math.toRadians(1.0));
+    
+    // Force-add measurement with high trust (essentially resets pose to QuestNav)
+    poseEstimator.addVisionMeasurement(
+        forcedPose,
+        edu.wpi.first.wpilibj.Timer.getFPGATimestamp(),
+        veryHighTrust);
+    
+    m_lastUpdateTime = Timer.getFPGATimestamp(); // Update timestamp
+    
+    System.out.println("========== FORCED POSE UPDATE ==========");
+    System.out.println("QuestNav pose: " + formatPose(forcedPose));
+    System.out.println("Trust level: 1cm XY, 1° theta (VERY HIGH)");
+    System.out.println("Kalman filter bypassed - pose locked to QuestNav");
+    System.out.println("========================================");
+    
+    Logger.recordOutput("PoseEstimator/ForceUpdate/Success", true);
+    Logger.recordOutput("PoseEstimator/ForceUpdate/Pose", forcedPose);
+    Logger.recordOutput("PoseEstimator/ForceUpdate/Trust", "VERY HIGH (1cm, 1deg)");
+    
+    return true;
   }
 }

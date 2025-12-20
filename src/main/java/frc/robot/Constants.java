@@ -11,6 +11,11 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.*;
+import com.therekrab.autopilot.APConstraints;
+import com.therekrab.autopilot.APProfile;
+import com.therekrab.autopilot.Autopilot;
+import static edu.wpi.first.units.Units.Meters;
+import static edu.wpi.first.units.Units.Degrees;
 
 public final class Constants {
   private Constants() {}
@@ -406,5 +411,38 @@ public final class Constants {
     
     // Red alliance positions (mirrored from blue)
     // PathPlanner will handle flipping automatically if needed
+  }
+
+  // NEW: AutoPilot singleton constants - Created ONCE at class load
+  public static final class AutoPilotConstants {
+    // Test constraints for 1m testing - MATCHING OFFICIAL EXAMPLES
+    private static final APConstraints TEST_CONSTRAINTS = new APConstraints()
+        .withAcceleration(5.0)   // Match example: 5.0 m/s²
+        .withJerk(2.0);           // Match example: 2.0 m/s³
+    
+    private static final APProfile TEST_PROFILE = new APProfile(TEST_CONSTRAINTS)
+        .withErrorXY(Centimeters.of(5))        // CHANGED: 5cm (was 2cm - too tight, caused hunting)
+        .withErrorTheta(Degrees.of(2.0))       // CHANGED: 2° (was 0.5° - too tight for large rotations)
+        .withBeelineRadius(Centimeters.of(8)); // Match example: 8cm beeline radius
+    
+    public static final Autopilot TEST_AUTOPILOT = new Autopilot(TEST_PROFILE);
+    
+    // Precision constraints for SmartDrive - MORE AGGRESSIVE FOR SPEED
+    private static final APConstraints PRECISION_CONSTRAINTS = new APConstraints()
+        .withAcceleration(8.0)  // CHANGED: 8.0 m/s² (was 5.0 - 60% faster!)
+        .withJerk(4.0);          // CHANGED: 4.0 m/s³ (was 2.0 - 100% faster transitions!)
+    
+    private static final APProfile PRECISION_PROFILE = new APProfile(PRECISION_CONSTRAINTS)
+        .withErrorXY(Centimeters.of(5))        // Keep 5cm (good balance)
+        .withErrorTheta(Degrees.of(2.0))       // Keep 2° (good balance)
+        .withBeelineRadius(Centimeters.of(8)); // Keep 8cm beeline
+    
+    public static final Autopilot PRECISION_AUTOPILOT = new Autopilot(PRECISION_PROFILE);
+    
+    // Default constraints (for reference)
+    public static final double DEFAULT_MAX_ACCELERATION = 8.0; // m/s² (was 5.0)
+    public static final double DEFAULT_MAX_JERK = 4.0; // m/s³ (was 2.0)
+    public static final double DEFAULT_ERROR_XY_METERS = 0.05; // 5cm (was 0.02)
+    public static final double DEFAULT_ERROR_THETA_DEGREES = 2.0; // 2° (was 0.5°)
   }
 }
