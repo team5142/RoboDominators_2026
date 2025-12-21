@@ -12,6 +12,8 @@ import frc.robot.util.ConsoleLogger;
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.HttpCamera;
 import edu.wpi.first.cscore.MjpegServer;
+import frc.robot.util.LogSpaceMonitor;
+
 
 // Main robot class - runs on boot, manages all modes (auto/teleop/test), 20ms loop
 public class Robot extends LoggedRobot {
@@ -107,6 +109,9 @@ public class Robot extends LoggedRobot {
     
     // NEW: Update Elastic Dashboard
     elasticDashboard.update();
+
+    // Monitor log space (checks every 30s, not every loop)
+    LogSpaceMonitor.periodic();
   }
 
   // Check battery and warn driver if low (only during disabled, prevents spam during match)

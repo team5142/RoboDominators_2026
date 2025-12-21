@@ -1,44 +1,27 @@
 package frc.robot.commands.drive;
 
-import com.therekrab.autopilot.APConstraints;
-import com.therekrab.autopilot.APProfile;
-import com.therekrab.autopilot.APTarget;
-import com.therekrab.autopilot.Autopilot;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.Constants;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
-import org.littletonrobotics.junction.Logger;
-
-import static edu.wpi.first.units.Units.Meters;
-import static edu.wpi.first.units.Units.Degrees;
+import frc.robot.util.SmartLogger;
 import static edu.wpi.first.units.Units.MetersPerSecond;
 
-/**
- * AutoPilot 1m test command - proper Command class matching AutoPilot examples
- */
+// D-pad 1m test - validates AutoPilot accuracy/tuning (KEEP for pre-competition validation)
+// Hold D-pad direction to move 1m, release to stop - measures final accuracy
 public class AutoPilot1mTestingCommand extends Command {
   private final DriveSubsystem m_driveSubsystem;
   private final PoseEstimatorSubsystem m_poseEstimator;
   private final String m_direction;
-  
-  private APTarget m_target;
-  private int m_executionCount = 0; // Track loop iterations
-  
-  // Test constraints
-  private static final double TEST_MAX_VELOCITY = 1.5; // m/s
-  private static final double TEST_MAX_ACCELERATION = 1.0; // m/s²
-  private static final double TEST_MAX_JERK = 10.0; // m/s³
-  private static final double ERROR_XY_METERS = 0.03; // 3cm
-  private static final double ERROR_THETA_DEGREES = 1.0; // 1°
+  private com.therekrab.autopilot.APTarget m_target;
+  private int m_executionCount = 0;
   
   public AutoPilot1mTestingCommand(String direction, DriveSubsystem driveSubsystem, PoseEstimatorSubsystem poseEstimator) {
     m_direction = direction;
     m_driveSubsystem = driveSubsystem;
     m_poseEstimator = poseEstimator;
-    
     addRequirements(driveSubsystem);
   }
   
@@ -46,141 +29,82 @@ public class AutoPilot1mTestingCommand extends Command {
   public void initialize() {
     Pose2d currentPose = m_poseEstimator.getEstimatedPose();
     Pose2d targetPose = calculateTargetPose(currentPose, m_direction);
+    m_target = new com.therekrab.autopilot.APTarget(targetPose);
+    m_executionCount = 0;
     
-    // Create AutoPilot instance
-    APConstraints constraints = new APConstraints(TEST_MAX_VELOCITY, TEST_MAX_ACCELERATION, TEST_MAX_JERK);
-    APProfile profile = new APProfile(constraints)
-        .withErrorXY(Meters.of(ERROR_XY_METERS))
-        .withErrorTheta(Degrees.of(ERROR_THETA_DEGREES));
-    
-    m_target = new APTarget(targetPose);
-    
-    m_executionCount = 0; // Reset counter
-    
-    System.out.println("========== AUTOPILOT 1M TEST ==========");
-    System.out.println("Direction: " + m_direction);
-    System.out.println("Current: " + formatPose(currentPose));
-    System.out.println("Target:  " + formatPose(targetPose));
-    System.out.println("Distance: " + formatDistance(currentPose, targetPose));
-    System.out.println("========================================");
-    
-    Logger.recordOutput("AutoPilotTest/StartPose", currentPose);
-    Logger.recordOutput("AutoPilotTest/TargetPose", targetPose);
+    String initMsg = m_direction + " test: " + formatPose(currentPose) + " → " + formatPose(targetPose);
+    SmartLogger.logConsole(initMsg, "AutoPilot 1m Test");
+    SmartLogger.logReplay("AutoPilotTest/StartPose", currentPose);
+    SmartLogger.logReplay("AutoPilotTest/TargetPose", targetPose);
   }
   
   @Override
   public void execute() {
-    m_executionCount++; // Increment counter
-    
+    m_executionCount++;
     Pose2d currentPose = m_poseEstimator.getEstimatedPose();
     var robotRelativeSpeeds = m_driveSubsystem.getRobotRelativeSpeeds();
     
-    // Calculate AutoPilot output
+    // Use singleton TEST_AUTOPILOT (5cm/2° tolerances)
     var result = Constants.AutoPilotConstants.TEST_AUTOPILOT.calculate(currentPose, robotRelativeSpeeds, m_target);
     
-    // Apply velocities directly (matching the example!)
+    // Calculate rotation command
     double currentAngle = currentPose.getRotation().getRadians();
     double targetAngle = result.targetAngle().getRadians();
     double omega = targetAngle - currentAngle;
-    
-    // Normalize omega to [-π, π]
     while (omega > Math.PI) omega -= 2 * Math.PI;
     while (omega < -Math.PI) omega += 2 * Math.PI;
     
-    // Convert to field-relative ChassisSpeeds
     ChassisSpeeds targetSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
-        result.vx().in(MetersPerSecond),
-        result.vy().in(MetersPerSecond),
-        omega,
-        currentPose.getRotation()
-    );
+        result.vx().in(MetersPerSecond), result.vy().in(MetersPerSecond), omega, currentPose.getRotation());
     
-    // Console trace every loop
-    double distanceRemaining = currentPose.getTranslation().getDistance(m_target.getReference().getTranslation());
-    boolean atTarget = Constants.AutoPilotConstants.TEST_AUTOPILOT.atTarget(currentPose, m_target);
-    
-    System.out.printf("[Loop %3d] Dist: %.3fm | VX: %+.3f | VY: %+.3f | Omega: %+.3f | AtTarget: %s%n",
-        m_executionCount,
-        distanceRemaining,
-        result.vx().in(MetersPerSecond),
-        result.vy().in(MetersPerSecond),
-        omega,
-        atTarget ? "YES" : "NO");
-    
-    // Apply the speeds
     m_driveSubsystem.driveRobotRelative(targetSpeeds);
     
-    // Log for debugging
-    Logger.recordOutput("AutoPilot/ExecutionCount", m_executionCount);
-    Logger.recordOutput("AutoPilot/DistanceRemaining", distanceRemaining);
-    Logger.recordOutput("AutoPilot/VX", result.vx().in(MetersPerSecond));
-    Logger.recordOutput("AutoPilot/VY", result.vy().in(MetersPerSecond));
-    Logger.recordOutput("AutoPilot/Omega", omega);
-    Logger.recordOutput("AutoPilot/TargetAngle", result.targetAngle().getDegrees());
-    Logger.recordOutput("AutoPilot/AtTarget", atTarget);
+    // Console progress every 10 loops (~200ms) to reduce spam
+    double distanceRemaining = currentPose.getTranslation().getDistance(m_target.getReference().getTranslation());
+    if (m_executionCount % 10 == 0) {
+      SmartLogger.logConsole(String.format("[%3d] %.3fm | VX:%+.3f VY:%+.3f W:%+.3f",
+          m_executionCount, distanceRemaining, result.vx().in(MetersPerSecond), result.vy().in(MetersPerSecond), omega));
+    }
+    
+    // Essential replay logging (every loop for velocity graphs)
+    SmartLogger.logReplay("AutoPilot/DistanceRemaining", distanceRemaining);
+    SmartLogger.logReplay("AutoPilot/VX", result.vx().in(MetersPerSecond));
+    SmartLogger.logReplay("AutoPilot/VY", result.vy().in(MetersPerSecond));
+    SmartLogger.logReplay("AutoPilot/Omega", omega);
   }
   
   @Override
   public boolean isFinished() {
-    // Check if at target - runs after each execute()
     return Constants.AutoPilotConstants.TEST_AUTOPILOT.atTarget(m_poseEstimator.getEstimatedPose(), m_target);
   }
   
   @Override
   public void end(boolean interrupted) {
-    // Stop the robot
     m_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
     
     Pose2d finalPose = m_poseEstimator.getEstimatedPose();
     double finalDistance = finalPose.getTranslation().getDistance(m_target.getReference().getTranslation());
     
-    System.out.println("========== TEST COMPLETE ==========");
-    System.out.println("Loops executed: " + m_executionCount);
-    System.out.println("Final pose: " + formatPose(finalPose));
-    System.out.println("Final distance: " + String.format("%.3fm", finalDistance));
-    System.out.println(interrupted ? "INTERRUPTED" : "SUCCESS");
-    System.out.println("===================================");
+    String result = String.format("%s: %d loops, %.1fcm error",
+        interrupted ? "INTERRUPTED" : "SUCCESS", m_executionCount, finalDistance * 100);
+    SmartLogger.logConsole(result, "Test Complete");
     
-    Logger.recordOutput("AutoPilotTest/FinalPose", finalPose);
-    Logger.recordOutput("AutoPilotTest/FinalDistance", finalDistance);
+    SmartLogger.logReplay("AutoPilotTest/FinalPose", finalPose);
+    SmartLogger.logReplay("AutoPilotTest/FinalDistance", finalDistance);
   }
   
+  // Calculate 1m target in requested direction (maintains rotation toward target)
   private static Pose2d calculateTargetPose(Pose2d current, String direction) {
     switch (direction.toLowerCase()) {
-      case "forward":  // Face 0° (downfield)
-        return new Pose2d(
-            current.getX() + 1.0, 
-            current.getY(), 
-            edu.wpi.first.math.geometry.Rotation2d.fromDegrees(0.0));
-      
-      case "backward": // Face 180° (back to alliance wall)
-        return new Pose2d(
-            current.getX() - 1.0, 
-            current.getY(), 
-            edu.wpi.first.math.geometry.Rotation2d.fromDegrees(180.0));
-      
-      case "left":     // Face 90° (left side)
-        return new Pose2d(
-            current.getX(), 
-            current.getY() + 1.0, 
-            edu.wpi.first.math.geometry.Rotation2d.fromDegrees(90.0));
-      
-      case "right":    // Face -90° or 270° (right side)
-        return new Pose2d(
-            current.getX(), 
-            current.getY() - 1.0, 
-            edu.wpi.first.math.geometry.Rotation2d.fromDegrees(-90.0));
-      
+      case "forward":  return new Pose2d(current.getX() + 1.0, current.getY(), edu.wpi.first.math.geometry.Rotation2d.fromDegrees(0.0));
+      case "backward": return new Pose2d(current.getX() - 1.0, current.getY(), edu.wpi.first.math.geometry.Rotation2d.fromDegrees(180.0));
+      case "left":     return new Pose2d(current.getX(), current.getY() + 1.0, edu.wpi.first.math.geometry.Rotation2d.fromDegrees(90.0));
+      case "right":    return new Pose2d(current.getX(), current.getY() - 1.0, edu.wpi.first.math.geometry.Rotation2d.fromDegrees(-90.0));
       default: throw new IllegalArgumentException("Invalid direction: " + direction);
     }
   }
   
   private static String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
-  }
-  
-  private static String formatDistance(Pose2d from, Pose2d to) {
-    double distance = from.getTranslation().getDistance(to.getTranslation());
-    return String.format("%.3fm", distance);
+    return String.format("(%.2f,%.2f,%.0f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
   }
 }
