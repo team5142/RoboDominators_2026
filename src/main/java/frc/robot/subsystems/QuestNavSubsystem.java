@@ -11,33 +11,30 @@ import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.util.SmartLogger;
 import gg.questnav.questnav.QuestNav;
 import gg.questnav.questnav.PoseFrame;
 import org.littletonrobotics.junction.Logger;
 
 import java.util.OptionalInt;
 
-/**
- * QuestNav SLAM Subsystem - Meta Quest 3 VR headset for visual-inertial odometry
- * 
- * Using QuestNav 2025-2.1.0-beta API (manual transform application)
- */
+// QuestNav SLAM - Meta Quest 3 VR headset for visual-inertial odometry
+// Provides pose estimation when vision tags not visible
 public class QuestNavSubsystem extends SubsystemBase {
   private final QuestNav questNav;
-  private final Transform3d robotToQuest; // Robot center to Quest camera transform
+  private final Transform3d robotToQuest;
   
-  // isCalibrated is no longer used to gate getRobotPose()
   private boolean isCalibrated = false;
   private int totalFramesProcessed = 0;
   
   public QuestNavSubsystem() {
-    System.out.println("=== QuestNavSubsystem Initialization ===");
+    SmartLogger.logConsole("QuestNavSubsystem initializing...");
     
     try {
       questNav = new QuestNav();
-      System.out.println("[OK] QuestNav object created successfully");
+      SmartLogger.logConsole("QuestNav object created successfully");
     } catch (Exception e) {
-      System.err.println("[ERROR] Failed to create QuestNav object!");
+      SmartLogger.logConsoleError("Failed to create QuestNav object!");
       e.printStackTrace();
       throw e;
     }
@@ -48,11 +45,11 @@ public class QuestNavSubsystem extends SubsystemBase {
         new Rotation3d(0, 0, Math.toRadians(QUEST_YAW_DEG))
     );
     
-    System.out.println("Robot-to-Quest transform: " + robotToQuest);
-    System.out.println("Using manual transform application (2025-2.1.0-beta API)");
+    SmartLogger.logConsole("Robot-to-Quest transform: " + robotToQuest);
+    SmartLogger.logConsole("Using manual transform application (2025-2.1.0-beta API)");
     
     testConnection();
-    System.out.println("========================================\n");
+    SmartLogger.logConsole("========================================\n");
   }
   
   @Override
@@ -60,38 +57,38 @@ public class QuestNavSubsystem extends SubsystemBase {
     try {
       questNav.commandPeriodic();
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/PeriodicError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/PeriodicError", e.getMessage());
     }
     
     boolean connected = isConnected();
     boolean tracking = isTracking();
     
-    Logger.recordOutput("QuestNav/Connected", connected);
-    Logger.recordOutput("QuestNav/Tracking", tracking);
-    Logger.recordOutput("QuestNav/Calibrated", isCalibrated);
+    SmartLogger.logReplay("QuestNav/Connected", connected);
+    SmartLogger.logReplay("QuestNav/Tracking", tracking);
+    SmartLogger.logReplay("QuestNav/Calibrated", isCalibrated);
     
     try {
-      Logger.recordOutput("QuestNav/FrameCount", questNav.getFrameCount().orElse(-1));
-      Logger.recordOutput("QuestNav/TrackingLostCount", questNav.getTrackingLostCounter().orElse(0));
-      Logger.recordOutput("QuestNav/Latency", questNav.getLatency());
-      Logger.recordOutput("QuestNav/AppTimestamp", questNav.getAppTimestamp().orElse(-1.0));
+      SmartLogger.logReplay("QuestNav/FrameCount", (double) questNav.getFrameCount().orElse(-1));
+      SmartLogger.logReplay("QuestNav/TrackingLostCount", (double) questNav.getTrackingLostCounter().orElse(0));
+      SmartLogger.logReplay("QuestNav/Latency", questNav.getLatency());
+      SmartLogger.logReplay("QuestNav/AppTimestamp", questNav.getAppTimestamp().orElse(-1.0));
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/MetricsError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/MetricsError", e.getMessage());
     }
     
     try {
       OptionalInt battery = questNav.getBatteryPercent();
-      Logger.recordOutput("QuestNav/BatteryLevel", battery.orElse(-1));
-      Logger.recordOutput("QuestNav/BatteryLow", battery.orElse(100) < 20);
+      SmartLogger.logReplay("QuestNav/BatteryLevel", (double) battery.orElse(-1));
+      SmartLogger.logReplay("QuestNav/BatteryLow", battery.orElse(100) < 20);
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/BatteryError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/BatteryError", e.getMessage());
     }
     
     getRobotPose().ifPresent(pose -> {
-      Logger.recordOutput("QuestNav/RobotPose", pose);
-      Logger.recordOutput("QuestNav/X", pose.getX());
-      Logger.recordOutput("QuestNav/Y", pose.getY());
-      Logger.recordOutput("QuestNav/Rotation", pose.getRotation().getDegrees());
+      SmartLogger.logReplay("QuestNav/RobotPose", pose);
+      SmartLogger.logReplay("QuestNav/X", pose.getX());
+      SmartLogger.logReplay("QuestNav/Y", pose.getY());
+      SmartLogger.logReplay("QuestNav/Rotation", pose.getRotation().getDegrees());
     });
     
     getRobotPose3d().ifPresent(pose3d -> {
@@ -100,25 +97,25 @@ public class QuestNavSubsystem extends SubsystemBase {
       double pitchDeg = Math.toDegrees(rotation.getY());
       double heightMeters = pose3d.getZ();
       
-      Logger.recordOutput("QuestNav/Pose3d", pose3d);
-      Logger.recordOutput("QuestNav/Roll", rollDeg);
-      Logger.recordOutput("QuestNav/Pitch", pitchDeg);
-      Logger.recordOutput("QuestNav/Height", heightMeters);
+      SmartLogger.logReplay("QuestNav/Pose3d", pose3d);
+      SmartLogger.logReplay("QuestNav/Roll", rollDeg);
+      SmartLogger.logReplay("QuestNav/Pitch", pitchDeg);
+      SmartLogger.logReplay("QuestNav/Height", heightMeters);
       
       double maxTilt = Math.max(Math.abs(rollDeg), Math.abs(pitchDeg));
-      Logger.recordOutput("QuestNav/MaxTilt", maxTilt);
+      SmartLogger.logReplay("QuestNav/MaxTilt", maxTilt);
       
       if (maxTilt > 15.0) {
-        Logger.recordOutput("QuestNav/TiltWarning", true);
+        SmartLogger.logReplay("QuestNav/TiltWarning", true);
         DriverStation.reportWarning("Robot tilted " + maxTilt + "°", false);
       }
       
       if (heightMeters > 0.2) {
-        Logger.recordOutput("QuestNav/OnPlatform", true);
+        SmartLogger.logReplay("QuestNav/OnPlatform", true);
       }
     });
     
-    Logger.recordOutput("QuestNav/TotalFramesProcessed", totalFramesProcessed);
+    SmartLogger.logReplay("QuestNav/TotalFramesProcessed", (double) totalFramesProcessed);
   }
   
   /**
@@ -140,11 +137,11 @@ public class QuestNavSubsystem extends SubsystemBase {
       questNav.setPose(cameraPose);
       
       isCalibrated = true;
-      Logger.recordOutput("QuestNav/Initialized", initialPose);
-      System.out.println("QuestNav initialized to: " + initialPose);
+      SmartLogger.logReplay("QuestNav/Initialized", initialPose);
+      SmartLogger.logConsole("QuestNav initialized to: " + initialPose);
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/InitError", e.getMessage());
-      System.err.println("QuestNav initialization failed: " + e.getMessage());
+      SmartLogger.logReplay("QuestNav/InitError", e.getMessage());
+      SmartLogger.logConsoleError("QuestNav initialization failed: " + e.getMessage());
     }
   }
   
@@ -153,7 +150,7 @@ public class QuestNavSubsystem extends SubsystemBase {
    */
   public void calibrateFromVision(Pose2d visionPose, double confidence) {
     if (confidence < 0.8) {
-      Logger.recordOutput("QuestNav/CalibrationRejected", "Low confidence: " + confidence);
+      SmartLogger.logReplay("QuestNav/CalibrationRejected", "Low confidence: " + confidence);
       return;
     }
     
@@ -168,10 +165,10 @@ public class QuestNavSubsystem extends SubsystemBase {
       Pose3d cameraPose = visionPose3d.transformBy(robotToQuest);
       questNav.setPose(cameraPose);
       
-      Logger.recordOutput("QuestNav/CalibratedFromVision", visionPose);
-      System.out.println("QuestNav calibrated from vision: " + visionPose);
+      SmartLogger.logReplay("QuestNav/CalibratedFromVision", visionPose);
+      SmartLogger.logConsole("QuestNav calibrated from vision: " + visionPose);
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/CalibrationError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/CalibrationError", e.getMessage());
     }
   }
   
@@ -202,7 +199,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       
       return java.util.Optional.of(robotPose2d);
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/GetPoseError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/GetPoseError", e.getMessage());
       return java.util.Optional.empty();
     }
   }
@@ -226,7 +223,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       
       return java.util.Optional.of(robotPose3d);
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/GetPose3dError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/GetPose3dError", e.getMessage());
       return java.util.Optional.empty();
     }
   }
@@ -248,13 +245,13 @@ public class QuestNavSubsystem extends SubsystemBase {
         
         // Log if we're discarding frames
         if (frames.length > 1) {
-          Logger.recordOutput("QuestNav/FramesDiscarded", frames.length - 1);
+          SmartLogger.logReplay("QuestNav/FramesDiscarded", (double) (frames.length - 1));
         }
       }
       
       return frames;
     } catch (Exception e) {
-      Logger.recordOutput("QuestNav/GetFramesError", e.getMessage());
+      SmartLogger.logReplay("QuestNav/GetFramesError", e.getMessage());
       return null;
     }
   }
@@ -325,10 +322,10 @@ public class QuestNavSubsystem extends SubsystemBase {
       
       try {
         questNav.setPose(newCameraPose);
-        Logger.recordOutput("QuestNav/HeadingReset", true);
-        System.out.println("QuestNav heading reset to 0°");
+        SmartLogger.logReplay("QuestNav/HeadingReset", true);
+        SmartLogger.logConsole("QuestNav heading reset to 0°");
       } catch (Exception e) {
-        Logger.recordOutput("QuestNav/HeadingResetError", e.getMessage());
+        SmartLogger.logReplay("QuestNav/HeadingResetError", e.getMessage());
       }
     });
   }
@@ -344,53 +341,41 @@ public class QuestNavSubsystem extends SubsystemBase {
       
       try {
         questNav.setPose(newCameraPose);
-        Logger.recordOutput("QuestNav/HeadingSet", angleDegrees);
-        System.out.println("QuestNav heading set to: " + angleDegrees + "°");
+        SmartLogger.logReplay("QuestNav/HeadingSet", (double) angleDegrees);
+        SmartLogger.logConsole("QuestNav heading set to: " + angleDegrees + "°");
       } catch (Exception e) {
-        Logger.recordOutput("QuestNav/HeadingSetError", e.getMessage());
+        SmartLogger.logReplay("QuestNav/HeadingSetError", e.getMessage());
       }
     });
   }
   
   private void testConnection() {
-    System.out.println("\n--- QuestNav Connection Test ---");
-    System.out.println("Connection: USB > Ethernet Switch > RoboRIO");
-    System.out.println("Expected Quest IP: 10.51.42.X");
-    System.out.println("NetworkTables: RoboRIO (10.51.42.2:1735)");
-    System.out.println("");
+    SmartLogger.logConsole("Testing QuestNav connection (USB > Ethernet > RoboRIO)", "QuestNav Test");
     
     boolean tracking = isTracking();
-    System.out.println("Tracking: " + tracking);
+    SmartLogger.logConsole("Tracking: " + tracking);
     
     int battery = getBatteryPercent();
     if (battery >= 0) {
-      System.out.println("Battery: " + battery + "%");
+      SmartLogger.logConsole("Battery: " + battery + "%");
       if (battery < 20) {
-        System.err.println("[WARNING] Quest battery low!");
+        SmartLogger.logConsoleError("Quest battery low!");
       }
-    } else {
-      System.err.println("[INFO] Battery level not available");
     }
     
     if (!tracking) {
-      System.err.println("[WARNING] QuestNav NOT tracking!");
-      System.err.println("   Possible causes:");
-      System.err.println("   1. Quest 3 app not running");
-      System.err.println("   2. USB-C to Ethernet adapter issue");
-      System.err.println("   3. Ethernet switch not powered");
-      System.err.println("   4. Quest not on 10.51.42.X subnet");
-      System.err.println("   5. Wait 10-15s for SLAM initialization");
+      SmartLogger.logConsoleError("QuestNav NOT tracking - check USB/Ethernet connection");
     } else {
-      System.out.println("[OK] QuestNav is tracking!");
+      SmartLogger.logConsole("QuestNav is tracking!");
     }
     
     PoseFrame[] frames = getAllUnreadFrames();
     if (frames == null) {
-      System.err.println("[ERROR] getAllUnreadPoseFrames() returned null");
+      SmartLogger.logConsoleError("getAllUnreadPoseFrames() returned null");
     } else if (frames.length == 0) {
-      System.err.println("[INFO] No pose data yet (normal at startup)");
+      SmartLogger.logConsole("No pose data yet (normal at startup)");
     } else {
-      System.out.println("[OK] Received " + frames.length + " pose frames!");
+      SmartLogger.logConsole("Received " + frames.length + " pose frames!");
     }
   }
 }

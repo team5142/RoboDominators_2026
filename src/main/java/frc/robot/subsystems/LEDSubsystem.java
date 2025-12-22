@@ -2,8 +2,10 @@ package frc.robot.subsystems;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotState;
-import org.littletonrobotics.junction.Logger;
+import frc.robot.util.SmartLogger;
 
+// LED subsystem - currently a stub (no physical LEDs installed)
+// TODO 2026: Add LED hardware and patterns for robot state visualization
 public class LEDSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final TagVisionSubsystem tagVisionSubsystem;
@@ -15,9 +17,8 @@ public class LEDSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // For now, we just log what we'd like to communicate via LEDs.
-    Logger.recordOutput("LED/Mode", robotState.getMode().toString());
-    Logger.recordOutput("LED/AssistMode", robotState.getAssistMode().toString());
-    Logger.recordOutput("LED/TagVisionHasPose", tagVisionSubsystem.hasRecentTagPose());
+    // Log what we'd display on LEDs (for future reference)
+    SmartLogger.logReplay("LED/Mode", robotState.getMode().toString());
+    SmartLogger.logReplay("LED/TagVisionHasPose", tagVisionSubsystem.hasRecentTagPose());
   }
 }

@@ -3,18 +3,14 @@ package frc.robot;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.Timer;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.DriveSubsystem;
+import frc.robot.util.SmartLogger;
 
-/**
- * Publishes robot data to Elastic Dashboard
- * 
- * Elastic auto-discovers NetworkTables data and creates widgets automatically.
- * This class organizes data into logical groups for better dashboard layout.
- */
+// Publishes robot data to Elastic Dashboard via NetworkTables
+// Elastic auto-creates widgets from published data
 public class ElasticDashboard {
   
   private final NetworkTable elasticTable;
@@ -40,41 +36,38 @@ public class ElasticDashboard {
     // Create Elastic-specific table
     this.elasticTable = NetworkTableInstance.getDefault().getTable("Elastic");
     
-    // NEW: Publish camera stream URLs (CHANGED: Use mDNS hostname)
+    // Publish camera stream URLs (use mDNS hostname)
     NetworkTable cameraTable = elasticTable.getSubTable("Cameras");
     cameraTable.getEntry("Limelight/URL").setString("http://limelight-front.local:5800");
     cameraTable.getEntry("Limelight/Name").setString("Limelight Front");
     cameraTable.getEntry("Limelight/FPS").setInteger(30);
     
-    System.out.println("Elastic Dashboard integration initialized");
-    System.out.println("  - Limelight stream: http://limelight-front.local:5800");
+    SmartLogger.logConsole("Elastic Dashboard initialized - stream: http://limelight-front.local:5800");
   }
   
-  /**
-   * Update dashboard - call from Robot.robotPeriodic()
-   */
+  // Update dashboard - call from Robot.robotPeriodic()
   public void update() {
-    // ===== ROBOT STATUS =====
+    // Robot status
     NetworkTable statusTable = elasticTable.getSubTable("Status");
     statusTable.getEntry("Mode").setString(robotState.getMode().toString());
     statusTable.getEntry("Enabled").setBoolean(robotState.isEnabled());
-    statusTable.getEntry("MatchTime").setDouble(round(DriverStation.getMatchTime(), 1)); // 1 decimal
+    statusTable.getEntry("MatchTime").setDouble(round(DriverStation.getMatchTime(), 1));
     statusTable.getEntry("BatteryVoltage").setDouble(
-        round(edu.wpi.first.wpilibj.RobotController.getBatteryVoltage(), 2)); // 2 decimals
+        round(edu.wpi.first.wpilibj.RobotController.getBatteryVoltage(), 2));
     
-    // ===== POSE ESTIMATION =====
+    // Pose estimation
     NetworkTable poseTable = elasticTable.getSubTable("Pose");
     var pose = poseEstimator.getEstimatedPose();
-    poseTable.getEntry("X").setDouble(round(pose.getX(), 2)); // 2 decimals (0.01m = 1cm)
-    poseTable.getEntry("Y").setDouble(round(pose.getY(), 2)); // 2 decimals
-    poseTable.getEntry("Rotation").setDouble(round(pose.getRotation().getDegrees(), 1)); // 1 decimal (0.1°)
+    poseTable.getEntry("X").setDouble(round(pose.getX(), 2));
+    poseTable.getEntry("Y").setDouble(round(pose.getY(), 2));
+    poseTable.getEntry("Rotation").setDouble(round(pose.getRotation().getDegrees(), 1));
     poseTable.getEntry("Initialized").setBoolean(poseEstimator.isInitialized());
     
-    // ===== QUESTNAV =====
+    // QuestNav
     NetworkTable questTable = elasticTable.getSubTable("QuestNav");
     questTable.getEntry("Connected").setBoolean(questNav.isConnected());
     questTable.getEntry("Tracking").setBoolean(questNav.isTracking());
-    questTable.getEntry("Battery").setInteger(questNav.getBatteryPercent()); // Already whole number
+    questTable.getEntry("Battery").setInteger(questNav.getBatteryPercent());
     
     questNav.getRobotPose().ifPresent(qPose -> {
       questTable.getEntry("X").setDouble(round(qPose.getX(), 2));
@@ -82,26 +75,21 @@ public class ElasticDashboard {
       questTable.getEntry("Rotation").setDouble(round(qPose.getRotation().getDegrees(), 1));
     });
     
-    // ===== VISION =====
+    // Vision
     NetworkTable visionTable = elasticTable.getSubTable("Vision");
     visionTable.getEntry("ActiveCameras").setInteger(tagVision.getActiveCameraCount());
     visionTable.getEntry("TotalCameras").setInteger(tagVision.getCameraCount());
     visionTable.getEntry("HasPose").setBoolean(tagVision.hasRecentTagPose());
     
-    // ===== DRIVE =====
+    // Drive
     NetworkTable driveTable = elasticTable.getSubTable("Drive");
     var speeds = drive.getRobotRelativeSpeeds();
-    driveTable.getEntry("VelocityX").setDouble(round(speeds.vxMetersPerSecond, 2)); // 2 decimals
+    driveTable.getEntry("VelocityX").setDouble(round(speeds.vxMetersPerSecond, 2));
     driveTable.getEntry("VelocityY").setDouble(round(speeds.vyMetersPerSecond, 2));
     driveTable.getEntry("Omega").setDouble(round(speeds.omegaRadiansPerSecond, 2));
   }
   
-  /**
-   * Round a double to specified decimal places
-   * @param value Value to round
-   * @param decimals Number of decimal places (0 = whole number)
-   * @return Rounded value
-   */
+  // Round value to specified decimal places (reduces NetworkTable spam)
   private double round(double value, int decimals) {
     double multiplier = Math.pow(10, decimals);
     return Math.round(value * multiplier) / multiplier;

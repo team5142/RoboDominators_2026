@@ -6,8 +6,8 @@ import edu.wpi.first.networktables.BooleanSubscriber;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import frc.robot.RobotState;
-import frc.robot.commands.SetStartingPoseCommand;
 import frc.robot.commands.auto.DriveToSavedPosition;
+import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import static frc.robot.Constants.StartingPositions.*;
 

@@ -16,22 +16,16 @@ import frc.robot.subsystems.vision.LimelightCamera;
 import frc.robot.subsystems.vision.PhotonVisionCamera;
 import frc.robot.subsystems.vision.VisionCamera;
 import frc.robot.subsystems.vision.VisionCamera.VisionResult;
+import frc.robot.util.SmartLogger;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import org.littletonrobotics.junction.Logger;
 
-// AprilTag vision processing - provides current tag detection status to PoseEstimator
-// Exposes hasMultiTagDetection() and hasSingleTagDetection() for initialization checks
+// AprilTag vision processing - provides tag detection status to PoseEstimator
+// Currently Limelight-only (PhotonVision disabled for QuestNav-only testing)
 public class TagVisionSubsystem extends SubsystemBase {
   
-  // ===== FEATURE TOGGLE: LIMELIGHT VISION =====
-  // Set to false to disable Limelight (QuestNav-only mode)
-  // Set to true to re-enable Limelight fusion
-  private static final boolean LIMELIGHT_ENABLED = false; // CHANGED: Disabled for now
-  // ============================================
+  private static final boolean LIMELIGHT_ENABLED = false; // Vision disabled for QuestNav-only mode
   
   private final PoseEstimatorSubsystem poseEstimator;
   private final GyroSubsystem gyroSubsystem;
@@ -39,24 +33,9 @@ public class TagVisionSubsystem extends SubsystemBase {
   private final List<VisionCamera> cameras;
 
   private boolean hasRecentPose = false;
-  
-  // NEW: Frame skipping to reduce CPU load
-  private int visionLoopCounter = 0;
-  private static final int VISION_SKIP_CYCLES = 2; // Process every 3rd loop (50Hz → 16Hz)
-  
-  // NEW: Track current detection state for PoseEstimator to check
   private boolean currentlyHasMultiTag = false;
   private boolean currentlyHasSingleTag = false;
-  private int currentBestTagCount = 0;
-  private double currentBestDistance = Double.MAX_VALUE;
 
-  private final Map<String, Double> lastConsoleOutputTime = new HashMap<>();
-  private static final double CONSOLE_OUTPUT_INTERVAL_SECONDS = 3.0;
-
-  private static final Pose2d EXPECTED_TEST_POSE = new Pose2d(3.57, 2.44, Rotation2d.fromDegrees(240.0));
-  private static final double POSITION_TOLERANCE_METERS = 0.15;
-  private static final double ROTATION_TOLERANCE_DEGREES = 5.0;
-  
   public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator, GyroSubsystem gyroSubsystem) {
     this.poseEstimator = poseEstimator;
     this.gyroSubsystem = gyroSubsystem;
@@ -69,20 +48,16 @@ public class TagVisionSubsystem extends SubsystemBase {
 
     cameras = new ArrayList<>();
     
-    // Limelight 3 - Front camera (ACTIVE)
+    // Limelight 3 - Front camera (active when LIMELIGHT_ENABLED = true)
     cameras.add(new LimelightCamera(LL_FRONT_NAME, 0));
     
-    // DISABLED: PhotonVision cameras - too inaccurate currently
-    // TODO: Re-enable after calibration improves
+    // PhotonVision cameras (disabled - uncomment when new stable mounts installed)
     /*
     cameras.add(new PhotonVisionCamera(
         PV_BACK_LEFT_NAME,
         "RLCalibratedAT",
         new Transform3d(
-            new Translation3d(
-                BACK_LEFT_PV_X_METERS,
-                BACK_LEFT_PV_Y_METERS,
-                BACK_LEFT_PV_Z_METERS),
+            new Translation3d(BACK_LEFT_PV_X_METERS, BACK_LEFT_PV_Y_METERS, BACK_LEFT_PV_Z_METERS),
             new Rotation3d(
                 Units.degreesToRadians(BACK_LEFT_PV_ROLL_DEG),
                 Units.degreesToRadians(BACK_LEFT_PV_PITCH_DEG),
@@ -93,10 +68,7 @@ public class TagVisionSubsystem extends SubsystemBase {
         PV_BACK_RIGHT_NAME,
         "RRCalibratedAT",
         new Transform3d(
-            new Translation3d(
-                BACK_RIGHT_PV_X_METERS,
-                BACK_RIGHT_PV_Y_METERS,
-                BACK_RIGHT_PV_Z_METERS),
+            new Translation3d(BACK_RIGHT_PV_X_METERS, BACK_RIGHT_PV_Y_METERS, BACK_RIGHT_PV_Z_METERS),
             new Rotation3d(
                 Units.degreesToRadians(BACK_RIGHT_PV_ROLL_DEG),
                 Units.degreesToRadians(BACK_RIGHT_PV_PITCH_DEG),
@@ -104,71 +76,51 @@ public class TagVisionSubsystem extends SubsystemBase {
         fieldLayout));
     */
     
-    System.out.println("TagVisionSubsystem initialized:");
-    System.out.println("  - " + LL_FRONT_NAME + " (Limelight 3) - ACTIVE");
-    System.out.println("  - " + PV_BACK_LEFT_NAME + " (PhotonVision) - DISABLED (inaccurate)");
-    System.out.println("  - " + PV_BACK_RIGHT_NAME + " (PhotonVision) - DISABLED (inaccurate)");
-    System.out.println("  - QuestNav SLAM - ACTIVE");
+    SmartLogger.logConsole("TagVisionSubsystem: Limelight only (PhotonVision disabled)");
   }
 
   @Override
   public void periodic() {
-    // EARLY RETURN: Limelight disabled via feature flag
     if (!LIMELIGHT_ENABLED) {
-      Logger.recordOutput("TagVision/LimelightEnabled", false);
-      Logger.recordOutput("TagVision/PhotonVisionEnabled", false);
-      Logger.recordOutput("TagVision/DisabledViaFeatureFlag", true);
+      SmartLogger.logReplay("TagVision/Disabled", true);
       return;
     }
     
-    // LIMELIGHT ONLY - PhotonVision disabled for QuestNav-only testing
-    
     // Process Limelight camera only
     for (VisionCamera camera : cameras) {
-      // Skip PhotonVision cameras
       if (!camera.getName().equals(LL_FRONT_NAME)) {
         continue;
       }
       
       Optional<VisionResult> result = camera.getLatestResult();
-      
       if (result.isEmpty()) {
-        continue; // No tags visible
+        continue;
       }
       
       VisionResult visionResult = result.get();
       
-      // Add measurement to pose estimator
       poseEstimator.addVisionMeasurement(
           visionResult.estimatedPose,
-          visionResult.timestampSeconds,  // Now using latency-compensated timestamp!
+          visionResult.timestampSeconds,
           visionResult.tagCount,
           camera.getName());
       
-      // Update state tracking
       hasRecentPose = true;
       if (visionResult.tagCount >= MIN_TAG_COUNT_FOR_MULTI) {
         currentlyHasMultiTag = true;
       } else {
         currentlyHasSingleTag = true;
       }
-      currentBestTagCount = Math.max(currentBestTagCount, visionResult.tagCount);
       
-      // Logging
-      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/Pose", visionResult.estimatedPose);
-      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/TagCount", visionResult.tagCount);
-      Logger.recordOutput("TagVision/Camera/" + camera.getName() + "/Timestamp", visionResult.timestampSeconds);
+      SmartLogger.logReplay("TagVision/" + camera.getName() + "/Pose", visionResult.estimatedPose);
+      SmartLogger.logReplay("TagVision/" + camera.getName() + "/TagCount", (double) visionResult.tagCount);
     }
     
-    // Overall status
-    Logger.recordOutput("TagVision/LimelightEnabled", true);
-    Logger.recordOutput("TagVision/PhotonVisionEnabled", false);
-    Logger.recordOutput("TagVision/HasAnyTarget", hasRecentPose);
-    Logger.recordOutput("TagVision/CurrentlyHasMultiTag", currentlyHasMultiTag);
-    Logger.recordOutput("TagVision/CurrentlyHasSingleTag", currentlyHasSingleTag);
+    SmartLogger.logReplay("TagVision/HasTarget", hasRecentPose);
+    SmartLogger.logReplay("TagVision/MultiTag", currentlyHasMultiTag);
+    SmartLogger.logReplay("TagVision/SingleTag", currentlyHasSingleTag);
   }
 
-  // NEW: Always return false - no vision available
   public boolean hasMultiTagDetection() {
     return false; // Vision disabled
   }

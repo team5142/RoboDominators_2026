@@ -19,10 +19,12 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
-import frc.robot.commands.SetStartingPoseCommand;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.drive.DriveWithJoysticks;
+import frc.robot.commands.util.LogCurrentPoseCommand;
+import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
@@ -31,8 +33,14 @@ import frc.robot.util.TouchscreenInterface;
 public class RobotContainer {
   
   // === CONFIGURATION TOGGLES ===
-  private static final boolean ENABLE_CONSOLE_LOGGING = true;  // System.out for live debugging
-  private static final boolean ENABLE_REPLAY_LOGGING = true;   // AdvantageKit for post-match replay
+  public static final boolean COMPETITION_MODE = false; // SET TRUE FOR MATCHES! Auto-configures bandwidth
+  //How to clear the logs before a comp:
+  //ssh admin@roborio-5142-frc.local
+  //df -h  # Check disk space
+  //# If < 1GB: rm -rf /home/lvuser/logs/old*
+
+
+  private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE; // Auto-disable in comp (saves bandwidth)
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Enable HTML touchscreen interface
   private static final boolean SYSID_MODE = false; // SysId characterization mode (use Phoenix Tuner X)
   // ============================
@@ -56,7 +64,12 @@ public class RobotContainer {
   // === CONSTRUCTOR - Runs once at robot boot ===
   public RobotContainer() {
     // 1. Configure logging first (everything else may use it)
-    SmartLogger.configure(ENABLE_CONSOLE_LOGGING, ENABLE_REPLAY_LOGGING);
+    SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
+    
+    // Log competition mode status
+    if (COMPETITION_MODE) {
+      SmartLogger.logReplay("Robot/CompetitionMode", true);
+    }
     
     // 2. Link subsystems that reference each other
     poseEstimator.setTagVisionSubsystem(tagVisionSubsystem);
@@ -135,6 +148,11 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kStart.value)
         .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID TUNER POSITION", gyro, questNav, driveSubsystem, poseEstimator));
 
+    // BOTH TRIGGERS: Log current pose to console (hold both fully)
+    new Trigger(() -> driverController.getLeftTriggerAxis() > 0.9 && 
+                      driverController.getRightTriggerAxis() > 0.9)
+        .onTrue(new LogCurrentPoseCommand(poseEstimator, "LOGGED_POSITION"));
+
     // Y: Drive to Blue Reef Tag 17 (hybrid PathPlanner + AutoPilot)
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
@@ -160,6 +178,7 @@ public class RobotContainer {
         }));
 
     String bindingsMsg = "D-Pad: AVAILABLE\n" +
+                        "Both Triggers: Log current pose\n" +
                         "Y: SmartDrive Tag 17\n" +
                         "B: SmartDrive Tag 16\n" +
                         "A: SmartDrive Tag 12\n" +

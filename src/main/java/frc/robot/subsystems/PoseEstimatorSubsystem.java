@@ -9,6 +9,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.kinematics.SwerveModulePosition;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -25,6 +26,9 @@ import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Timer;
+import frc.robot.util.LimelightHelpers; // Ensure this is the correct package for LimelightHelpers
+import frc.robot.Constants; // Ensure the Constants class is imported
+import frc.robot.util.SmartLogger;
 
 /**
  * Pose Estimator Subsystem - Fuses odometry + QuestNav for accurate robot localization
@@ -96,7 +100,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     // NEW: Publish field to SmartDashboard/Elastic
     SmartDashboard.putData("Field", field);
     
-    System.out.println("PoseEstimatorSubsystem initialized (refactored with helpers)");
+    SmartLogger.logConsole("PoseEstimatorSubsystem initialized (refactored with helpers)");
   }
   
   public void setTagVisionSubsystem(TagVisionSubsystem tagVisionSubsystem) {
@@ -220,7 +224,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
               initialStdDevs); // VERY HIGH TRUST (1cm XY, 1 deg theta)
           
           Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentApplied", true);
-          System.out.println("QuestNav initial alignment applied with VERY HIGH TRUST");
+          SmartLogger.logConsole("QuestNav initial alignment applied with VERY HIGH TRUST");
         }
         
         // NEW: SCENARIO-BASED OPERATOR PERSPECTIVE (THIS WAS MISSING!)
@@ -284,17 +288,17 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   
   private void onModeChange(RobotState.Mode from, RobotState.Mode to) {
     if (to == RobotState.Mode.ENABLED_AUTO) {
-      System.out.println("=== AUTO ENABLED ===");
+      SmartLogger.logConsole("=== AUTO ENABLED ===");
       hasEverBeenEnabled = true;
     }
     
     if (from == RobotState.Mode.ENABLED_AUTO && to == RobotState.Mode.ENABLED_TELEOP) {
-      System.out.println("=== AUTO → TELEOP TRANSITION ===");
-      System.out.println("KEEPING pose from auto - no reset!");
+      SmartLogger.logConsole("=== AUTO → TELEOP TRANSITION ===");
+      SmartLogger.logConsole("KEEPING pose from auto - no reset!");
       
       Pose2d currentPose = getEstimatedPose();
-      System.out.println("Current pose: " + formatPose(currentPose));
-      System.out.println("Current heading: " + currentPose.getRotation().getDegrees() + "°");
+      SmartLogger.logConsole("Current pose: " + formatPose(currentPose));
+      SmartLogger.logConsole("Current heading: " + currentPose.getRotation().getDegrees() + "°");
       
       driveSubsystem.setOperatorPerspectiveForward(currentPose.getRotation());
       
@@ -303,12 +307,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
     
     if (to == RobotState.Mode.ENABLED_TELEOP && !hasEverBeenEnabled) {
-      System.out.println("=== TELEOP ENABLED (First Enable) ===");
+      SmartLogger.logConsole("=== TELEOP ENABLED (First Enable) ===");
       hasEverBeenEnabled = true;
       
       if (!initializer.isInitialized()) {
-        System.err.println("WARNING: Enabled in teleop without pose!");
-        System.err.println("Robot needs QuestNav or manual pose set");
+        SmartLogger.logConsoleError("WARNING: Enabled in teleop without pose!");
+        SmartLogger.logConsoleError("Robot needs QuestNav or manual pose set");
       }
     }
   }
@@ -335,31 +339,31 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     if (isAutoOrFMS) {
       // AUTO/FMS: Trust robot is facing downfield, let CTRE handle it
-      System.out.println("=== OPERATOR PERSPECTIVE (AUTO/FMS) ===");
-      System.out.println("Mode: Competition / Practice Auto");
-      System.out.println("Action: Using alliance-based perspective (CTRE default)");
+      SmartLogger.logConsole("=== OPERATOR PERSPECTIVE (AUTO/FMS) ===");
+      SmartLogger.logConsole("Mode: Competition / Practice Auto");
+      SmartLogger.logConsole("Action: Using alliance-based perspective (CTRE default)");
       
       var alliance = DriverStation.getAlliance();
       if (alliance.isPresent()) {
         String allianceName = alliance.get() == Alliance.Red ? "Red" : "Blue";
         double expectedPerspective = alliance.get() == Alliance.Red ? 180.0 : 0.0;
-        System.out.println("Alliance: " + allianceName);
-        System.out.println("Expected downfield: " + expectedPerspective + " deg");
+        SmartLogger.logConsole("Alliance: " + allianceName);
+        SmartLogger.logConsole("Expected downfield: " + expectedPerspective + " deg");
       }
-      System.out.println("======================================");
+      SmartLogger.logConsole("======================================");
       
       Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Auto/FMS");
       
     } else {
       // TELEOP PRACTICE: Use QuestNav heading to calculate perspective
-      System.out.println("=== OPERATOR PERSPECTIVE (TELEOP PRACTICE) ===");
-      System.out.println("Mode: Teleop practice (random field position)");
+      SmartLogger.logConsole("=== OPERATOR PERSPECTIVE (TELEOP PRACTICE) ===");
+      SmartLogger.logConsole("Mode: Teleop practice (random field position)");
       
       if (questNavPose != null) {
         setOperatorPerspectiveFromPose(questNavPose);
         Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Teleop");
       } else {
-        System.err.println("WARNING: QuestNav unavailable - using CTRE default");
+        SmartLogger.logConsoleError("WARNING: QuestNav unavailable - using CTRE default");
         Logger.recordOutput("PoseEstimator/OperatorPerspective/Scenario", "Teleop (QuestNav unavailable)");
       }
     }
@@ -386,11 +390,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     driveSubsystem.setOperatorPerspectiveForward(snappedPerspective);
     
-    System.out.println("Robot heading (QuestNav): " + robotHeading.getDegrees() + " deg");
-    System.out.println("Downfield direction: " + downfieldDirection.getDegrees() + " deg");
-    System.out.println("Calculated perspective: " + perspectiveDeg + " deg");
-    System.out.println("Snapped perspective: " + snappedDeg + " deg (nearest 5 deg)");
-    System.out.println("============================================");
+    SmartLogger.logConsole("Robot heading (QuestNav): " + robotHeading.getDegrees() + " deg");
+    SmartLogger.logConsole("Downfield direction: " + downfieldDirection.getDegrees() + " deg");
+    SmartLogger.logConsole("Calculated perspective: " + perspectiveDeg + " deg");
+    SmartLogger.logConsole("Snapped perspective: " + snappedDeg + " deg (nearest 5 deg)");
+    SmartLogger.logConsole("============================================");
     
     Logger.recordOutput("PoseEstimator/RobotHeading", robotHeading.getDegrees());
     Logger.recordOutput("PoseEstimator/DownfieldDirection", downfieldDirection.getDegrees());
@@ -408,16 +412,16 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   public boolean forceAcceptQuestNavPose() {
     // Check if QuestNav is available and tracking
     if (!questNavSubsystem.isTracking()) {
-      System.err.println("[ForceUpdate] QuestNav not tracking - cannot force update!");
-      Logger.recordOutput("PoseEstimator/ForceUpdate/Failed", "Not tracking");
+      SmartLogger.logConsoleError("[ForceUpdate] QuestNav not tracking - cannot force update!");
+      SmartLogger.logReplay("PoseEstimator/ForceUpdate/Failed", "Not tracking");
       return false;
     }
     
     // Get current QuestNav pose
     var questPose = questNavSubsystem.getRobotPose();
     if (!questPose.isPresent()) {
-      System.err.println("[ForceUpdate] QuestNav has no pose available!");
-      Logger.recordOutput("PoseEstimator/ForceUpdate/Failed", "No pose");
+      SmartLogger.logConsoleError("[ForceUpdate] QuestNav has no pose available!");
+      SmartLogger.logReplay("PoseEstimator/ForceUpdate/Failed", "No pose");
       return false;
     }
     
@@ -434,16 +438,44 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     m_lastUpdateTime = Timer.getFPGATimestamp(); // Update timestamp
     
-    System.out.println("========== FORCED POSE UPDATE ==========");
-    System.out.println("QuestNav pose: " + formatPose(forcedPose));
-    System.out.println("Trust level: 1cm XY, 1° theta (VERY HIGH)");
-    System.out.println("Kalman filter bypassed - pose locked to QuestNav");
-    System.out.println("========================================");
+    SmartLogger.logConsole("========== FORCED POSE UPDATE ==========");
+    SmartLogger.logConsole("QuestNav pose: " + formatPose(forcedPose));
+    SmartLogger.logConsole("Trust level: 1cm XY, 1° theta (VERY HIGH)");
+    SmartLogger.logConsole("Kalman filter bypassed - pose locked to QuestNav");
+    SmartLogger.logConsole("========================================");
     
-    Logger.recordOutput("PoseEstimator/ForceUpdate/Success", true);
-    Logger.recordOutput("PoseEstimator/ForceUpdate/Pose", forcedPose);
-    Logger.recordOutput("PoseEstimator/ForceUpdate/Trust", "VERY HIGH (1cm, 1deg)");
+    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Success", true);
+    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Pose", forcedPose);
+    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Trust", "VERY HIGH (1cm, 1deg)");
     
     return true;
+  }
+    
+  
+  /**
+   * Updates Limelight's robot orientation for MegaTag2 pose disambiguation.
+   * Called every cycle to provide yaw + turn rate from odometry.
+   * 
+   * Sister team's critical insight: Feeding yaw+turnRate dramatically improves
+   * AprilTag pose accuracy during rotation.
+   */
+  private void updateLimelightOrientation() {
+    Pose2d currentPose = getEstimatedPose();
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    
+    double yawDegrees = currentPose.getRotation().getDegrees();
+    double turnRateDegPerSec = Math.toDegrees(speeds.omegaRadiansPerSecond);
+    
+    // Feed to Limelight for MegaTag2 (yaw, yawRate, pitch, pitchRate, roll, rollRate)
+    LimelightHelpers.SetRobotOrientation(
+        Constants.Vision.LL_FRONT_NAME,
+        yawDegrees,
+        turnRateDegPerSec,
+        0.0, 0.0,  // pitch, pitchRate (unused for swerve)
+        0.0, 0.0); // roll, rollRate (unused for swerve)
+    
+    // Log for debugging
+    Logger.recordOutput("Limelight/YawDegrees", yawDegrees);
+    Logger.recordOutput("Limelight/TurnRateDegPerSec", turnRateDegPerSec);
   }
 }
