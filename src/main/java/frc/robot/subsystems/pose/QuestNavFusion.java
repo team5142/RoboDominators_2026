@@ -15,6 +15,7 @@ import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
+import frc.robot.subsystems.PoseEstimatorSubsystem; // ADD THIS IMPORT
 import gg.questnav.questnav.PoseFrame;
 import org.littletonrobotics.junction.Logger;
 
@@ -40,19 +41,21 @@ public class QuestNavFusion {
   
   private final QuestNavSubsystem questNavSubsystem;
   private final DriveSubsystem driveSubsystem;
-  private final SwerveDrivePoseEstimator poseEstimator;
+  private final SwerveDrivePoseEstimator swervePoseEstimator; // WPILib estimator
+  private final PoseEstimatorSubsystem poseEstimatorSubsystem; // OUR subsystem (for notifications)
   
-  // Transform for manual application (older API)
   private final Transform3d robotToQuest;
   
   public QuestNavFusion(
       QuestNavSubsystem questNavSubsystem,
       DriveSubsystem driveSubsystem,
-      SwerveDrivePoseEstimator poseEstimator) {
+      SwerveDrivePoseEstimator swervePoseEstimator,
+      PoseEstimatorSubsystem poseEstimatorSubsystem) { // ADD THIS PARAMETER
     
     this.questNavSubsystem = questNavSubsystem;
     this.driveSubsystem = driveSubsystem;
-    this.poseEstimator = poseEstimator;
+    this.swervePoseEstimator = swervePoseEstimator;
+    this.poseEstimatorSubsystem = poseEstimatorSubsystem; // STORE IT
     
     // Store transform for manual application
     this.robotToQuest = new Transform3d(
@@ -62,16 +65,10 @@ public class QuestNavFusion {
   }
   
   /**
-   * Check for new QuestNav frames and process the latest one
+   * Check for new QuestNav frames and process all of them
    * Called every cycle (20ms) from PoseEstimatorSubsystem.periodic()
-   * 
-   * Only processes the MOST RECENT frame - older frames are discarded
-   * to prevent accumulating stale measurements
    */
   public void processFrames() {
-    // REMOVED: Velocity gating - rely only on timestamp validation
-    // Timestamp validation (age < 0.5s) + Innovation gate (2m, 30°) are sufficient protection
-    
     PoseFrame[] frames = questNavSubsystem.getAllUnreadFrames();
     
     if (frames == null || frames.length == 0) {
@@ -79,98 +76,73 @@ public class QuestNavFusion {
       return;
     }
     
-    // Only process most recent frame (discard stale data)
-    PoseFrame latestFrame = frames[frames.length - 1];
+    // Process ALL frames (sister team's approach)
+    int processedCount = 0;
+    int rejectedCount = 0;
+    Pose2d lastAcceptedPose = null; // NEW: Track last accepted pose
     
-    if (frames.length > 1) {
-      Logger.recordOutput("PoseEstimator/QuestNavFramesSkipped", frames.length - 1);
+    for (PoseFrame frame : frames) {
+      if (frame == null) continue;
+      
+      Pose3d cameraPose3d = frame.questPose3d();
+      if (cameraPose3d == null) continue;
+      
+      // Transform to robot pose
+      Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
+      Pose2d questPose2d = new Pose2d(
+          robotPose3d.getX(),
+          robotPose3d.getY(),
+          robotPose3d.getRotation().toRotation2d());
+      
+      // Latency compensation
+      double captureTimestamp = frame.dataTimestamp();
+      double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+      double actualAge = currentTime - captureTimestamp;
+      
+      // Reject if too old (> 500ms)
+      if (actualAge > 0.5 || captureTimestamp > currentTime) {
+        rejectedCount++;
+        continue;
+      }
+      
+      // Innovation gating (STRICT)
+      if (!gateQuestNavMeasurement(questPose2d, captureTimestamp)) {
+        rejectedCount++;
+        continue;
+      }
+      
+      // Get trust level based on robot state
+      Matrix<N3, N1> stdDevs = getTrustForCurrentState();
+      
+      // Add to pose estimator
+      swervePoseEstimator.addVisionMeasurement(questPose2d, captureTimestamp, stdDevs);
+      processedCount++;
+      lastAcceptedPose = questPose2d; // NEW: Store for logging
     }
     
-    if (latestFrame == null) {
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Frame");
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return;
+    // NEW: Log the latest accepted pose
+    if (lastAcceptedPose != null) {
+      Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", lastAcceptedPose);
+      poseEstimatorSubsystem.notifyQuestNavFusionOccurred(); // NOW THIS WORKS!
     }
     
-    // Get camera pose from QuestNav
-    Pose3d cameraPose3d = latestFrame.questPose3d();
-    if (cameraPose3d == null) {
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Null Pose3d");
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return;
-    }
-    
-    // Transform to robot pose
-    Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
-    
-    Pose2d questPose2d = new Pose2d(
-        robotPose3d.getX(),
-        robotPose3d.getY(),
-        robotPose3d.getRotation().toRotation2d());
-    
-    // LATENCY COMPENSATION - QuestNav frames arrive nearly instantly
-    double rawTimestamp = latestFrame.dataTimestamp();
-    
-    // FIX: dataTimestamp() is already FPGA time when frame arrived on RoboRIO
-    // ActualAge measurements show 2-5ms latency (network + processing)
-    // Don't subtract QUESTNAV_LATENCY_MS - it makes timestamps go into the future!
-    double captureTimestamp = rawTimestamp;  // Use raw timestamp directly
-    double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
-    
-    // Calculate actual age (for debugging)
-    double actualAge = currentTime - rawTimestamp;
-    
-    Logger.recordOutput("PoseEstimator/QuestNav/RawTimestamp", rawTimestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/CaptureTimestamp", captureTimestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/CurrentTime", currentTime);
-    Logger.recordOutput("PoseEstimator/QuestNav/ActualAge", actualAge);
-    Logger.recordOutput("PoseEstimator/QuestNav/LatencyMS", QUESTNAV_LATENCY_MS);
-    
-    // VALIDATION: Reject if timestamp is in the future (should never happen now)
-    if (captureTimestamp > currentTime) {
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
-          String.format("Future timestamp (capture=%.3f, current=%.3f, age=%.3f)", 
-              captureTimestamp, currentTime, actualAge));
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return;
-    }
-    
-    // Reject if timestamp is too old (> 500ms)
-    if (actualAge > 0.5) {
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
-          String.format("Too old (age=%.3fs)", actualAge));
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return;
-    }
-    
-    // Innovation gating - reject outliers
-    if (!gateQuestNavMeasurement(questPose2d, captureTimestamp)) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return;
-    }
-    
-    // Get trust level (stopped robot has high trust)
-    Matrix<N3, N1> stdDevs = getStoppedQuestNavStdDevs();
-    
-    // Add to pose estimator with raw timestamp
-    poseEstimator.addVisionMeasurement(questPose2d, captureTimestamp, stdDevs);
-    
-    Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
-    Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose2d);
+    Logger.recordOutput("PoseEstimator/QuestNav/FramesProcessed", processedCount);
+    Logger.recordOutput("PoseEstimator/QuestNav/FramesRejected", rejectedCount);
+    Logger.recordOutput("PoseEstimator/QuestNavUsed", processedCount > 0);
   }
   
   /**
    * Innovation gating - reject measurements too far from prediction
    */
   private boolean gateQuestNavMeasurement(Pose2d measurement, double timestamp) {
-    Pose2d predictedPose = poseEstimator.getEstimatedPosition();
+    Pose2d predictedPose = swervePoseEstimator.getEstimatedPosition(); // Use swervePoseEstimator
     
     double posError = measurement.getTranslation().getDistance(predictedPose.getTranslation());
     double rotError = Math.abs(measurement.getRotation().minus(predictedPose.getRotation()).getRadians());
     
-    // Conservative gates (robot should be stopped, so error should be small)
-    double posGate = 2;  // 50cm max position error
-    double rotGate = Math.toRadians(30.0);  // 15 deg max rotation error
+    // STRICT gates (50cm position, 15° rotation)
+    double posGate = 0.5;  // FIX: 50cm (not 2m!)
+    double rotGate = Math.toRadians(15.0);  // FIX: 15° (not 30°!)
     
     boolean passed = posError <= posGate && rotError <= rotGate;
     
@@ -214,5 +186,28 @@ public class QuestNavFusion {
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/Theta_Initial", thetaTrust);
     
     return VecBuilder.fill(xyTrust, xyTrust, thetaTrust);
+  }
+  
+  /**
+   * Get trust level based on current robot state
+   */
+  private Matrix<N3, N1> getTrustForCurrentState() {
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+    double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
+    
+    // High trust when stopped
+    if (linearSpeed < 0.05 && angularSpeed < 0.05) {
+      return VecBuilder.fill(
+          QUESTNAV_STD_DEVS_STOPPED[0],  // 2cm XY
+          QUESTNAV_STD_DEVS_STOPPED[1],  
+          QUESTNAV_STD_DEVS_STOPPED[2]); // 2° theta
+    }
+    
+    // Moderate trust during motion
+    return VecBuilder.fill(
+        QUESTNAV_STD_DEVS[0],  // 8cm XY
+        QUESTNAV_STD_DEVS[1],  
+        QUESTNAV_STD_DEVS[2]); // 4° theta
   }
 }

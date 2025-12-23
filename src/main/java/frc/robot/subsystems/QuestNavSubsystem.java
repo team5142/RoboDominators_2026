@@ -46,7 +46,6 @@ public class QuestNavSubsystem extends SubsystemBase {
     );
     
     SmartLogger.logConsole("Robot-to-Quest transform: " + robotToQuest);
-    SmartLogger.logConsole("Using manual transform application (2025-2.1.0-beta API)");
     
     testConnection();
     SmartLogger.logConsole("========================================\n");

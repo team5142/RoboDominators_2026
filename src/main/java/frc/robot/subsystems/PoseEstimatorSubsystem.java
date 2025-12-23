@@ -69,7 +69,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   private final Field2d field = new Field2d();
 
-  private double m_lastUpdateTime = 0.0; // NEW: Track last fusion time
+  private double m_lastUpdateTime = 0.0; // Generic measurement timestamp
+  private double m_lastQuestNavFusionTime = 0.0; // NEW: QuestNav fusion timestamp
 
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
@@ -93,7 +94,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         VecBuilder.fill(LIMELIGHT_MULTI_TAG_STD_DEVS[0], LIMELIGHT_MULTI_TAG_STD_DEVS[1], LIMELIGHT_MULTI_TAG_STD_DEVS[2]));
 
     // Create helper classes - NOTE: questNavFusion needs to be created BEFORE initializer
-    this.questNavFusion = new QuestNavFusion(questNavSubsystem, driveSubsystem, poseEstimator);
+    this.questNavFusion = new QuestNavFusion(
+        questNavSubsystem, 
+        driveSubsystem, 
+        poseEstimator,  // SwerveDrivePoseEstimator
+        this);          // PoseEstimatorSubsystem (THIS!)
     this.initializer = new PoseInitializer(questNavSubsystem, questNavFusion); // CHANGED: Pass questNavFusion
     this.validator = new PoseValidator();
     
@@ -285,6 +290,16 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   public double getTimeSinceLastUpdate() {
     return Timer.getFPGATimestamp() - m_lastUpdateTime;
   }
+
+  // NEW: Getter for QuestNav fusion time
+  public double getTimeSinceLastQuestNavFusion() {
+    return Timer.getFPGATimestamp() - m_lastQuestNavFusionTime;
+  }
+
+  // NEW: Called by QuestNavFusion when it processes frames
+  public void notifyQuestNavFusionOccurred() {
+    m_lastQuestNavFusionTime = Timer.getFPGATimestamp();
+  }
   
   private void onModeChange(RobotState.Mode from, RobotState.Mode to) {
     if (to == RobotState.Mode.ENABLED_AUTO) {
@@ -438,6 +453,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     m_lastUpdateTime = Timer.getFPGATimestamp(); // Update timestamp
     
+    // NEW: Notify fusion timestamp immediately (don't wait for processFrames())
+    notifyQuestNavFusionOccurred();
+    
     SmartLogger.logConsole("========== FORCED POSE UPDATE ==========");
     SmartLogger.logConsole("QuestNav pose: " + formatPose(forcedPose));
     SmartLogger.logConsole("Trust level: 1cm XY, 1° theta (VERY HIGH)");
@@ -447,6 +465,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     SmartLogger.logReplay("PoseEstimator/ForceUpdate/Success", true);
     SmartLogger.logReplay("PoseEstimator/ForceUpdate/Pose", forcedPose);
     SmartLogger.logReplay("PoseEstimator/ForceUpdate/Trust", "VERY HIGH (1cm, 1deg)");
+    
+    // NEW: Flush old frames so they don't get processed after force-update
+    questNavSubsystem.getAllUnreadFrames(); // Discard old queue
     
     return true;
   }

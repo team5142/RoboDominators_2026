@@ -66,24 +66,30 @@ public class SmartDriveToPosition {
         }),
         toStaging,
         
-        // Phase 2: Active wait for fresh QuestNav pose (max 3s, exits early if pose received)
+        // Phase 2: Active wait for fresh QuestNav pose that PASSES Kalman filter
         Commands.runOnce(() -> {
-          s_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0)); // Full stop
-          SmartLogger.logConsole("[SmartDrive] Waiting for fresh QuestNav pose (max 3s)...");
+          s_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
+          SmartLogger.logConsole("[SmartDrive] Waiting for QuestNav pose (processed by filter, max 3s)...");
         }),
         Commands.waitUntil(() -> {
-          // Try to force-accept QuestNav pose
-          boolean success = s_poseEstimator.forceAcceptQuestNavPose();
+          boolean questNavHasPose = s_poseEstimator.forceAcceptQuestNavPose();
           
-          if (success) {
-            Pose2d lockedPose = s_poseEstimator.getEstimatedPose();
-            SmartLogger.logConsole("[SmartDrive] Fresh pose received: " + formatPose(lockedPose));
-            SmartLogger.logReplay("SmartDrive/ForcedPose", lockedPose);
-            SmartLogger.logReplay("SmartDrive/ForceAcceptSuccess", true);
-            return true; // Exit loop immediately
+          if (!questNavHasPose) {
+            return false;
           }
           
-          // Keep waiting (loop will timeout after 3s)
+          // FIXED: Check QuestNav fusion specifically, not generic update time
+          double timeSinceQuestNavFusion = s_poseEstimator.getTimeSinceLastQuestNavFusion();
+          
+          if (timeSinceQuestNavFusion < 0.1) { // QuestNav fusion happened within 100ms
+            Pose2d lockedPose = s_poseEstimator.getEstimatedPose();
+            SmartLogger.logConsole("[SmartDrive] QuestNav fusion confirmed: " + formatPose(lockedPose));
+            SmartLogger.logReplay("SmartDrive/ForcedPose", lockedPose);
+            SmartLogger.logReplay("SmartDrive/ForceAcceptSuccess", true);
+            return true;
+          }
+          
+          SmartLogger.logReplay("SmartDrive/ForceAcceptRejectedByGate", true);
           return false;
         }).withTimeout(QUESTNAV_WAIT_TIMEOUT_S),
         
