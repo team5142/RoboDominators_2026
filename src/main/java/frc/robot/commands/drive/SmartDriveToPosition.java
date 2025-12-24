@@ -18,11 +18,7 @@ import frc.robot.commands.drive.AutoPilotToTargetCommand;
 // Factory for hybrid PathPlanner + AutoPilot navigation commands
 // Creates 3-phase sequence: (1) PP pathfind to staging area, (2) lock pose to QuestNav, (3) AP precision to target
 public class SmartDriveToPosition {
-  private static final double PATHFINDER_SPEED_MULT = 0.6; // 60% max speed for safe approach with obstacle avoidance
   private static final double PATHFINDER_TIMEOUT_S = 8.0; // Max time for Phase 1 pathfinding
-  private static final double PATHFINDER_ACCEL = 3.5; // m/s^2 linear acceleration
-  private static final double PATHFINDER_ROTATION_MULT = 0.8; // 80% max rotation speed
-  private static final double PATHFINDER_ROTATION_ACCEL = Math.PI; // rad/s^2 angular acceleration
   private static final double QUESTNAV_WAIT_TIMEOUT_S = 3.0; // Max wait for fresh QuestNav pose
 
   // Subsystems shared across all SmartDrive commands (factory pattern avoids passing 4+ params every time)
@@ -55,9 +51,6 @@ public class SmartDriveToPosition {
     // Phase 1: PathPlanner dynamic pathfinding to staging area (8s max, handles obstacles)
     Command toStaging = AutoBuilder.pathfindToPose(stagingPose, createPathPlannerConstraints()).withTimeout(PATHFINDER_TIMEOUT_S);
     
-    // Phase 3: AutoPilot precision navigation (sub-5cm accuracy, no timeout - will complete when at target)
-    Command precisionNav = new AutoPilotToTargetCommand(finalTargetPose, s_driveSubsystem, s_poseEstimator, 0, 0, 0);
-
     return new SequentialCommandGroup(
         Commands.runOnce(() -> {
           s_robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
@@ -66,48 +59,9 @@ public class SmartDriveToPosition {
         }),
         toStaging,
         
-        // Phase 2: Active wait for fresh QuestNav pose that PASSES Kalman filter
-        Commands.runOnce(() -> {
-          s_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
-          SmartLogger.logConsole("[SmartDrive] Waiting for QuestNav pose (processed by filter, max 3s)...");
-        }),
-        Commands.waitUntil(() -> {
-          boolean questNavHasPose = s_poseEstimator.forceAcceptQuestNavPose();
-          
-          if (!questNavHasPose) {
-            return false;
-          }
-          
-          // FIXED: Check QuestNav fusion specifically, not generic update time
-          double timeSinceQuestNavFusion = s_poseEstimator.getTimeSinceLastQuestNavFusion();
-          
-          if (timeSinceQuestNavFusion < 0.1) { // QuestNav fusion happened within 100ms
-            Pose2d lockedPose = s_poseEstimator.getEstimatedPose();
-            SmartLogger.logConsole("[SmartDrive] QuestNav fusion confirmed: " + formatPose(lockedPose));
-            SmartLogger.logReplay("SmartDrive/ForcedPose", lockedPose);
-            SmartLogger.logReplay("SmartDrive/ForceAcceptSuccess", true);
-            return true;
-          }
-          
-          SmartLogger.logReplay("SmartDrive/ForceAcceptRejectedByGate", true);
-          return false;
-        }).withTimeout(QUESTNAV_WAIT_TIMEOUT_S),
+        // Phase 2+3: Shared precision logic
+        createPrecisionPhase(finalTargetPose),
         
-        Commands.runOnce(() -> {
-          // Log final state after wait loop
-          boolean finalSuccess = s_questNavSubsystem.isTracking();
-          if (!finalSuccess) {
-            SmartLogger.logConsoleError("[SmartDrive] WARNING: QuestNav never provided fresh pose (timeout after 3s)");
-            SmartLogger.logReplay("SmartDrive/ForceAcceptTimeout", true);
-          }
-          
-          s_robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
-          SmartLogger.logReplay("SmartDrive/Status", "Phase 2: AutoPilot");
-          SmartLogger.logConsole("[SmartDrive] AP start: " + formatPose(s_poseEstimator.getEstimatedPose()));
-          SmartLogger.logConsole("[SmartDrive] AP target: " + formatPose(finalTargetPose));
-          SmartLogger.logReplay("SmartDrive/Phase", "AutoPilot");
-        }),
-        precisionNav,
         Commands.runOnce(() -> {
           s_robotState.setNavigationPhase(RobotState.NavigationPhase.LOCKED);
           SmartLogger.logReplay("SmartDrive/Status", "Complete");
@@ -121,10 +75,79 @@ public class SmartDriveToPosition {
     });
   }
   
+  /**
+   * Creates Phase 2+3 (QuestNav lock + AutoPilot precision)
+   * Shared by both create() and PathPlanner event markers
+   * 
+   * Usage:
+   * 1. Teleop: SmartDriveToPosition.create() calls this after PathPlanner
+   * 2. Auto: PathPlanner event "SmartPrecision:Tag17" calls this directly
+   * 
+   * @param finalTargetPose The precision target (e.g., PRECISE_17_POSE)
+   * @return Command that waits for QuestNav lock, then uses AutoPilot
+   */
+  public static Command createPrecisionPhase(Pose2d finalTargetPose) {
+    if (s_poseEstimator == null) {
+      throw new IllegalStateException("SmartDriveToPosition not configured!");
+    }
+    
+    return new SequentialCommandGroup(
+        // Phase 2: Wait for QuestNav lock
+        Commands.runOnce(() -> {
+          s_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
+          SmartLogger.logConsole("[SmartDrive] Phase 2: Waiting for QuestNav lock...");
+          s_robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
+        }),
+        Commands.waitUntil(() -> {
+          boolean questNavHasPose = s_poseEstimator.forceAcceptQuestNavPose();
+          if (!questNavHasPose) return false;
+          
+          double timeSinceQuestNavFusion = s_poseEstimator.getTimeSinceLastQuestNavFusion();
+          if (timeSinceQuestNavFusion < 0.1) {
+            SmartLogger.logConsole("[SmartDrive] QuestNav locked: " + formatPose(s_poseEstimator.getEstimatedPose()));
+            return true;
+          }
+          return false;
+        }).withTimeout(QUESTNAV_WAIT_TIMEOUT_S),
+        
+        Commands.runOnce(() -> {
+          boolean finalSuccess = s_questNavSubsystem.isTracking();
+          if (!finalSuccess) {
+            SmartLogger.logConsoleError("[SmartDrive] WARNING: QuestNav timeout (3s)");
+            SmartLogger.logReplay("SmartDrive/ForceAcceptTimeout", true);
+          }
+        }),
+        
+        // Phase 3: AutoPilot precision
+        Commands.runOnce(() -> {
+          s_robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
+          SmartLogger.logConsole("[SmartDrive] Phase 3: AutoPilot to " + formatPose(finalTargetPose));
+          SmartLogger.logReplay("SmartDrive/PrecisionTarget", finalTargetPose);
+          SmartLogger.logReplay("SmartDrive/Phase", "AutoPilot");
+        }),
+        new AutoPilotToTargetCommand(finalTargetPose, s_driveSubsystem, s_poseEstimator, 0, 0, 0),
+        
+        Commands.runOnce(() -> {
+          SmartLogger.logConsole("[SmartDrive] Precision complete!");
+          SmartLogger.logReplay("SmartDrive/PrecisionComplete", true);
+        })
+    ).finallyDo((interrupted) -> {
+      if (interrupted) {
+        SmartLogger.logConsole("[SmartDrive] Precision phase interrupted");
+        SmartLogger.logReplay("SmartDrive/PrecisionInterrupted", true);
+      }
+    });
+  }
+  
   private static PathConstraints createPathPlannerConstraints() {
+    // Use settings.json values directly (no file read needed)
+    SmartLogger.logConsole("Using PathPlanner constraints: 3.5 m/s, 540 deg/s");
+    
     return new PathConstraints(
-        Constants.Swerve.MAX_TRANSLATION_SPEED_MPS * PATHFINDER_SPEED_MULT, PATHFINDER_ACCEL,
-        Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC * PATHFINDER_ROTATION_MULT, PATHFINDER_ROTATION_ACCEL);
+        3.5,                     // defaultMaxVel (m/s) from settings.json
+        3.5,                     // defaultMaxAccel (m/s²)
+        Math.toRadians(540.0),   // defaultMaxAngVel (rad/s) - converted from deg/s
+        Math.toRadians(720.0));  // defaultMaxAngAccel (rad/s²) - converted from deg/s²
   }
   
   private static String formatPose(Pose2d pose) {

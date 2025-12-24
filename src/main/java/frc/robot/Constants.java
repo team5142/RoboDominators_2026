@@ -242,15 +242,15 @@ public final class Constants {
 
   // Autonomous path following (PathPlanner PID tuning)
   public static final class Auto {
-    // Translation PID (how robot follows X/Y waypoints)
-    public static final double TRANSLATION_KP = 8;
-    public static final double TRANSLATION_KI = 0.0;
-    public static final double TRANSLATION_KD = 0.15;
+    // Translation PID (trust your SysId drive gains!)
+    public static final double TRANSLATION_KP = 3.0;  // Was 8.0 (62% reduction)
+    public static final double TRANSLATION_KI = 0.0;  // Keep zero
+    public static final double TRANSLATION_KD = 0.2;  // Was 0.15 (more damping)
     
-    // Rotation PID (how robot rotates to target heading)
-    public static final double ROTATION_KP = 9.0;
-    public static final double ROTATION_KI = 0.0;
-    public static final double ROTATION_KD = 0.2;
+    // Rotation PID (trust your SysId steer gains!)
+    public static final double ROTATION_KP = 4.0;     // Was 9.0 (56% reduction)
+    public static final double ROTATION_KI = 0.0;     // Keep zero
+    public static final double ROTATION_KD = 0.3;     // Was 0.2 (prevent spin wobble)
     
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
     
@@ -277,6 +277,9 @@ public final class Constants {
     public static final Pose2d PRECISE_12_POSE = new Pose2d(1.35, 1.07, Rotation2d.fromDegrees(-130.0));
     public static final Pose2d PRECISE_16_POSE = new Pose2d(5.99, 0.56, Rotation2d.fromDegrees(-90.0));
     public static final Pose2d PRECISE_17_POSE = new Pose2d(3.92, 2.9, Rotation2d.fromDegrees(60.0));
+    public static final Pose2d PRECISE_18_POSE = new Pose2d(3.233, 4.027, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d PRECISE_21_POSE = new Pose2d(5.741, 4.025, Rotation2d.fromDegrees(180.0));
+    public static final Pose2d PRECISE_22_POSE = new Pose2d(5.114, 2.941, Rotation2d.fromDegrees(120.0));
   }
 
   // AutoPilot precision navigation library (singleton instances)

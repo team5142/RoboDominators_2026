@@ -5,6 +5,7 @@ import static frc.robot.Constants.Auto.*;
 import static frc.robot.Constants.StartingPositions.*;
 
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
@@ -29,21 +30,14 @@ import frc.robot.subsystems.*;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
 
-// Wires up subsystems, controllers, and commands - runs once at robot startup
+// Wires up robot hardware, controllers, and commands
 public class RobotContainer {
   
-  // === CONFIGURATION TOGGLES ===
-  public static final boolean COMPETITION_MODE = false; // SET TRUE FOR MATCHES! Auto-configures bandwidth
-  //How to clear the logs before a comp:
-  //ssh admin@roborio-5142-frc.local
-  //df -h  # Check disk space
-  //# If < 1GB: rm -rf /home/lvuser/logs/old*
-
-
-  private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE; // Auto-disable in comp (saves bandwidth)
-  private static final boolean USE_TOUCHSCREEN_OPERATOR = true; // Enable HTML touchscreen interface
-  private static final boolean SYSID_MODE = false; // SysId characterization mode (use Phoenix Tuner X)
-  // ============================
+  // === CONFIGURATION ===
+  public static final boolean COMPETITION_MODE = false; // Disable logs/streams for matches
+  private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
+  private static final boolean USE_TOUCHSCREEN_OPERATOR = true;
+  private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
   
   // Hardware
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
@@ -63,29 +57,24 @@ public class RobotContainer {
 
   // === CONSTRUCTOR - Runs once at robot boot ===
   public RobotContainer() {
-    // 1. Configure logging first (everything else may use it)
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
     
-    // Log competition mode status
     if (COMPETITION_MODE) {
       SmartLogger.logReplay("Robot/CompetitionMode", true);
     }
     
-    // 2. Link subsystems that reference each other
     poseEstimator.setTagVisionSubsystem(tagVisionSubsystem);
     SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav);
     
-    // 3. Configure robot behavior
     configurePathPlanner();
+    registerSmartDriveEvents(); // Register PathPlanner event markers
     configureDefaultCommands();
     configureButtonBindings();
     
-    // 4. Optional: Touchscreen operator interface
     if (USE_TOUCHSCREEN_OPERATOR) {
       configureTouchscreenInterface();
     }
     
-    // 5. Setup autonomous chooser and monitoring
     autoChooser = AutoBuilder.buildAutoChooser();
     SmartDashboard.putData("Auto Chooser", autoChooser);
     robotState.setSysIdMode(SYSID_MODE);
@@ -95,16 +84,16 @@ public class RobotContainer {
     SmartLogger.logConsole("RobotContainer initialized - all subsystems ready", "Init Complete", 5);
   }
 
-  // === PATHPLANNER SETUP - Configures autonomous path following ===
+  // Configure PathPlanner auto builder
   private void configurePathPlanner() {
     try {
       RobotConfig config = RobotConfig.fromGUISettings();
       
       AutoBuilder.configure(
-          poseEstimator::getEstimatedPose, // Where are we?
-          this::resetPose, // Force robot to specific position
-          driveSubsystem::getRobotRelativeSpeeds, // How fast are we moving?
-          (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds), // Drive command
+          poseEstimator::getEstimatedPose,
+          this::resetPose,
+          driveSubsystem::getRobotRelativeSpeeds,
+          (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds),
           new PPHolonomicDriveController(
               new PIDConstants(
                   TunablePathPlannerPID.TRANSLATION_KP.get(), 
@@ -115,57 +104,52 @@ public class RobotContainer {
                   TunablePathPlannerPID.ROTATION_KI.get(), 
                   TunablePathPlannerPID.ROTATION_KD.get())),
           config,
-          this::shouldFlipPath, // Mirror paths for red alliance
+          this::shouldFlipPath,
           driveSubsystem);
       
-      SmartLogger.logConsole("PathPlanner configured - PID gains tunable in AdvantageScope", "PathPlanner Ready");
+      SmartLogger.logConsole("PathPlanner configured - PID tunable in AdvantageScope", "PathPlanner");
     } catch (Exception e) {
-      SmartLogger.logConsoleError("Failed to configure PathPlanner: " + e.getMessage());
+      SmartLogger.logConsoleError("PathPlanner config failed: " + e.getMessage());
       DriverStation.reportWarning("PathPlanner config failed!", false);
     }
   }
 
-  // === DEFAULT COMMANDS - Run when subsystems are idle ===
+  // Set default commands (run when subsystems idle)
   private void configureDefaultCommands() {
-    // DriveSubsystem: Driver control with joysticks
     driveSubsystem.setDefaultCommand(
         new DriveWithJoysticks(
             driveSubsystem, robotState,
-            () -> -driverController.getLeftY(), // Forward/back (inverted for pilot preference)
-            () -> -driverController.getLeftX(), // Strafe left/right (inverted)
-            () -> -driverController.getRightX(), // Rotate (inverted)
-            () -> true, // Field-relative (forward is always downfield)
-            () -> driverController.getRightBumper())); // Slow mode toggle
+            () -> -driverController.getLeftY(),
+            () -> -driverController.getLeftX(),
+            () -> -driverController.getRightX(),
+            () -> true,
+            () -> driverController.getRightBumper()));
   }
 
-  // === BUTTON BINDINGS - Map controller buttons to robot actions ===
+  // Map controller buttons to commands
   private void configureButtonBindings() {
-    // BACK: Reset field orientation (current direction = 0° downfield)
+    // BACK: Reset field orientation
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
 
-    // START: Save current position as starting pose (for testing/tuning)
+    // START: Save current position
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-        .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID TUNER POSITION", gyro, questNav, driveSubsystem, poseEstimator));
+        .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID TUNER", gyro, questNav, driveSubsystem, poseEstimator));
 
-    // BOTH TRIGGERS: Log current pose to console (hold both fully)
+    // BOTH TRIGGERS: Log pose (hold fully)
     new Trigger(() -> driverController.getLeftTriggerAxis() > 0.9 && 
                       driverController.getRightTriggerAxis() > 0.9)
         .onTrue(new LogCurrentPoseCommand(poseEstimator, "LOGGED_POSITION"));
 
-    // Y: Drive to Blue Reef Tag 17 (hybrid PathPlanner + AutoPilot)
+    // Y/B/A: SmartDrive to tags
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
-
-    // B: Drive to Blue Tag 16 (processor station)
     new JoystickButton(driverController, XboxController.Button.kB.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
-
-    // A: Drive to Blue Tag 12 (coral station)
     new JoystickButton(driverController, XboxController.Button.kA.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
 
-    // X: Execute TuneStart180 path (for PID tuning)
+    // X: PathPlanner PID tuning path
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .onTrue(Commands.runOnce(() -> {
           try {
@@ -177,37 +161,29 @@ public class RobotContainer {
           }
         }));
 
-    String bindingsMsg = "D-Pad: AVAILABLE\n" +
-                        "Both Triggers: Log current pose\n" +
-                        "Y: SmartDrive Tag 17\n" +
-                        "B: SmartDrive Tag 16\n" +
-                        "A: SmartDrive Tag 12\n" +
-                        "X: PathPlanner PID tuning";
-    SmartLogger.logConsole(bindingsMsg, "Button Bindings", 5);
+    SmartLogger.logConsole("Y/B/A: SmartDrive tags | X: Tune path | Triggers: Log pose", "Controls");
   }
 
-  // === TOUCHSCREEN INTERFACE - HTML dashboard controls ===
+  // HTML touchscreen interface
   private void configureTouchscreenInterface() {
     TouchscreenInterface touchscreen = new TouchscreenInterface(
         robotState, driveSubsystem, poseEstimator, gyro, questNav);
     touchscreen.configure();
   }
 
-  // === AUTONOMOUS COMMAND - Called when auto starts ===
+  // Called when auto starts
   public Command getAutonomousCommand() { 
     Command selectedAuto = autoChooser.getSelected();
     return (selectedAuto != null) ? wrapPathWithLogging(selectedAuto) : selectedAuto;
   }
 
-  // === UTILITY METHODS ===
-
-  // Reset robot pose to specific position (for auto start or manual reset)
+  // Reset robot position
   private void resetPose(Pose2d pose) {
     poseEstimator.resetPose(pose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     SmartLogger.logConsole("Pose reset to: " + formatPose(pose));
   }
 
-  // Add logging to path commands (tracks start/end pose for each auto segment)
+  // Add start/end logging to auto paths
   private Command wrapPathWithLogging(Command pathCommand) {
     String pathName = (pathCommand.getName() != null && !pathCommand.getName().isEmpty()) 
         ? pathCommand.getName() 
@@ -218,45 +194,27 @@ public class RobotContainer {
     return pathCommand
         .beforeStarting(() -> {
           Pose2d startPose = poseEstimator.getEstimatedPose();
-          String startMsg = "Segment: " + finalPathName + "\n" +
-                           "Start: " + formatPose(startPose) + "\n" +
-                           "Time: " + Timer.getFPGATimestamp();
-          SmartLogger.logConsole(startMsg, "Path Start", 5);
+          SmartLogger.logConsole("Segment: " + finalPathName + " | Start: " + formatPose(startPose), "Path Start");
           SmartLogger.logReplay("Auto/CurrentSegment", finalPathName);
           SmartLogger.logReplay("Auto/SegmentStart", startPose);
-          SmartLogger.logReplay("Auto/SegmentStartTime", Timer.getFPGATimestamp());
         })
         .finallyDo((interrupted) -> {
           Pose2d endPose = poseEstimator.getEstimatedPose();
-          double endTime = Timer.getFPGATimestamp();
-          
-          String endMsg = "Segment: " + finalPathName + "\n" +
-                         "End: " + formatPose(endPose) + "\n" +
-                         "Interrupted: " + interrupted + "\n" +
-                         "Time: " + endTime;
-          SmartLogger.logConsole(endMsg, "Path End", 5);
-          
+          SmartLogger.logConsole("Segment: " + finalPathName + " | End: " + formatPose(endPose) + " | Interrupted: " + interrupted, "Path End");
           SmartLogger.logReplay("Auto/SegmentEnd", endPose);
-          SmartLogger.logReplay("Auto/SegmentEndTime", endTime);
           SmartLogger.logReplay("Auto/SegmentInterrupted", interrupted);
-          SmartLogger.logReplay("Auto/CurrentSegment", "None");
         });
   }
 
-  // Check if paths should be mirrored for red alliance
+  // Mirror red alliance paths
   private boolean shouldFlipPath() {
     var alliance = DriverStation.getAlliance();
     boolean isRed = alliance.map(a -> a == Alliance.Red).orElse(false);
-    
-    String flipMsg = "Alliance: " + alliance + "\n" +
-                    "Is Red: " + isRed + "\n" +
-                    "Flipping: " + isRed;
-    SmartLogger.logConsole(flipMsg, "Path Flip", 5);
-    
+    SmartLogger.logConsole("Alliance: " + alliance + " | Flipping: " + isRed, "Path Flip");
     return isRed;
   }
 
-  // Background thread: Update robot pose preview when auto selection changes
+  // Monitor auto selection for pose preview
   private void startAutoPreviewMonitor() {
     new Thread(() -> {
       while (true) {
@@ -271,7 +229,7 @@ public class RobotContainer {
               
               if (startingPose != null) {
                 poseEstimator.resetPose(startingPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
-                SmartLogger.logConsole("Auto: " + autoName + " | Pose: " + formatPose(startingPose), "Auto Preview");
+                SmartLogger.logConsole("Auto: " + autoName + " | Pose: " + formatPose(startingPose), "Preview");
                 SmartLogger.logReplay("Auto/PreviewPose", startingPose);
               }
             }
@@ -284,12 +242,11 @@ public class RobotContainer {
     }).start();
   }
 
-  // Format pose for console output (x, y, angle)
   private String formatPose(Pose2d pose) {
     return String.format("(%.2f, %.2f, %.1f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
   }
 
-  // Get starting pose for known autonomous routines
+  // Map auto name to starting pose
   private Pose2d getStartingPoseForAuto(String autoName) {
     switch (autoName.toLowerCase()) {
       case "leftside1piece":
@@ -303,9 +260,9 @@ public class RobotContainer {
     }
   }
 
-  // === PERIODIC - Runs every robot loop (~20ms) ===
+  // Runs every 20ms
   public void periodic() {
-    // Check if PathPlanner PID gains changed in AdvantageScope
+    // Re-apply PathPlanner PID if changed in AdvantageScope
     if (TunablePathPlannerPID.hasChanged()) {
       try {
         RobotConfig config = RobotConfig.fromGUISettings();
@@ -328,13 +285,31 @@ public class RobotContainer {
             this::shouldFlipPath,
             driveSubsystem);
         
-        String pidMsg = "Translation: kP=" + TunablePathPlannerPID.TRANSLATION_KP.get() + "\n" +
-                       "Rotation: kP=" + TunablePathPlannerPID.ROTATION_KP.get() + "\n" +
-                       "Restart path (X) to apply";
-        SmartLogger.logConsole(pidMsg, "PID Updated");
+        SmartLogger.logConsole("Translation kP=" + TunablePathPlannerPID.TRANSLATION_KP.get() + 
+                              " | Rotation kP=" + TunablePathPlannerPID.ROTATION_KP.get() + 
+                              " | Restart path (X) to apply", "PID Updated");
       } catch (Exception e) {
-        SmartLogger.logConsoleError("Failed to reconfigure PathPlanner PID: " + e.getMessage());
+        SmartLogger.logConsoleError("Failed to reconfigure PID: " + e.getMessage());
       }
     }
+  }
+
+  // Register SmartDrive as PathPlanner events
+  private void registerSmartDriveEvents() {
+    NamedCommands.registerCommand("SmartPrecision:Tag12", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_12_POSE));
+    NamedCommands.registerCommand("SmartPrecision:Tag16", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_16_POSE));
+    NamedCommands.registerCommand("SmartPrecision:Tag17", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_17_POSE));
+    NamedCommands.registerCommand("SmartPrecision:Tag18", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_18_POSE));
+    NamedCommands.registerCommand("SmartPrecision:Tag21", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_21_POSE));
+    NamedCommands.registerCommand("SmartPrecision:Tag22", 
+        SmartDriveToPosition.createPrecisionPhase(PRECISE_22_POSE));
+    
+    SmartLogger.logConsole("SmartDrive events ready for PathPlanner (6 targets)", "Events");
+    SmartLogger.logReplay("SmartDrive/EventsRegistered", 6.0);
   }
 }
