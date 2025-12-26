@@ -243,14 +243,14 @@ public final class Constants {
   // Autonomous path following (PathPlanner PID tuning)
   public static final class Auto {
     // Translation PID (trust your SysId drive gains!)
-    public static final double TRANSLATION_KP = 3.0;  // Was 8.0 (62% reduction)
+    public static final double TRANSLATION_KP = 3.0;  // Keep (translation is smooth)
     public static final double TRANSLATION_KI = 0.0;  // Keep zero
-    public static final double TRANSLATION_KD = 0.2;  // Was 0.15 (more damping)
+    public static final double TRANSLATION_KD = 0.2;  // Keep (more damping)
     
     // Rotation PID (trust your SysId steer gains!)
-    public static final double ROTATION_KP = 4.0;     // Was 9.0 (56% reduction)
+    public static final double ROTATION_KP = 4.0;  // Was 3.0 (33% reduction - gentler rotation)
     public static final double ROTATION_KI = 0.0;     // Keep zero
-    public static final double ROTATION_KD = 0.3;     // Was 0.2 (prevent spin wobble)
+    public static final double ROTATION_KD = 0.2;     // Was 0.3 (more damping to prevent oscillation)
     
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
     
