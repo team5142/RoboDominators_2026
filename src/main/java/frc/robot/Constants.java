@@ -222,23 +222,33 @@ public final class Constants {
     public static final double MAX_QUESTNAV_DISCONNECT_TIME_SECONDS = 0.5;
     public static final double MAX_ANGULAR_RATE_DEG_PER_SEC = 720.0;
     
-    // Trust levels (lower = more trust)
-    public static final double[] QUESTNAV_STD_DEVS = {0.08, 0.08, 0.07};
+    // Trust levels (lower = more trust) - Like AprilTag vision, NOT odometry
+    public static final double[] QUESTNAV_STD_DEVS = {0.08, 0.08, 0.07}; // Moving
     public static final double QUESTNAV_LATENCY_MS = 5.0;
     
-    // Motion gating (when to accept QuestNav data)
-    public static final double QUESTNAV_MAX_LINEAR_SPEED_MPS = 3.0;
-    public static final double QUESTNAV_MAX_OMEGA_RAD_PER_SEC = 2.0;
+    // 1) VELOCITY GATING (enforce "stopped robot" requirement)
+    // Reject fusion during motion to prevent fighting PathPlanner
+    public static final double MAX_LINEAR_SPEED_FOR_FUSION_MPS = 0.12; // ~5 in/s
+    public static final double MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC = 0.3; // ~17 deg/s
     
-    // Stopped trust (higher trust when robot not moving)
-    public static final double[] QUESTNAV_STD_DEVS_STOPPED = {0.02, 0.02, 0.03};
-    public static final double[] QUESTNAV_STD_DEVS_INITIAL = {0.01, 0.01, 0.02};
+    // Stopped trust (HIGHEST trust when robot not moving - like stationary AprilTag)
+    public static final double[] QUESTNAV_STD_DEVS_STOPPED = {0.02, 0.02, 0.03}; // 2cm XY, 1.7° theta
+    public static final double[] QUESTNAV_STD_DEVS_INITIAL = {0.01, 0.01, 0.02}; // 1cm XY, 1.1° theta
     
-    // Post-path correction (fine-tune position after PathPlanner finishes)
-    public static final double POST_PATH_CORRECTION_THRESHOLD_M = 0.03;
-    public static final double POST_PATH_CORRECTION_MAX_M = 0.15;
-    public static final double POST_PATH_CORRECTION_TIMEOUT_S = 1.0;
-    public static final double POST_PATH_SETTLE_TIME_S = 0.5;
+    // 3) INNOVATION GATING (tighter gates for high-accuracy sensor)
+    // Base gates (measurement must be close to estimate at measurement time)
+    public static final double INNOVATION_GATE_POS_BASE_METERS = 0.10; // 10cm base
+    public static final double INNOVATION_GATE_ROT_BASE_DEGREES = 5.0; // 5° base
+    
+    // Motion-based expansion (allow for robot motion during measurement age)
+    public static final double INNOVATION_GATE_POS_PER_SPEED = 0.3; // 30% of linear speed * age
+    public static final double INNOVATION_GATE_ROT_PER_OMEGA = 0.2; // 20% of angular speed * age
+    
+    // REACQUIRE gates (when stopped, widen gates to allow convergence)
+    public static final double REACQUIRE_POS_GATE_METERS = 0.65; // 65cm when stopped
+    public static final double REACQUIRE_ROT_GATE_DEGREES = 25.0; // 25° when stopped
+    public static final double REACQUIRE_STOPPED_LINEAR_THRESHOLD = 0.05; // m/s
+    public static final double REACQUIRE_STOPPED_ANGULAR_THRESHOLD = 0.05; // rad/s
   }
 
   // Autonomous path following (PathPlanner PID tuning)
@@ -260,6 +270,9 @@ public final class Constants {
     public static final double STARTING_POSE_TOLERANCE_DEGREES = 5.0;
     public static final double VISION_INITIALIZATION_TIMEOUT_SECONDS = 7.0;
     public static final Pose2d DEFAULT_FALLBACK_POSE = StartingPositions.BLUE_REEF_TAG_17;
+    
+    // Post-path correction timeout (SmartDrive precision phase)
+    public static final double POST_PATH_CORRECTION_TIMEOUT_S = 3.0;
   }
 
   // Field positions (all blue alliance - red is mirrored automatically)

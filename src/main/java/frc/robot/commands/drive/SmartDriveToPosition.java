@@ -92,29 +92,43 @@ public class SmartDriveToPosition {
     }
     
     return new SequentialCommandGroup(
-        // Phase 2: Wait for QuestNav lock
+        // Phase 2: Wait for QuestNav to have an unconsumed measurement, then force-accept it
         Commands.runOnce(() -> {
           s_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
-          SmartLogger.logConsole("[SmartDrive] Phase 2: Waiting for QuestNav lock...");
+          SmartLogger.logConsole("[SmartDrive] Phase 2: Waiting for fresh QuestNav measurement...");
           s_robotState.setNavigationPhase(RobotState.NavigationPhase.FAST_APPROACH);
         }),
         Commands.waitUntil(() -> {
-          boolean questNavHasPose = s_poseEstimator.forceAcceptQuestNavPose();
-          if (!questNavHasPose) return false;
+          // Check if QuestNav has an unconsumed measurement (non-consuming check)
+          boolean hasUnconsumed = s_questNavSubsystem.hasUnconsumedMeasurement();
           
-          double timeSinceQuestNavFusion = s_poseEstimator.getTimeSinceLastQuestNavFusion();
-          if (timeSinceQuestNavFusion < 0.1) {
+          if (!hasUnconsumed) {
+            return false; // Keep waiting
+          }
+          
+          // Now force-accept it (this will consume via peek + acknowledge)
+          boolean accepted = s_poseEstimator.forceAcceptQuestNavPose();
+          
+          if (accepted) {
             SmartLogger.logConsole("[SmartDrive] QuestNav locked: " + formatPose(s_poseEstimator.getEstimatedPose()));
             return true;
           }
+          
+          // If force-accept failed (stale measurement), keep waiting
           return false;
         }).withTimeout(QUESTNAV_WAIT_TIMEOUT_S),
         
         Commands.runOnce(() -> {
-          boolean finalSuccess = s_questNavSubsystem.isTracking();
-          if (!finalSuccess) {
-            SmartLogger.logConsoleError("[SmartDrive] WARNING: QuestNav timeout (3s)");
+          // Check if we actually got a lock or timed out
+          double timeSinceQuestNavFusion = s_poseEstimator.getTimeSinceLastQuestNavFusion();
+          boolean gotLock = (timeSinceQuestNavFusion < 0.5);
+          
+          if (!gotLock) {
+            SmartLogger.logConsoleError("[SmartDrive] WARNING: QuestNav timeout (3s) - proceeding with odometry-only");
             SmartLogger.logReplay("SmartDrive/ForceAcceptTimeout", true);
+          } else {
+            SmartLogger.logConsole("[SmartDrive] QuestNav lock successful!");
+            SmartLogger.logReplay("SmartDrive/ForceAcceptSuccess", true);
           }
         }),
         

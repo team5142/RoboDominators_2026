@@ -70,7 +70,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private final Field2d field = new Field2d();
 
   private double m_lastUpdateTime = 0.0; // Generic measurement timestamp
-  private double m_lastQuestNavFusionTime = 0.0; // NEW: QuestNav fusion timestamp
+  private double m_lastQuestNavFusionTime = 0.0; // When fusion occurred (FPGA "now")
+  private double m_lastQuestNavMeasurementTimestamp = 0.0; // Actual Quest measurement timestamp used
+
+  // Rate limiting for ForceUpdate warnings
+  private double lastForceUpdateWarningTime = 0.0;
+  private static final double FORCE_UPDATE_WARNING_INTERVAL = 0.5; // 500ms between warnings
 
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
@@ -204,6 +209,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     // Update odometry (always runs)
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     
+    // DISABLED: Limelight orientation updates (uncalibrated)
+    // updateLimelightOrientation();
+    
     // Disabled mode: Check readiness and validate alignment
     if (robotState.getMode() == RobotState.Mode.DISABLED) {
       initializer.updateReadiness();
@@ -214,26 +222,51 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     if (!initializer.isInitialized()) {
       Pose2d initPose = initializer.attemptInitialization();
       if (initPose != null) {
-        // NEW: Use VERY HIGH TRUST for initial QuestNav alignment
-        // This ensures the pose estimator starts with accurate position from QuestNav
-        Matrix<N3, N1> initialStdDevs = questNavFusion.getInitialAlignmentStdDevs();
-        
         resetPose(initPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
         
-        // CRITICAL: Immediately add a QuestNav measurement with VERY HIGH TRUST
-        java.util.Optional<Pose2d> questPose = questNavSubsystem.getRobotPose();
-        if (questPose.isPresent()) {
-          poseEstimator.addVisionMeasurement(
-              questPose.get(),
-              edu.wpi.first.wpilibj.Timer.getFPGATimestamp(),
-              initialStdDevs); // VERY HIGH TRUST (1cm XY, 1 deg theta)
+        // Use CONSUME-ONCE semantics for initial QuestNav alignment
+        // This prevents re-using the same frame multiple times
+        java.util.Optional<QuestNavSubsystem.QuestMeasurement> questMeas = 
+            questNavSubsystem.consumeLatestMeasurement();
+        
+        if (questMeas.isPresent()) {
+          double measurementTime = questMeas.get().timestampFPGA;
+          long sequence = questMeas.get().sequence;
+          double age = edu.wpi.first.wpilibj.Timer.getFPGATimestamp() - measurementTime;
           
-          Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentApplied", true);
-          SmartLogger.logConsole("QuestNav initial alignment applied with VERY HIGH TRUST");
+          // Only use if measurement is fresh (< 500ms old)
+          if (age >= 0 && age < 0.5) {
+            Matrix<N3, N1> initialStdDevs = questNavFusion.getInitialAlignmentStdDevs();
+            
+            // Add with RECEIVE-ALIGNED timestamp
+            poseEstimator.addVisionMeasurement(questMeas.get().pose, measurementTime, initialStdDevs);
+            
+            // Track measurement timestamp
+            m_lastQuestNavMeasurementTimestamp = measurementTime;
+            m_lastQuestNavFusionTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+            
+            Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentApplied", true);
+            Logger.recordOutput("PoseEstimator/QuestNav/InitialMeasurementAge", age);
+            Logger.recordOutput("PoseEstimator/QuestNav/InitialConsumedSequence", (double) sequence);
+            Logger.recordOutput("PoseEstimator/QuestNav/InitialMeasurementTimestamp", measurementTime);
+            SmartLogger.logConsole("QuestNav initial alignment applied with VERY HIGH TRUST (seq=" + 
+                sequence + ", age=" + String.format("%.3fs)", age));
+          } else {
+            Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentRejected", 
+                "Stale: age=" + age);
+            SmartLogger.logConsoleError("QuestNav initial alignment rejected: measurement too old (" + 
+                String.format("%.3fs)", age));
+          }
+        } else {
+          // No unconsumed measurement available
+          Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentSkipped", 
+              "No unconsumed measurement");
+          SmartLogger.logConsole("QuestNav initial alignment skipped: no unconsumed measurement available");
         }
         
-        // NEW: SCENARIO-BASED OPERATOR PERSPECTIVE (THIS WAS MISSING!)
-        setOperatorPerspectiveBasedOnScenario(initPose, questPose.orElse(null));
+        // Set operator perspective based on scenario
+        // Use getRobotPose() for display (doesn't consume)
+        setOperatorPerspectiveBasedOnScenario(initPose, questNavSubsystem.getRobotPose().orElse(null));
       }
     }
     
@@ -291,14 +324,30 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     return Timer.getFPGATimestamp() - m_lastUpdateTime;
   }
 
+  // NEW: Getter for last Quest measurement timestamp (for debugging)
+  public double getLastQuestNavMeasurementTimestamp() {
+    return m_lastQuestNavMeasurementTimestamp;
+  }
+
   // NEW: Getter for QuestNav fusion time
   public double getTimeSinceLastQuestNavFusion() {
     return Timer.getFPGATimestamp() - m_lastQuestNavFusionTime;
   }
 
-  // NEW: Called by QuestNavFusion when it processes frames
-  public void notifyQuestNavFusionOccurred() {
-    m_lastQuestNavFusionTime = Timer.getFPGATimestamp();
+  // UPDATED: Track measurement timestamp when fusion occurs
+  public void notifyQuestNavFusionOccurred(double measurementTimestamp) {
+    m_lastQuestNavFusionTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    m_lastQuestNavMeasurementTimestamp = measurementTimestamp;
+    
+    // Also update generic "last update" time so it reflects all fusion sources
+    m_lastUpdateTime = m_lastQuestNavFusionTime;
+    
+    Logger.recordOutput("PoseEstimator/QuestNav/LastFusionTime", m_lastQuestNavFusionTime);
+    Logger.recordOutput("PoseEstimator/QuestNav/LastMeasurementTimestamp", m_lastQuestNavMeasurementTimestamp);
+    
+    // Calculate and log how old the measurement was when fused
+    double measurementAge = m_lastQuestNavFusionTime - m_lastQuestNavMeasurementTimestamp;
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAgeAtFusion", measurementAge);
   }
   
   private void onModeChange(RobotState.Mode from, RobotState.Mode to) {
@@ -419,66 +468,85 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   }
   
   /**
-   * Force-accept the next QuestNav pose with very high trust.
-   * Bypasses normal Kalman filtering - use only when robot is stopped and QuestNav is tracking!
+   * 4) FIXED: Force-accept using peek + acknowledge (no frame burning)
    * 
-   * @return true if QuestNav pose was force-accepted, false if QuestNav unavailable
+   * Uses PEEK semantics so rejected measurements are still available for fusion.
+   * Rate-limits console warnings to prevent spam.
    */
   public boolean forceAcceptQuestNavPose() {
-    // Check if QuestNav is available and tracking
     if (!questNavSubsystem.isTracking()) {
-      SmartLogger.logConsoleError("[ForceUpdate] QuestNav not tracking - cannot force update!");
-      SmartLogger.logReplay("PoseEstimator/ForceUpdate/Failed", "Not tracking");
+      double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+      if (currentTime - lastForceUpdateWarningTime > FORCE_UPDATE_WARNING_INTERVAL) {
+        SmartLogger.logConsoleError("[ForceUpdate] QuestNav not tracking - cannot force update!");
+        lastForceUpdateWarningTime = currentTime;
+      }
       return false;
     }
     
-    // Get current QuestNav pose
-    var questPose = questNavSubsystem.getRobotPose();
-    if (!questPose.isPresent()) {
-      SmartLogger.logConsoleError("[ForceUpdate] QuestNav has no pose available!");
-      SmartLogger.logReplay("PoseEstimator/ForceUpdate/Failed", "No pose");
+    // PEEK measurement (non-consuming)
+    var questMeas = questNavSubsystem.peekLatestMeasurement();
+    
+    if (!questMeas.isPresent()) {
+      double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+      if (currentTime - lastForceUpdateWarningTime > FORCE_UPDATE_WARNING_INTERVAL) {
+        SmartLogger.logConsoleError("[ForceUpdate] No unconsumed QuestNav measurement available!");
+        lastForceUpdateWarningTime = currentTime;
+      }
       return false;
     }
     
-    Pose2d forcedPose = questPose.get();
+    Pose2d forcedPose = questMeas.get().pose;
+    double timestamp = questMeas.get().timestampFPGA;
+    long sequence = questMeas.get().sequence;
+    
+    // Reject stale measurements
+    double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    double measurementAge = currentTime - timestamp;
+    
+    if (measurementAge < 0 || measurementAge > 0.25) {
+      SmartLogger.logConsoleError("[ForceUpdate] Rejected stale measurement (age: " + 
+          String.format("%.3fs)", measurementAge));
+      Logger.recordOutput("PoseEstimator/ForceAccept/Rejected", "Stale: age=" + measurementAge);
+      return false; // Do NOT acknowledge - preserve for fusion
+    }
+    
+    // ACKNOWLEDGE only after accepting
+    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
+      SmartLogger.logConsoleError("[ForceUpdate] Failed to acknowledge measurement (already consumed)");
+      return false;
+    }
     
     // Use VERY HIGH TRUST standard deviations (1cm XY, 1° theta)
     var veryHighTrust = VecBuilder.fill(0.01, 0.01, Math.toRadians(1.0));
     
-    // Force-add measurement with high trust (essentially resets pose to QuestNav)
-    poseEstimator.addVisionMeasurement(
-        forcedPose,
-        edu.wpi.first.wpilibj.Timer.getFPGATimestamp(),
-        veryHighTrust);
+    // Force-add measurement
+    poseEstimator.addVisionMeasurement(forcedPose, timestamp, veryHighTrust);
     
-    m_lastUpdateTime = Timer.getFPGATimestamp(); // Update timestamp
-    
-    // NEW: Notify fusion timestamp immediately (don't wait for processFrames())
-    notifyQuestNavFusionOccurred();
+    m_lastUpdateTime = currentTime;
+    m_lastQuestNavMeasurementTimestamp = timestamp;
+    m_lastQuestNavFusionTime = currentTime;
     
     SmartLogger.logConsole("========== FORCED POSE UPDATE ==========");
     SmartLogger.logConsole("QuestNav pose: " + formatPose(forcedPose));
+    SmartLogger.logConsole("Timestamp (FPGA receive): " + String.format("%.3f", timestamp));
+    SmartLogger.logConsole("Measurement age: " + String.format("%.3fs", measurementAge));
+    SmartLogger.logConsole("Sequence: " + sequence);
     SmartLogger.logConsole("Trust level: 1cm XY, 1° theta (VERY HIGH)");
-    SmartLogger.logConsole("Kalman filter bypassed - pose locked to QuestNav");
     SmartLogger.logConsole("========================================");
     
-    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Success", true);
-    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Pose", forcedPose);
-    SmartLogger.logReplay("PoseEstimator/ForceUpdate/Trust", "VERY HIGH (1cm, 1deg)");
-    
-    // NEW: Flush old frames so they don't get processed after force-update
-    questNavSubsystem.getAllUnreadFrames(); // Discard old queue
+    Logger.recordOutput("PoseEstimator/ForceAccept/Success", true);
+    Logger.recordOutput("PoseEstimator/ForceAccept/MeasurementAge", measurementAge);
+    Logger.recordOutput("PoseEstimator/ForceAccept/Sequence", (double) sequence);
     
     return true;
   }
     
   
   /**
-   * Updates Limelight's robot orientation for MegaTag2 pose disambiguation.
-   * Called every cycle to provide yaw + turn rate from odometry.
+   * DISABLED: Updates Limelight's robot orientation for MegaTag2 pose disambiguation.
+   * Re-enable after Limelight mount is calibrated.
    * 
-   * Sister team's critical insight: Feeding yaw+turnRate dramatically improves
-   * AprilTag pose accuracy during rotation.
+   * Called every cycle to provide yaw + turn rate from odometry.
    */
   private void updateLimelightOrientation() {
     Pose2d currentPose = getEstimatedPose();
