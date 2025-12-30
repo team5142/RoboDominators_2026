@@ -29,6 +29,7 @@ import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
+import frc.robot.util.LimelightHelpers;
 
 // Wires up robot hardware, controllers, and commands
 public class RobotContainer {
@@ -49,7 +50,7 @@ public class RobotContainer {
   final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
   final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro, questNav);
   final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
-  final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
+  public final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
 
   // Autonomous
   private final SendableChooser<Command> autoChooser;
@@ -136,16 +137,37 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kStart.value)
         .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID TUNER", gyro, questNav, driveSubsystem, poseEstimator));
 
-    // BOTH TRIGGERS: Log pose (hold fully)
+    // LEFT TRIGGER: Random LED color (only works when enabled)
+    new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
+        .onTrue(Commands.runOnce(() -> ledSubsystem.setRandomColor(), ledSubsystem));
+
+    // BOTH TRIGGERS: Log robot pose (hold fully)
     new Trigger(() -> driverController.getLeftTriggerAxis() > 0.9 && 
                       driverController.getRightTriggerAxis() > 0.9)
         .onTrue(new LogCurrentPoseCommand(poseEstimator, "LOGGED_POSITION"));
+
+    // BOTH BUMPERS: Log Limelight pose
+    new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
+        .onTrue(Commands.runOnce(() -> {
+          Pose2d limelightPose = tagVisionSubsystem.getLatestPose();
+          if (limelightPose != null) {
+            SmartLogger.logConsole("========== LIMELIGHT POSE ==========", "Limelight");
+            SmartLogger.logConsole("Pose: " + formatPose(limelightPose), "Limelight");
+            SmartLogger.logConsole("X: " + String.format("%.4f", limelightPose.getX()) + " meters", "Limelight");
+            SmartLogger.logConsole("Y: " + String.format("%.4f", limelightPose.getY()) + " meters", "Limelight");
+            SmartLogger.logConsole("Rotation: " + String.format("%.2f", limelightPose.getRotation().getDegrees()) + " degrees", "Limelight");
+            SmartLogger.logConsole("===================================", "Limelight");
+            SmartLogger.logReplay("Limelight/CapturedPose", limelightPose);
+          } else {
+            SmartLogger.logConsoleError("No Limelight pose available - check camera connection");
+          }
+        }));
 
     // Y/B/A: SmartDrive to tags
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
+        .whileTrue(SmartDriveToPosition.create(TEST_SPOT_1, PRECISE_TEST_SPOT_1));
     new JoystickButton(driverController, XboxController.Button.kA.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
 
@@ -160,8 +182,8 @@ public class RobotContainer {
             SmartLogger.logConsoleError("Failed to load TuneStart180.path: " + e.getMessage());
           }
         }));
-
-    SmartLogger.logConsole("Y/B/A: SmartDrive tags | X: Tune path | Triggers: Log pose", "Controls");
+    
+    SmartLogger.logConsole("Y/B/A: SmartDrive | X: Tune | LB+RB: Log LL | LT+RT: Log Pose | LT: Random LED", "Controls");
   }
 
   // HTML touchscreen interface
@@ -254,9 +276,12 @@ public class RobotContainer {
         return new Pose2d(7.20, 0.45, Rotation2d.fromDegrees(180.0));
       case "rightside1piece":
         return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
+      case "ledtest":
+      case "led test":
+        return LED_TEST_POSITION; // NEW: Your current Limelight position
       default:
         SmartLogger.logConsoleError("[Auto Preview] Unknown auto: " + autoName);
-        return null;
+        return LED_TEST_POSITION; // NEW: Default to test position for calibration
     }
   }
 

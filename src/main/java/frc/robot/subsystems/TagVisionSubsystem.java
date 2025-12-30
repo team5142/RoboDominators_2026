@@ -25,7 +25,8 @@ import java.util.Optional;
 // Currently Limelight-only (PhotonVision disabled for QuestNav-only testing)
 public class TagVisionSubsystem extends SubsystemBase {
   
-  private static final boolean LIMELIGHT_ENABLED = false; // Vision disabled for QuestNav-only mode
+  private static final boolean LIMELIGHT_FOR_POSE_ESTIMATION = false; // Don't fuse into odometry
+  private static final boolean LIMELIGHT_READ_DATA = true; // But still read data for calibration
   
   private final PoseEstimatorSubsystem poseEstimator;
   private final GyroSubsystem gyroSubsystem;
@@ -35,6 +36,7 @@ public class TagVisionSubsystem extends SubsystemBase {
   private boolean hasRecentPose = false;
   private boolean currentlyHasMultiTag = false;
   private boolean currentlyHasSingleTag = false;
+  private Pose2d latestLimelightPose = null; // NEW: Store for calibration
 
   public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator, GyroSubsystem gyroSubsystem) {
     this.poseEstimator = poseEstimator;
@@ -81,44 +83,63 @@ public class TagVisionSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    if (!LIMELIGHT_ENABLED) {
-      SmartLogger.logReplay("TagVision/Disabled", true);
-      return;
+    SmartLogger.logReplay("TagVision/PeriodicCalled", true);
+    SmartLogger.logReplay("TagVision/ReadDataEnabled", LIMELIGHT_READ_DATA);
+    
+    // Always read Limelight data (for LED calibration, debugging, etc)
+    if (LIMELIGHT_READ_DATA) {
+      SmartLogger.logReplay("TagVision/ProcessingCameras", true);
+      
+      for (VisionCamera camera : cameras) {
+        if (!camera.getName().equals(LL_FRONT_NAME)) {
+          SmartLogger.logReplay("TagVision/SkippingCamera", camera.getName());
+          continue;
+        }
+        
+        SmartLogger.logReplay("TagVision/ProcessingLimelight", true);
+        
+        Optional<VisionResult> result = camera.getLatestResult();
+        
+        SmartLogger.logReplay("TagVision/LimelightResultPresent", result.isPresent());
+        
+        if (result.isEmpty()) {
+          continue;
+        }
+        
+        VisionResult visionResult = result.get();
+        
+        // Store latest pose for calibration/debugging
+        latestLimelightPose = visionResult.estimatedPose;
+        hasRecentPose = true;
+        
+        if (visionResult.tagCount >= MIN_TAG_COUNT_FOR_MULTI) {
+          currentlyHasMultiTag = true;
+        } else {
+          currentlyHasSingleTag = true;
+        }
+        
+        SmartLogger.logReplay("TagVision/" + camera.getName() + "/Pose", visionResult.estimatedPose);
+        SmartLogger.logReplay("TagVision/" + camera.getName() + "/TagCount", (double) visionResult.tagCount);
+        
+        // ONLY add to pose estimator if enabled for pose estimation
+        if (LIMELIGHT_FOR_POSE_ESTIMATION) {
+          poseEstimator.addVisionMeasurement(
+              visionResult.estimatedPose,
+              visionResult.timestampSeconds,
+              visionResult.tagCount,
+              camera.getName());
+          SmartLogger.logReplay("TagVision/AddedToPoseEstimator", true);
+        } else {
+          SmartLogger.logReplay("TagVision/AddedToPoseEstimator", false);
+        }
+      }
     }
     
-    // Process Limelight camera only
-    for (VisionCamera camera : cameras) {
-      if (!camera.getName().equals(LL_FRONT_NAME)) {
-        continue;
-      }
-      
-      Optional<VisionResult> result = camera.getLatestResult();
-      if (result.isEmpty()) {
-        continue;
-      }
-      
-      VisionResult visionResult = result.get();
-      
-      poseEstimator.addVisionMeasurement(
-          visionResult.estimatedPose,
-          visionResult.timestampSeconds,
-          visionResult.tagCount,
-          camera.getName());
-      
-      hasRecentPose = true;
-      if (visionResult.tagCount >= MIN_TAG_COUNT_FOR_MULTI) {
-        currentlyHasMultiTag = true;
-      } else {
-        currentlyHasSingleTag = true;
-      }
-      
-      SmartLogger.logReplay("TagVision/" + camera.getName() + "/Pose", visionResult.estimatedPose);
-      SmartLogger.logReplay("TagVision/" + camera.getName() + "/TagCount", (double) visionResult.tagCount);
-    }
-    
+    SmartLogger.logReplay("TagVision/PoseEstimationEnabled", LIMELIGHT_FOR_POSE_ESTIMATION);
     SmartLogger.logReplay("TagVision/HasTarget", hasRecentPose);
     SmartLogger.logReplay("TagVision/MultiTag", currentlyHasMultiTag);
     SmartLogger.logReplay("TagVision/SingleTag", currentlyHasSingleTag);
+    SmartLogger.logReplay("TagVision/LatestPoseNull", latestLimelightPose == null);
   }
 
   public boolean hasMultiTagDetection() {
@@ -149,5 +170,13 @@ public class TagVisionSubsystem extends SubsystemBase {
     return (int) cameras.stream()
         .filter(VisionCamera::hasTarget)
         .count();
+  }
+
+  /**
+   * Get the latest Limelight pose reading (for calibration feedback)
+   * @return Latest pose from Limelight, or null if no recent data
+   */
+  public Pose2d getLatestPose() {
+    return latestLimelightPose;
   }
 }

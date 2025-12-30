@@ -157,7 +157,9 @@ public class Robot extends LoggedRobot {
   }
 
   @Override
-  public void disabledPeriodic() {}
+  public void disabledPeriodic() {
+    // Empty - no PWM actuators work in disabled mode
+  }
 
   @Override
   public void disabledExit() {}
@@ -193,7 +195,9 @@ public class Robot extends LoggedRobot {
   }
 
   @Override
-  public void autonomousPeriodic() {}
+  public void autonomousPeriodic() {
+    // Empty - command scheduler handles everything
+  }
 
   @Override
   public void teleopInit() {
@@ -212,7 +216,9 @@ public class Robot extends LoggedRobot {
   }
 
   @Override
-  public void teleopPeriodic() {}
+  public void teleopPeriodic() {
+    // Empty - command scheduler handles everything
+  }
 
   @Override
   public void testInit() {

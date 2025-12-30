@@ -23,6 +23,7 @@ public final class Constants {
 
   public static final int TEAM_NUMBER = 5142;
   public static final int DRIVER_CONTROLLER_PORT = 0;
+  public static final int BLINKIN_PWM_PORT = 0; // Change to your actual PWM port
 
   // Swerve drivetrain hardware config and PID tuning
   public static final class Swerve {
@@ -248,9 +249,9 @@ public final class Constants {
     public static final double TRANSLATION_KD = 0.2;  // Keep (more damping)
     
     // Rotation PID (trust your SysId steer gains!)
-    public static final double ROTATION_KP = 4.0;  // Was 3.0 (33% reduction - gentler rotation)
+    public static final double ROTATION_KP = 8.5;  // Was 3.0 (33% reduction - gentler rotation)
     public static final double ROTATION_KI = 0.0;     // Keep zero
-    public static final double ROTATION_KD = 0.2;     // Was 0.3 (more damping to prevent oscillation)
+    public static final double ROTATION_KD = 0.0;     // Was 0.3 (more damping to prevent oscillation)
     
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
     
@@ -270,8 +271,13 @@ public final class Constants {
     public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.552, 2.168, Rotation2d.fromDegrees(120.0));
     public static final Pose2d BLUE_TAG_16 = new Pose2d(5.990, 1.543, Rotation2d.fromDegrees(-90.0));
     public static final Pose2d BLUE_TAG_12 = new Pose2d(2.300, 1.850, Rotation2d.fromDegrees(-130.0));
+    public static final Pose2d TEST_SPOT_1 = new Pose2d(5.84, 1.850, Rotation2d.fromDegrees(133.0));
+   
     public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
     public static final Pose2d PID_TUNING_POSITION = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(0.0));
+    
+    // LED CALIBRATION TEST POSITION (from actual Limelight reading)
+    public static final Pose2d LED_TEST_POSITION = new Pose2d(1.2748, 2.3987, Rotation2d.fromDegrees(-6.56));
     
     // Precision poses (Phase 2: AutoPilot final targets)
     public static final Pose2d PRECISE_12_POSE = new Pose2d(1.35, 1.07, Rotation2d.fromDegrees(-130.0));
@@ -280,6 +286,8 @@ public final class Constants {
     public static final Pose2d PRECISE_18_POSE = new Pose2d(3.233, 4.027, Rotation2d.fromDegrees(0.0));
     public static final Pose2d PRECISE_21_POSE = new Pose2d(5.741, 4.025, Rotation2d.fromDegrees(180.0));
     public static final Pose2d PRECISE_22_POSE = new Pose2d(5.114, 2.941, Rotation2d.fromDegrees(120.0));
+    public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
+   
   }
 
   // AutoPilot precision navigation library (singleton instances)
