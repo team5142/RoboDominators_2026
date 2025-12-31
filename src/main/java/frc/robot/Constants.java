@@ -228,8 +228,8 @@ public final class Constants {
     
     // 1) VELOCITY GATING (enforce "stopped robot" requirement)
     // Reject fusion during motion to prevent fighting PathPlanner
-    public static final double MAX_LINEAR_SPEED_FOR_FUSION_MPS = 0.12; // ~5 in/s
-    public static final double MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC = 0.3; // ~17 deg/s
+    public static final double MAX_LINEAR_SPEED_FOR_FUSION_MPS = 1.8; // ~5 in/s
+    public static final double MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC = 1.5; // ~17 deg/s
     
     // Stopped trust (HIGHEST trust when robot not moving - like stationary AprilTag)
     public static final double[] QUESTNAV_STD_DEVS_STOPPED = {0.02, 0.02, 0.03}; // 2cm XY, 1.7° theta

@@ -236,33 +236,45 @@ public class RobotContainer {
     return isRed;
   }
 
-  // Monitor auto selection for pose preview
-  private void startAutoPreviewMonitor() {
-    new Thread(() -> {
-      while (true) {
-        try {
-          if (DriverStation.isDisabled()) {
-            Command selectedAuto = autoChooser.getSelected();
+  // In RobotContainer.java, replace startAutoPreviewMonitor() with:
+
+private volatile boolean previewThreadRunning = true;
+
+private void startAutoPreviewMonitor() {
+  Thread previewThread = new Thread(() -> {
+    while (previewThreadRunning && !Thread.currentThread().isInterrupted()) {
+      try {
+        if (DriverStation.isDisabled()) {
+          Command selectedAuto = autoChooser.getSelected();
+          
+          if (selectedAuto != null && selectedAuto != lastSelectedAuto) {
+            lastSelectedAuto = selectedAuto;
+            String autoName = selectedAuto.getName();
+            Pose2d startingPose = getStartingPoseForAuto(autoName);
             
-            if (selectedAuto != null && selectedAuto != lastSelectedAuto) {
-              lastSelectedAuto = selectedAuto;
-              String autoName = selectedAuto.getName();
-              Pose2d startingPose = getStartingPoseForAuto(autoName);
-              
-              if (startingPose != null) {
-                poseEstimator.resetPose(startingPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
-                SmartLogger.logConsole("Auto: " + autoName + " | Pose: " + formatPose(startingPose), "Preview");
-                SmartLogger.logReplay("Auto/PreviewPose", startingPose);
-              }
+            if (startingPose != null) {
+              poseEstimator.resetPose(startingPose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+              SmartLogger.logConsole("Auto: " + autoName + " | Pose: " + formatPose(startingPose), "Preview");
+              SmartLogger.logReplay("Auto/PreviewPose", startingPose);
             }
           }
-          Thread.sleep(500);
-        } catch (Exception e) {
-          SmartLogger.logConsoleError("[Auto Preview] Error: " + e.getMessage());
         }
+        Thread.sleep(500);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        SmartLogger.logConsole("[Auto Preview] Thread interrupted - stopping");
+        break;
+      } catch (Exception e) {
+        SmartLogger.logConsoleError("[Auto Preview] Error: " + e.getMessage());
       }
-    }).start();
-  }
+    }
+    SmartLogger.logConsole("[Auto Preview] Thread stopped cleanly");
+  });
+  
+  previewThread.setDaemon(true);  // CRITICAL: Thread dies when robot code exits
+  previewThread.setName("AutoPreview");
+  previewThread.start();
+}
 
   private String formatPose(Pose2d pose) {
     return String.format("(%.2f, %.2f, %.1f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
@@ -270,6 +282,11 @@ public class RobotContainer {
 
   // Map auto name to starting pose
   private Pose2d getStartingPoseForAuto(String autoName) {
+    // NULL CHECK: If auto chooser not initialized yet, return null (not PID_TUNING_POSITION!)
+    if (autoName == null || autoName.isEmpty() || autoName.equalsIgnoreCase("instantcommand")) {
+      return null; // ✅ Don't force a pose for InstantCommand
+    }
+    
     switch (autoName.toLowerCase()) {
       case "leftside1piece":
       case "leftside3piece":
@@ -278,10 +295,10 @@ public class RobotContainer {
         return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
       case "ledtest":
       case "led test":
-        return LED_TEST_POSITION; // NEW: Your current Limelight position
+        return LED_TEST_POSITION;
       default:
         SmartLogger.logConsoleError("[Auto Preview] Unknown auto: " + autoName);
-        return LED_TEST_POSITION; // NEW: Default to test position for calibration
+        return null; // ✅ Don't default to LED_TEST_POSITION
     }
   }
 

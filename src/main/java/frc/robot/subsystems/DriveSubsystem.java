@@ -34,6 +34,8 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final SwerveRequest.SysIdSwerveSteerGains m_steerCharacterization = new SwerveRequest.SysIdSwerveSteerGains();
   private final SwerveRequest.SysIdSwerveRotation m_rotationCharacterization = new SwerveRequest.SysIdSwerveRotation();
 
+  private int logCounter = 0;
+
   public DriveSubsystem(RobotState robotState, GyroSubsystem gyro) {
     super(
         frc.robot.generated.TunerConstants.DrivetrainConstants,
@@ -74,16 +76,18 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     Logger.recordOutput("Drive/FieldForwardDegrees", operatorForward.getDegrees());
     SmartDashboard.putNumber("Drive/FieldForward", operatorForward.getDegrees());
     
-    // Log module states
-    SwerveModuleState[] moduleStates = getState().ModuleStates;
-    Logger.recordOutput("Drive/ModuleStates/FrontLeft/Angle", normalizeAngle(moduleStates[0].angle.getDegrees()));
-    Logger.recordOutput("Drive/ModuleStates/FrontLeft/Speed", moduleStates[0].speedMetersPerSecond);
-    Logger.recordOutput("Drive/ModuleStates/FrontRight/Angle", normalizeAngle(moduleStates[1].angle.getDegrees()));
-    Logger.recordOutput("Drive/ModuleStates/FrontRight/Speed", moduleStates[1].speedMetersPerSecond);
-    Logger.recordOutput("Drive/ModuleStates/BackLeft/Angle", normalizeAngle(moduleStates[2].angle.getDegrees()));
-    Logger.recordOutput("Drive/ModuleStates/BackLeft/Speed", moduleStates[2].speedMetersPerSecond);
-    Logger.recordOutput("Drive/ModuleStates/BackRight/Angle", normalizeAngle(moduleStates[3].angle.getDegrees()));
-    Logger.recordOutput("Drive/ModuleStates/BackRight/Speed", moduleStates[3].speedMetersPerSecond);
+    // Log module states every 5th cycle (not every cycle)
+    if (logCounter % 5 == 0) {
+      SwerveModuleState[] moduleStates = getState().ModuleStates;
+      Logger.recordOutput("Drive/ModuleStates/FrontLeft/Angle", normalizeAngle(moduleStates[0].angle.getDegrees()));
+      Logger.recordOutput("Drive/ModuleStates/FrontLeft/Speed", moduleStates[0].speedMetersPerSecond);
+      Logger.recordOutput("Drive/ModuleStates/FrontRight/Angle", normalizeAngle(moduleStates[1].angle.getDegrees()));
+      Logger.recordOutput("Drive/ModuleStates/FrontRight/Speed", moduleStates[1].speedMetersPerSecond);
+      Logger.recordOutput("Drive/ModuleStates/BackLeft/Angle", normalizeAngle(moduleStates[2].angle.getDegrees()));
+      Logger.recordOutput("Drive/ModuleStates/BackLeft/Speed", moduleStates[2].speedMetersPerSecond);
+      Logger.recordOutput("Drive/ModuleStates/BackRight/Angle", normalizeAngle(moduleStates[3].angle.getDegrees()));
+      Logger.recordOutput("Drive/ModuleStates/BackRight/Speed", moduleStates[3].speedMetersPerSecond);
+    }
     
     // Log module positions
     var modulePositions = getModulePositions();
@@ -98,6 +102,8 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       System.out.println("  Steer: kP=" + TunableCTREGains.STEER_KP.get() + " kD=" + TunableCTREGains.STEER_KD.get());
       System.out.println("  Drive: kP=" + TunableCTREGains.DRIVE_KP.get() + " kV=" + TunableCTREGains.DRIVE_KV.get());
     }
+
+    logCounter++;
   }
   
   @Override

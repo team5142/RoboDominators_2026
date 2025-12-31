@@ -27,6 +27,7 @@ public class QuestNavFusion {
   }
 
   private QuestHealthState healthState = QuestHealthState.UNVALIDATED;
+  private QuestHealthState lastLoggedHealthState = QuestHealthState.UNVALIDATED;
   private int consecutiveDivergence = 0;
   private int consecutiveTeleports = 0;
   private double lastAcceptedQuestTimestamp = -1.0;
@@ -40,6 +41,11 @@ public class QuestNavFusion {
   private double validationStartTime = -1.0;
   private Pose2d validationSeedPose = null;
   private int validationPassStreak = 0;
+
+  // Manual seed tracking
+  private boolean acceptNextValidFrame = false;
+  private double manualSeedTimestamp = -1.0;
+  private static final double POST_SEED_EPSILON_SEC = 0.020;
 
   private final QuestNavSubsystem questNavSubsystem;
   private final DriveSubsystem driveSubsystem;
@@ -58,12 +64,15 @@ public class QuestNavFusion {
     this.poseEstimatorSubsystem = poseEstimatorSubsystem;
   }
 
-  // Main fusion loop: velocity gate → peek → age → teleport → divergence → validation → fuse
   public void processFrames() {
-    // Cache current time for this cycle
+    // NEW: Early return if fusion paused (SmartDrive owns consumption)
+    if (questNavSubsystem.isFusionPaused()) {
+      reject("Fusion paused (SmartDrive Phase 2)");
+      return;
+    }
+    
     double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
     
-    // Set clean defaults for this cycle (prevent stale values)
     Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
     Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", false);
     Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "");
@@ -75,8 +84,6 @@ public class QuestNavFusion {
       return;
     }
 
-    // Peek measurement (non-consuming until we acknowledge)
-    // Rejected frames remain available until a newer one arrives
     java.util.Optional<QuestNavSubsystem.QuestMeasurement> measurement =
         questNavSubsystem.peekLatestMeasurement();
 
@@ -87,8 +94,8 @@ public class QuestNavFusion {
 
     QuestNavSubsystem.QuestMeasurement meas = measurement.get();
     Pose2d questPose = meas.pose;
-    double timestamp = meas.receiveTimestampFPGA; // FPGA receive time (NOT capture time)
-    long sequence = meas.sequence;
+    double timestamp = meas.measurementTimestamp;
+    long frameCount = meas.frameCount;
 
     double measurementAge = currentTime - timestamp;
 
@@ -98,17 +105,75 @@ public class QuestNavFusion {
       return;
     }
 
+    if (acceptNextValidFrame && (timestamp + POST_SEED_EPSILON_SEC) < manualSeedTimestamp) {
+      reject("Pre-seed frame (stale) - waiting for post-seed frame");
+      Logger.recordOutput("PoseEstimator/QuestNav/PreSeedFrameDropped", true);
+      Logger.recordOutput("PoseEstimator/QuestNav/PreSeedTimeDiff", manualSeedTimestamp - timestamp);
+      return;
+    }
+
     double dt = (lastAcceptedQuestTimestamp > 0) ? (timestamp - lastAcceptedQuestTimestamp) : 0.0;
     boolean inGracePeriod = (lastResetTime > 0) && ((currentTime - lastResetTime) < POST_RESET_GRACE_SEC);
 
     Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
     Logger.recordOutput("PoseEstimator/QuestNav/InGracePeriod", inGracePeriod);
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
+    
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/AcceptNextFrameLatch", acceptNextValidFrame);
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/ManualSeedTimestamp", manualSeedTimestamp);
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedTimestamp", lastAcceptedQuestTimestamp);
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedPose", lastAcceptedQuestPose);
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/CurrentQuestPose", questPose);
+
+    if (acceptNextValidFrame && (timestamp + POST_SEED_EPSILON_SEC) >= manualSeedTimestamp) {
+      SmartLogger.logConsole("[QuestNav Fusion] Accepting first post-seed frame (skipping ALL gates)");
+      SmartLogger.logConsole("  Frame timestamp: " + timestamp);
+      SmartLogger.logConsole("  Quest pose: " + formatPose(questPose));
+      Logger.recordOutput("PoseEstimator/QuestNav/PostSeedAccept", true);
+      
+      if (!questNavSubsystem.acknowledgeMeasurement(frameCount)) {
+        reject("Acknowledge failed (already consumed)");
+        acceptNextValidFrame = false;
+        SmartLogger.logConsoleError("[QuestNav Fusion] Post-seed ack failed!");
+        return;
+      }
+      
+      Matrix<N3, N1> stdDevs = VecBuilder.fill(0.02, 0.02, Math.toRadians(2.0));
+      swervePoseEstimator.addVisionMeasurement(questPose, timestamp, stdDevs);
+      
+      SmartLogger.logConsole("  ✓ Frame fused to estimator");
+      
+      lastAcceptedQuestTimestamp = timestamp;
+      lastAcceptedQuestPose = questPose;
+      poseEstimatorSubsystem.notifyQuestNavFusionOccurred(timestamp);
+      
+      SmartLogger.logConsole("  ✓ Baseline updated: " + formatPose(questPose));
+      SmartLogger.logConsole("  Next frame will compare against THIS pose");
+      
+      acceptNextValidFrame = false;
+      healthState = QuestHealthState.HEALTHY;
+      validationInProgress = false;
+      
+      Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose);
+      Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
+      Logger.recordOutput("PoseEstimator/QuestNav/Timestamp", timestamp);
+      Logger.recordOutput("PoseEstimator/QuestNav/FrameCount", (double) frameCount);
+      Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
+      Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
+      Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", true);
+      
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/BaselineAfterAccept", lastAcceptedQuestPose);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/BaselineTimestamp", lastAcceptedQuestTimestamp);
+      
+      SmartLogger.logConsole("[QuestNav Fusion] First post-seed frame accepted: " + formatPose(questPose));
+      return;
+    }
 
     if (!inGracePeriod && !teleportGatePass(questPose, dt)) {
       return;
     }
 
-    if (!inGracePeriod) {
+    if (!inGracePeriod && !acceptNextValidFrame) {
       updateHealthState(questPose, dt);
     }
 
@@ -139,8 +204,7 @@ public class QuestNavFusion {
       return;
     }
 
-    // Only acknowledge (consume) after passing all gates
-    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
+    if (!questNavSubsystem.acknowledgeMeasurement(frameCount)) {
       reject("Acknowledge failed (already consumed)");
       return;
     }
@@ -155,12 +219,12 @@ public class QuestNavFusion {
     Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose);
     Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
     Logger.recordOutput("PoseEstimator/QuestNav/Timestamp", timestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/FrameSequence", (double) sequence);
+    Logger.recordOutput("PoseEstimator/QuestNav/FrameCount", (double) frameCount);
+    Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
     Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
     Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", true);
   }
 
-  // Centralized rejection helper (consistent telemetry)
   private void reject(String reason) {
     Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
     Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", false);
@@ -168,20 +232,20 @@ public class QuestNavFusion {
   }
 
   private boolean teleportGatePass(Pose2d questPose, double dt) {
-    if (lastAcceptedQuestPose == null) {
-      Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "SKIPPED (first)");
-      return true;
-    }
-
-    double translationError = questPose.getTranslation().getDistance(lastAcceptedQuestPose.getTranslation());
-    double rotationError = Math.abs(questPose.getRotation().minus(lastAcceptedQuestPose.getRotation()).getRadians());
+    Pose2d estimatedPose = poseEstimatorSubsystem.getEstimatedPose();
+    
+    double translationError = questPose.getTranslation().getDistance(estimatedPose.getTranslation());
+    double rotationError = Math.abs(questPose.getRotation().minus(estimatedPose.getRotation()).getRadians());
 
     Logger.recordOutput("PoseEstimator/QuestNav/TranslationError", translationError);
     Logger.recordOutput("PoseEstimator/QuestNav/RotationError", Math.toDegrees(rotationError));
+    Logger.recordOutput("PoseEstimator/QuestNav/QuestPose", questPose);
+    Logger.recordOutput("PoseEstimator/QuestNav/EstimatedPose", estimatedPose);
 
     if (translationError > TELEPORT_TRANSLATION_METERS || rotationError > TELEPORT_ROTATION_RADIANS) {
       consecutiveTeleports++;
-      if (consecutiveTeleports > 3) {
+      
+      if (consecutiveTeleports > 3 && healthState != QuestHealthState.UNHEALTHY) {
         healthState = QuestHealthState.UNHEALTHY;
         logStateTransition("-> UNHEALTHY", "Teleport threshold exceeded (3 consecutive)");
       }
@@ -195,9 +259,12 @@ public class QuestNavFusion {
       return false;
     }
 
-    if (dt > MIN_DT_FOR_IMPLIED_VELOCITY) {
-      double impliedSpeed = translationError / dt;
-      double impliedOmega = rotationError / dt;
+    if (dt > MIN_DT_FOR_IMPLIED_VELOCITY && lastAcceptedQuestPose != null) {
+      double questDeltaXY = questPose.getTranslation().getDistance(lastAcceptedQuestPose.getTranslation());
+      double questDeltaTheta = Math.abs(questPose.getRotation().minus(lastAcceptedQuestPose.getRotation()).getRadians());
+      
+      double impliedSpeed = questDeltaXY / dt;
+      double impliedOmega = questDeltaTheta / dt;
 
       double maxSpeed = MAX_PHYSICAL_SPEED_MPS * PHYSICAL_PLAUSIBILITY_MARGIN;
       double maxOmega = MAX_PHYSICAL_OMEGA_RAD_PER_SEC * PHYSICAL_PLAUSIBILITY_MARGIN;
@@ -207,7 +274,8 @@ public class QuestNavFusion {
 
       if (impliedSpeed > maxSpeed || impliedOmega > maxOmega) {
         consecutiveTeleports++;
-        if (consecutiveTeleports > 3) {
+        
+        if (consecutiveTeleports > 3 && healthState != QuestHealthState.UNHEALTHY) {
           healthState = QuestHealthState.UNHEALTHY;
           logStateTransition("-> UNHEALTHY", "Implied velocity threshold exceeded");
         }
@@ -220,7 +288,7 @@ public class QuestNavFusion {
         return false;
       }
     } else {
-      Logger.recordOutput("PoseEstimator/QuestNav/ImpliedVelocityCheck", "SKIPPED (dt too small)");
+      Logger.recordOutput("PoseEstimator/QuestNav/ImpliedVelocityCheck", "SKIPPED (dt too small or first frame)");
     }
 
     consecutiveTeleports = 0;
@@ -278,7 +346,6 @@ public class QuestNavFusion {
     validationInProgress = true;
     validationStartTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
     
-    // Choose validation reference based on mode
     if (validationMode == Constants.QuestNav.InitMode.COMP_SEED && expectedSeedPose != null) {
       validationSeedPose = expectedSeedPose;
       logStateTransition("Starting validation", "COMP_SEED mode: validating against " + formatPose(expectedSeedPose));
@@ -300,7 +367,6 @@ public class QuestNavFusion {
 
     double error = questPose.getTranslation().getDistance(validationSeedPose.getTranslation());
     
-    // Choose tolerance based on mode (null safety: default to SHOP)
     double tolerance = (validationMode == Constants.QuestNav.InitMode.COMP_SEED) 
         ? COMP_VALIDATION_TOLERANCE_METERS 
         : SHOP_STABILITY_TOLERANCE_METERS;
@@ -455,8 +521,8 @@ public class QuestNavFusion {
     }
 
     Pose2d forcedPose = questMeas.get().pose;
-    double timestamp = questMeas.get().receiveTimestampFPGA; // FPGA receive time
-    long sequence = questMeas.get().sequence;
+    double timestamp = questMeas.get().measurementTimestamp;
+    long frameCount = questMeas.get().frameCount;
 
     double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
     double measurementAge = currentTime - timestamp;
@@ -467,7 +533,7 @@ public class QuestNavFusion {
       return false;
     }
 
-    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
+    if (!questNavSubsystem.acknowledgeMeasurement(frameCount)) {
       SmartLogger.logConsoleError("[ForceAccept] Acknowledge failed");
       return false;
     }
@@ -485,9 +551,58 @@ public class QuestNavFusion {
     return true;
   }
 
-  // Console logging helper: Only log state transitions (not steady-state)
+  public void onManualSeed(Pose2d seedPose) {
+    double seedTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    
+    SmartLogger.logConsole("[QuestNav Fusion] Manual seed received: " + formatPose(seedPose));
+    
+    lastAcceptedQuestPose = null;
+    lastAcceptedQuestTimestamp = seedTime;
+    
+    healthState = QuestHealthState.UNVALIDATED;
+    consecutiveDivergence = 0;
+    consecutiveTeleports = 0;
+    
+    acceptNextValidFrame = true;
+    manualSeedTimestamp = seedTime;
+    
+    validationInProgress = false;
+    validationSeedPose = seedPose;
+    
+    Logger.recordOutput("PoseEstimator/QuestNav/ManualSeedReceived", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/SeedPose", seedPose);
+    Logger.recordOutput("PoseEstimator/QuestNav/SeedTimestamp", seedTime);
+    Logger.recordOutput("PoseEstimator/QuestNav/AcceptNextFrameLatch", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/PostSeedEpsilon", POST_SEED_EPSILON_SEC);
+    Logger.recordOutput("PoseEstimator/QuestNav/Debug/BaselineAfterSeed", lastAcceptedQuestPose);
+    
+    SmartLogger.logConsole("[QuestNav Fusion] Waiting for first post-seed frame (epsilon=" + 
+        String.format("%.1fms", POST_SEED_EPSILON_SEC * 1000) + ")...");
+    SmartLogger.logConsole("  Baseline will be set by first accepted frame");
+  }
+
+  public void onShopResumeInit() {
+    SmartLogger.logConsole("[QuestNav Fusion] SHOP_RESUME init - enabling grace period");
+    
+    lastResetTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    
+    healthState = QuestHealthState.HEALTHY;
+    consecutiveDivergence = 0;
+    consecutiveTeleports = 0;
+    
+    lastAcceptedQuestPose = null;
+    lastAcceptedQuestTimestamp = -1.0;
+    
+    Logger.recordOutput("PoseEstimator/QuestNav/ShopResumeInit", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/GraceStarted", true);
+    SmartLogger.logConsole("  Grace period: 100ms (teleport checks suspended)");
+  }
+
   private void logStateTransition(String transition, String reason) {
-    SmartLogger.logConsole("[QuestNav Health] " + transition + " - " + reason);
+    if (healthState != lastLoggedHealthState) {
+      SmartLogger.logConsole("[QuestNav Health] " + transition + " - " + reason);
+      lastLoggedHealthState = healthState;
+    }
   }
 
   private String formatPose(Pose2d pose) {

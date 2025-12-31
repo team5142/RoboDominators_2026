@@ -22,11 +22,10 @@ import org.littletonrobotics.junction.Logger;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
-import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Timer;
 import frc.robot.Constants;
 import frc.robot.util.SmartLogger;
+import edu.wpi.first.wpilibj.DriverStation;
 
 // Fuses odometry + QuestNav - Two modes: COMP_SEED (match) vs SHOP_RESUME (practice)
 public class PoseEstimatorSubsystem extends SubsystemBase {
@@ -56,12 +55,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   private double m_lastQuestNavFusionTime = 0.0;
   private double m_lastQuestNavMeasurementTimestamp = 0.0;
 
-  private double lastForceUpdateWarningTime = 0.0;
-  private static final double FORCE_UPDATE_WARNING_INTERVAL = 0.5;
-
   private boolean lastTrackingState = false;
   
   private Constants.QuestNav.InitMode currentInitMode = null;
+
+  private int initAttempts = 0; // NEW: Track retry attempts
+  private static final int MAX_INIT_ATTEMPTS = 250; // 5 seconds @ 50Hz
 
   public PoseEstimatorSubsystem(
       DriveSubsystem driveSubsystem,
@@ -75,14 +74,14 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
     poseEstimator = new SwerveDrivePoseEstimator(
         kinematics,
-        driveSubsystem.getGyroRotation(), // Yaw from Pigeon (via DriveSubsystem)
+        driveSubsystem.getGyroRotation(),
         driveSubsystem.getModulePositions(),
         new Pose2d(),
         VecBuilder.fill(ODOMETRY_STD_DEVS[0], ODOMETRY_STD_DEVS[1], ODOMETRY_STD_DEVS[2]),
         VecBuilder.fill(LIMELIGHT_MULTI_TAG_STD_DEVS[0], LIMELIGHT_MULTI_TAG_STD_DEVS[1], LIMELIGHT_MULTI_TAG_STD_DEVS[2]));
 
     this.questNavFusion = new QuestNavFusion(questNavSubsystem, driveSubsystem, poseEstimator, this);
-    this.initializer = new PoseInitializer(questNavSubsystem); // FIXED: Removed questNavFusion param
+    this.initializer = new PoseInitializer(questNavSubsystem);
     this.validator = new PoseValidator();
     
     SmartDashboard.putData("Field", field);
@@ -149,11 +148,101 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     questNavFusion.notifyEstimatorReset();
     
     if (!initializer.isInitialized()) {
-      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED); // FIXED: Was VISION_INITIALIZED
+      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
       Logger.recordOutput("PoseEstimator/InitializedManually", true);
     }
     
     Logger.recordOutput("PoseEstimator/PoseReset", pose);
+  }
+
+  /**
+   * SHOP-ONLY CALIBRATION TOOL 
+   * 
+   * DO NOT call this in match code! PoseInitializer handles automatic COMP_SEED.
+   * 
+   * This method should ONLY be called by SetStartingPoseCommand (which enforces safety checks).
+   * 
+   * IMPORTANT: Call gyro.setHeading() BEFORE calling this method!
+   * The gyroAngleNow parameter must be the angle AFTER the gyro has been reset.
+   * 
+   * This method:
+   * 1. Resets pose estimator to known field pose (using confirmed gyro angle)
+   * 2. Seeds QuestNav to match (COMP_SEED mode)
+   * 3. Configures validation against seed
+   * 4. Marks system as initialized
+   * 
+   * @param pose Known field-aligned pose (e.g., from SetStartingPoseCommand)
+   * @param gyroAngleNow Current gyro angle (AFTER gyro.setHeading() has been called)
+   * @throws IllegalStateException if QuestNav not tracking (defensive check)
+   */
+  public void manualCompSeed(Pose2d pose, Rotation2d gyroAngleNow) {
+    // Defensive check: QuestNav must be tracking (SetStartingPoseCommand should prevent this)
+    if (!questNavSubsystem.isTracking()) {
+      SmartLogger.logConsoleError("[manualCompSeed] REJECTED: QuestNav not tracking!");
+      Logger.recordOutput("PoseEstimator/ManualCompSeed/Failed", "QuestNav not tracking");
+      return;
+    }
+    
+    // Defensive check: Null pose guard
+    if (pose == null || gyroAngleNow == null) {
+      SmartLogger.logConsoleError("[manualCompSeed] REJECTED: Null pose or gyro angle!");
+      Logger.recordOutput("PoseEstimator/ManualCompSeed/Failed", "Null parameters");
+      return;
+    }
+    
+    SmartLogger.logConsole("=== MANUAL COMP_SEED ===");
+    SmartLogger.logConsole("Target pose: " + formatPose(pose));
+    SmartLogger.logConsole("Gyro angle: " + String.format("%.1f°", gyroAngleNow.getDegrees()));
+    
+    // Diagnostic: Warn if gyro angle doesn't match pose rotation (suggests timing issue)
+    double angleDiff = Math.abs(gyroAngleNow.minus(pose.getRotation()).getDegrees());
+    if (angleDiff > 5.0) {
+      SmartLogger.logConsoleError(String.format(
+          "[manualCompSeed] WARNING: Gyro angle (%.1f°) differs from pose rotation (%.1f°) by %.1f°",
+          gyroAngleNow.getDegrees(), pose.getRotation().getDegrees(), angleDiff));
+      Logger.recordOutput("PoseEstimator/ManualCompSeed/AngleMismatch", angleDiff);
+    }
+    
+    // Step 1: Reset pose estimator (use confirmed gyro angle - not pose rotation!)
+    poseEstimator.resetPosition(
+        gyroAngleNow,  // CRITICAL: Use gyro angle AFTER it's been set
+        driveSubsystem.getModulePositions(),
+        pose);
+    SmartLogger.logConsole("✓ Pose estimator reset");
+    
+    // Step 2: Seed QuestNav to match field frame
+    questNavSubsystem.seedToPose(pose);
+    SmartLogger.logConsole("✓ QuestNav seeded");
+    
+    // Step 3: Configure QuestNavFusion for COMP_SEED validation
+    questNavFusion.setExpectedSeedPose(pose);
+    questNavFusion.setValidationMode(Constants.QuestNav.InitMode.COMP_SEED);
+    questNavFusion.onManualSeed(pose); // NEW: Reset acceptance baseline + enable fast-track
+    currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
+    SmartLogger.logConsole("✓ Validation configured (COMP_SEED mode)");
+    
+    // Step 4: Mark as initialized (prevent PoseInitializer from re-initing)
+    if (!initializer.isInitialized()) {
+      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
+    }
+    SmartLogger.logConsole("✓ Initialization state set");
+    
+    // Consolidated logging (avoid duplicates)
+    Logger.recordOutput("PoseEstimator/ManualCompSeed/Success", true);
+    Logger.recordOutput("PoseEstimator/ManualCompSeed/Pose", pose);
+    Logger.recordOutput("PoseEstimator/ManualCompSeed/GyroAngle", gyroAngleNow.getDegrees());
+    Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED"); // Single source
+    Logger.recordOutput("QuestNav/Seeded", true); // Single source
+    
+    // Verify
+    Pose2d actualPose = getEstimatedPose();
+    double actualGyro = driveSubsystem.getGyroRotation().getDegrees();
+    SmartLogger.logConsole("Actual pose: " + formatPose(actualPose));
+    SmartLogger.logConsole("Actual gyro: " + String.format("%.1f°", actualGyro));
+    SmartLogger.logConsole("========================");
+    
+    Logger.recordOutput("PoseEstimator/ManualCompSeed/VerifyPose", actualPose);
+    Logger.recordOutput("PoseEstimator/ManualCompSeed/VerifyGyro", actualGyro);
   }
 
   public PoseInitializer.InitializationState getInitializationState() {
@@ -176,43 +265,79 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     if (robotState.getMode() == RobotState.Mode.DISABLED) {
       initializer.updateReadiness();
-      validator.periodicValidation(getEstimatedPose());
+      // validator.periodicValidation(getEstimatedPose()); // ← COMMENT OUT (saves 50-100ms)
     }
     
     if (!initializer.isInitialized()) {
+      initAttempts++; // NEW: Increment counter
+      
       PoseInitializer.InitResult initResult = initializer.attemptInitialization();
       
       if (initResult != null && initResult.pose != null) {
+        // SUCCESS: Reset counter
+        initAttempts = 0;
+        
         resetPose(initResult.pose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
         
         if (initResult.shouldSeedQuest) {
+          // COMP_SEED mode (match/competition)
           questNavSubsystem.seedToPose(initResult.pose);
           questNavFusion.setExpectedSeedPose(initResult.pose);
           questNavFusion.setValidationMode(Constants.QuestNav.InitMode.COMP_SEED);
+          questNavFusion.onManualSeed(initResult.pose); // Existing call
           currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
+          
+          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+          SmartLogger.logConsole("✓ Field orientation locked to " + 
+              String.format("%.1f°", initResult.pose.getRotation().getDegrees()));
           
           SmartLogger.logConsole("COMP_SEED: Quest seeded to " + formatPose(initResult.pose));
           Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
-          Logger.recordOutput("PoseEstimator/QuestSeeded", true);
+          Logger.recordOutput("QuestNav/Seeded", true);
         } else {
+          // SHOP_RESUME mode (practice/testing)
           questNavSubsystem.enterResumeMode();
           questNavFusion.setExpectedSeedPose(null);
           questNavFusion.setValidationMode(Constants.QuestNav.InitMode.SHOP_RESUME);
+          questNavFusion.onShopResumeInit();
           currentInitMode = Constants.QuestNav.InitMode.SHOP_RESUME;
           
+          // FIX: Lock field orientation to Quest's pose rotation (not gyro)
+          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+          SmartLogger.logConsole("✓ Field orientation locked to Quest heading: " + 
+              String.format("%.1f°", initResult.pose.getRotation().getDegrees()));
+              
           SmartLogger.logConsole("SHOP_RESUME: Using Quest's existing tracking (not seeded)");
           Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
-          Logger.recordOutput("PoseEstimator/QuestSeeded", false);
+          Logger.recordOutput("QuestNav/Seeded", false);
         }
         
         Logger.recordOutput("PoseEstimator/InitReason", initResult.reason);
         SmartLogger.logConsole("Init reason: " + initResult.reason);
+        
+      } else if (initAttempts >= MAX_INIT_ATTEMPTS) {
+        // TIMEOUT: Log diagnostic info
+        SmartLogger.logConsoleError("========== INITIALIZATION TIMEOUT ==========");
+        SmartLogger.logConsoleError("Waited 2 seconds, no valid pose found!");
+        SmartLogger.logConsoleError("Diagnostics:");
+        SmartLogger.logConsoleError("  FMS attached: " + DriverStation.isFMSAttached());
+        SmartLogger.logConsoleError("  Quest tracking: " + questNavSubsystem.isTracking());
+        SmartLogger.logConsoleError("  Quest has pose: " + questNavSubsystem.getRobotPose().isPresent());
+        
+        if (questNavSubsystem.getRobotPose().isPresent()) {
+          Pose2d questPose = questNavSubsystem.getRobotPose().get();
+          SmartLogger.logConsoleError("  Quest pose: " + formatPose(questPose));
+        }
+        
+        SmartLogger.logConsoleError("============================================");
+        
+        // Reset counter to avoid spam
+        initAttempts = 0;
       }
     }
     
-    // Quest fusion runs even while disabled (maintains pose continuity if robot is moved)
     if (initializer.isInitialized()) {
-      questNavFusion.processFrames();
+      questNavFusion.processFrames(); // Will skip if paused
     }
     
     Pose2d currentPose = getEstimatedPose();
@@ -236,7 +361,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     if (logCounter % (LOG_SKIP_CYCLES + 1) == 0) {
       Logger.recordOutput("PoseEstimator/PoseChangeMeters", poseChange);
-      Logger.recordOutput("PoseEstimator/WaitingForVisionTime", initializer.getWaitTime());
+      Logger.recordOutput("PoseEstimator/InitWaitTime", initializer.getWaitTime());
     }
     
     RobotState.Mode currentMode = robotState.getMode();
@@ -254,8 +379,6 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       SmartLogger.logConsole("QuestNav tracking regained - starting revalidation");
     }
     lastTrackingState = currentTracking;
-    
-    // HealthState already logged by QuestNavFusion.processFrames()
   }
   
   public double getTimeSinceLastUpdate() {
@@ -315,7 +438,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   
   public void setInitializedViaVision() {
     if (!initializer.isInitialized()) {
-      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED); // FIXED: Was VISION_INITIALIZED
+      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
       Logger.recordOutput("PoseEstimator/InitializedViaMultiTagVision", true);
     }
   }
