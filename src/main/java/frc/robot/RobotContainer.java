@@ -48,7 +48,7 @@ public class RobotContainer {
   final GyroSubsystem gyro = new GyroSubsystem();
   final QuestNavSubsystem questNav = new QuestNavSubsystem();
   final DriveSubsystem driveSubsystem = new DriveSubsystem(robotState, gyro);
-  final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, gyro, questNav);
+  final PoseEstimatorSubsystem poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, robotState, questNav);
   final TagVisionSubsystem tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
   public final LEDSubsystem ledSubsystem = new LEDSubsystem(robotState, tagVisionSubsystem);
 

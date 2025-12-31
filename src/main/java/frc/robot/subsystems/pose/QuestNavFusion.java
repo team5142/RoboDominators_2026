@@ -9,307 +9,491 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
+import frc.robot.Constants;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
+import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * QuestNav SLAM Fusion - Treats QuestNav like HIGH-ACCURACY, LATENT VISION
- * 
- * KEY PHILOSOPHY (matches AprilTag vision fusion strategy):
- * 
- * 1) VELOCITY GATING (ENFORCED):
- *    - ONLY fuse when robot is nearly stationary (< 0.12 m/s linear, < 0.3 rad/s angular)
- *    - Prevents fighting PathPlanner during aggressive autonomous motion
- *    - Allows convergence during brief pauses between path segments
- *    - Checked BEFORE peeking measurement to preserve it for next stationary period
- * 
- * 2) INNOVATION GATING (TIME-AWARE, WITH REACQUIRE):
- *    - Compare QuestNav measurement to CURRENT pose estimate (not historical)
- *    - MOVING: Tight gates (10cm base + motion expansion)
- *    - STOPPED: Wide reacquire gates (65cm pos, 25° rot) for rapid convergence
- *    - Conservative approximation (simpler than pose history buffer)
- * 
- * 3) TRUST MODELING (MOTION-DEPENDENT):
- *    - STOPPED: Very high trust (2cm XY, 1.7° theta) - like stationary AprilTag
- *    - MOVING: Degraded trust based on speed - gentle correction, not rejection
- *    - INITIAL: Maximum trust (1cm XY, 1.1° theta) - one-time alignment at auto start
- * 
- * 4) LATENCY COMPENSATION:
- *    - Timestamps are RECEIVE-ALIGNED (FPGA time when frame arrived)
- *    - QuestNav does NOT provide reliable capture timestamps
- *    - Conservative approach: treat latency as zero rather than guessing
- *    - SwerveDrivePoseEstimator applies measurement at receive time
- * 
- * 5) FRAME HANDLING (PEEK-THEN-ACKNOWLEDGE):
- *    - QuestNavSubsystem drains ALL frames, caches ONLY latest (single consumer)
- *    - Each frame has monotonic sequence number
- *    - peekLatestMeasurement() allows inspection WITHOUT consuming
- *    - acknowledgeMeasurement() marks consumed ONLY after successful fusion
- *    - Rejected measurements preserved for next cycle (no frame burning)
- * 
- * COORDINATE FRAMES:
- * - QuestNavSubsystem outputs FIELD-SPACE robot poses (transform already applied)
- * - No additional transforms needed in fusion layer
- * 
- * EXPECTED BEHAVIOR:
- * - No "tug-of-war" during PathPlanner paths (velocity gating prevents fusion)
- * - Rapid convergence when stopped (reacquire mode with wide gates)
- * - No frame starvation (peek/ack preserves rejected measurements)
- * - Each QuestNav frame fused AT MOST ONCE (consume-once semantics)
- */
+// QuestNav fusion with mode-aware validation: COMP_SEED (anchored to known start) vs SHOP_RESUME (stability check)
 public class QuestNavFusion {
-  
+
+  public enum QuestHealthState {
+    UNVALIDATED,  // Need validation after seed/tracking-loss
+    HEALTHY,      // Agreeing with odom
+    DEGRADED,     // Persistent divergence, reduced trust
+    UNHEALTHY     // Teleports or severe disagreement
+  }
+
+  private QuestHealthState healthState = QuestHealthState.UNVALIDATED;
+  private int consecutiveDivergence = 0;
+  private int consecutiveTeleports = 0;
+  private double lastAcceptedQuestTimestamp = -1.0;
+  private Pose2d lastAcceptedQuestPose = null;
+  private double lastResetTime = -1.0;
+
+  // Validation state
+  private Constants.QuestNav.InitMode validationMode = null;
+  private Pose2d expectedSeedPose = null;
+  private boolean validationInProgress = false;
+  private double validationStartTime = -1.0;
+  private Pose2d validationSeedPose = null;
+  private int validationPassStreak = 0;
+
   private final QuestNavSubsystem questNavSubsystem;
   private final DriveSubsystem driveSubsystem;
   private final SwerveDrivePoseEstimator swervePoseEstimator;
   private final PoseEstimatorSubsystem poseEstimatorSubsystem;
-  
+
   public QuestNavFusion(
       QuestNavSubsystem questNavSubsystem,
       DriveSubsystem driveSubsystem,
       SwerveDrivePoseEstimator swervePoseEstimator,
       PoseEstimatorSubsystem poseEstimatorSubsystem) {
-    
+
     this.questNavSubsystem = questNavSubsystem;
     this.driveSubsystem = driveSubsystem;
     this.swervePoseEstimator = swervePoseEstimator;
     this.poseEstimatorSubsystem = poseEstimatorSubsystem;
   }
-  
-  /**
-   * PEEK-THEN-ACKNOWLEDGE: Process latest unconsumed QuestNav measurement
-   * Called every cycle (20ms) from PoseEstimatorSubsystem.periodic()
-   * 
-   * NEW ORDERING (fixes starvation):
-   * 1. Check velocity gate (preserves measurement if moving)
-   * 2. PEEK measurement (non-consuming check)
-   * 3. Age check
-   * 4. Innovation gating (WIDENED when stopped for reacquire)
-   * 5. If accepted -> ACKNOWLEDGE + addVisionMeasurement
-   */
+
+  // Main fusion loop: velocity gate → peek → age → teleport → divergence → validation → fuse
   public void processFrames() {
-    // 1) VELOCITY GATING: Check BEFORE peeking
-    if (!velocityGatePass()) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Velocity gate failed");
-      return;
-    }
-    
-    // 2) PEEK (non-consuming): Check if measurement exists
-    java.util.Optional<QuestNavSubsystem.QuestMeasurement> measurement = 
-        questNavSubsystem.peekLatestMeasurement();
-    
-    if (!measurement.isPresent()) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "No unconsumed measurement");
-      return;
-    }
-    
-    QuestNavSubsystem.QuestMeasurement meas = measurement.get();
-    Pose2d pose = meas.pose;
-    double timestamp = meas.timestampFPGA;
-    long sequence = meas.sequence;
-    
-    // 3) Age check
+    // Cache current time for this cycle
     double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
-    double age = currentTime - timestamp;
     
-    if (age > 0.5 || age < 0) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
-          "Stale/invalid age: " + String.format("%.3fs", age));
-      return; // Do NOT acknowledge - preserve for next cycle
-    }
+    // Set clean defaults for this cycle (prevent stale values)
+    Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", false);
+    Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "");
+    Logger.recordOutput("PoseEstimator/QuestNav/TeleportRejected", false);
+    Logger.recordOutput("PoseEstimator/QuestNav/HealthState", healthState.toString());
     
-    // 4) INNOVATION GATING (with REACQUIRE mode when stopped)
-    if (!innovationGatePass(pose, age)) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      return; // Do NOT acknowledge - preserve for next cycle
-    }
-    
-    // 5) ACCEPTED - Now we can acknowledge + fuse
-    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
-      Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", "Acknowledge failed (race condition)");
+    if (!velocityGatePass()) {
+      reject("Velocity gate failed");
       return;
     }
-    
-    // Get trust level based on robot state
-    Matrix<N3, N1> stdDevs = getTrustForCurrentState(age);
-    
-    // Add to pose estimator with RECEIVE-ALIGNED timestamp
-    swervePoseEstimator.addVisionMeasurement(pose, timestamp, stdDevs);
-    
-    // Notify parent subsystem for tracking
+
+    // Peek measurement (non-consuming until we acknowledge)
+    // Rejected frames remain available until a newer one arrives
+    java.util.Optional<QuestNavSubsystem.QuestMeasurement> measurement =
+        questNavSubsystem.peekLatestMeasurement();
+
+    if (!measurement.isPresent()) {
+      reject("No unconsumed measurement");
+      return;
+    }
+
+    QuestNavSubsystem.QuestMeasurement meas = measurement.get();
+    Pose2d questPose = meas.pose;
+    double timestamp = meas.receiveTimestampFPGA; // FPGA receive time (NOT capture time)
+    long sequence = meas.sequence;
+
+    double measurementAge = currentTime - timestamp;
+
+    if (measurementAge > 0.5 || measurementAge < 0) {
+      reject("Stale/invalid age: " + String.format("%.3fs", measurementAge));
+      Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
+      return;
+    }
+
+    double dt = (lastAcceptedQuestTimestamp > 0) ? (timestamp - lastAcceptedQuestTimestamp) : 0.0;
+    boolean inGracePeriod = (lastResetTime > 0) && ((currentTime - lastResetTime) < POST_RESET_GRACE_SEC);
+
+    Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
+    Logger.recordOutput("PoseEstimator/QuestNav/InGracePeriod", inGracePeriod);
+
+    if (!inGracePeriod && !teleportGatePass(questPose, dt)) {
+      return;
+    }
+
+    if (!inGracePeriod) {
+      updateHealthState(questPose, dt);
+    }
+
+    if (healthState == QuestHealthState.UNVALIDATED) {
+      if (!validationInProgress) {
+        startValidation(questPose, timestamp);
+      }
+
+      boolean validationPassed = checkValidation(questPose);
+
+      if (validationPassed) {
+        healthState = QuestHealthState.HEALTHY;
+        validationInProgress = false;
+        Logger.recordOutput("PoseEstimator/QuestNav/ValidationPassed", true);
+        logStateTransition("UNVALIDATED -> HEALTHY", "Validation passed");
+      } else if ((currentTime - validationStartTime) > VALIDATION_TIMEOUT_SEC) {
+        healthState = QuestHealthState.UNHEALTHY;
+        validationInProgress = false;
+        Logger.recordOutput("PoseEstimator/QuestNav/ValidationFailed", "Timeout");
+        reject("Validation failed (timeout)");
+        logStateTransition("UNVALIDATED -> UNHEALTHY", "Validation timeout");
+        return;
+      }
+    }
+
+    if (healthState == QuestHealthState.UNHEALTHY) {
+      reject("Health state: UNHEALTHY");
+      return;
+    }
+
+    // Only acknowledge (consume) after passing all gates
+    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
+      reject("Acknowledge failed (already consumed)");
+      return;
+    }
+
+    Matrix<N3, N1> stdDevs = getHealthAwareTrust(measurementAge);
+    swervePoseEstimator.addVisionMeasurement(questPose, timestamp, stdDevs);
+
+    lastAcceptedQuestTimestamp = timestamp;
+    lastAcceptedQuestPose = questPose;
     poseEstimatorSubsystem.notifyQuestNavFusionOccurred(timestamp);
-    
-    Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", pose);
-    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", age);
+
+    Logger.recordOutput("PoseEstimator/QuestNav/LatestPose", questPose);
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
     Logger.recordOutput("PoseEstimator/QuestNav/Timestamp", timestamp);
     Logger.recordOutput("PoseEstimator/QuestNav/FrameSequence", (double) sequence);
     Logger.recordOutput("PoseEstimator/QuestNavUsed", true);
-    Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", ""); // Clear
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", true);
   }
-  
-  /**
-   * 1) VELOCITY GATING: ONLY fuse when robot is nearly stationary
-   * Prevents fighting PathPlanner during aggressive motion
-   * 
-   * THRESHOLDS:
-   * - Linear: 0.12 m/s (~5 in/s) - allows brief pauses between path segments
-   * - Angular: 0.3 rad/s (~17 deg/s) - allows settling after rotation
-   * 
-   * @return true if robot is slow enough for fusion, false to reject
-   */
+
+  // Centralized rejection helper (consistent telemetry)
+  private void reject(String reason) {
+    Logger.recordOutput("PoseEstimator/QuestNavUsed", false);
+    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAccepted", false);
+    Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", reason);
+  }
+
+  private boolean teleportGatePass(Pose2d questPose, double dt) {
+    if (lastAcceptedQuestPose == null) {
+      Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "SKIPPED (first)");
+      return true;
+    }
+
+    double translationError = questPose.getTranslation().getDistance(lastAcceptedQuestPose.getTranslation());
+    double rotationError = Math.abs(questPose.getRotation().minus(lastAcceptedQuestPose.getRotation()).getRadians());
+
+    Logger.recordOutput("PoseEstimator/QuestNav/TranslationError", translationError);
+    Logger.recordOutput("PoseEstimator/QuestNav/RotationError", Math.toDegrees(rotationError));
+
+    if (translationError > TELEPORT_TRANSLATION_METERS || rotationError > TELEPORT_ROTATION_RADIANS) {
+      consecutiveTeleports++;
+      if (consecutiveTeleports > 3) {
+        healthState = QuestHealthState.UNHEALTHY;
+        logStateTransition("-> UNHEALTHY", "Teleport threshold exceeded (3 consecutive)");
+      }
+
+      Logger.recordOutput("PoseEstimator/QuestNav/TeleportRejected", true);
+      String reason = String.format("TELEPORT: trans=%.2fm (max=%.2fm), rot=%.1f° (max=%.1f°)",
+          translationError, TELEPORT_TRANSLATION_METERS,
+          Math.toDegrees(rotationError), Math.toDegrees(TELEPORT_ROTATION_RADIANS));
+      reject(reason);
+      Logger.recordOutput("PoseEstimator/QuestNav/ConsecutiveTeleports", consecutiveTeleports);
+      return false;
+    }
+
+    if (dt > MIN_DT_FOR_IMPLIED_VELOCITY) {
+      double impliedSpeed = translationError / dt;
+      double impliedOmega = rotationError / dt;
+
+      double maxSpeed = MAX_PHYSICAL_SPEED_MPS * PHYSICAL_PLAUSIBILITY_MARGIN;
+      double maxOmega = MAX_PHYSICAL_OMEGA_RAD_PER_SEC * PHYSICAL_PLAUSIBILITY_MARGIN;
+
+      Logger.recordOutput("PoseEstimator/QuestNav/ImpliedSpeed", impliedSpeed);
+      Logger.recordOutput("PoseEstimator/QuestNav/ImpliedOmega", impliedOmega);
+
+      if (impliedSpeed > maxSpeed || impliedOmega > maxOmega) {
+        consecutiveTeleports++;
+        if (consecutiveTeleports > 3) {
+          healthState = QuestHealthState.UNHEALTHY;
+          logStateTransition("-> UNHEALTHY", "Implied velocity threshold exceeded");
+        }
+
+        Logger.recordOutput("PoseEstimator/QuestNav/TeleportRejected", true);
+        String reason = String.format("IMPLIED VELOCITY: speed=%.2fm/s (max=%.2f), omega=%.1frad/s (max=%.1f)",
+            impliedSpeed, maxSpeed, impliedOmega, maxOmega);
+        reject(reason);
+        Logger.recordOutput("PoseEstimator/QuestNav/ConsecutiveTeleports", consecutiveTeleports);
+        return false;
+      }
+    } else {
+      Logger.recordOutput("PoseEstimator/QuestNav/ImpliedVelocityCheck", "SKIPPED (dt too small)");
+    }
+
+    consecutiveTeleports = 0;
+    Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "PASSED");
+    return true;
+  }
+
+  private void updateHealthState(Pose2d questPose, double dt) {
+    if (lastAcceptedQuestPose == null || dt < MIN_DT_FOR_IMPLIED_VELOCITY) {
+      Logger.recordOutput("PoseEstimator/QuestNav/DivergenceCheck", "SKIPPED (insufficient data)");
+      return;
+    }
+
+    double questDeltaXY = questPose.getTranslation().getDistance(lastAcceptedQuestPose.getTranslation());
+    double questDeltaTheta = Math.abs(questPose.getRotation().minus(lastAcceptedQuestPose.getRotation()).getRadians());
+
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    double odomDeltaXY = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond) * dt;
+    double odomDeltaTheta = Math.abs(speeds.omegaRadiansPerSecond) * dt;
+
+    double questMetric = questDeltaXY + questDeltaTheta * DIVERGENCE_ANGULAR_WEIGHT;
+    double odomMetric = odomDeltaXY + odomDeltaTheta * DIVERGENCE_ANGULAR_WEIGHT;
+    double divergenceMetric = Math.abs(questMetric - odomMetric);
+
+    Logger.recordOutput("PoseEstimator/QuestNav/QuestDeltaXY", questDeltaXY);
+    Logger.recordOutput("PoseEstimator/QuestNav/OdomDeltaXY", odomDeltaXY);
+    Logger.recordOutput("PoseEstimator/QuestNav/DivergenceMetric", divergenceMetric);
+
+    if (divergenceMetric > DIVERGENCE_THRESHOLD_METERS) {
+      consecutiveDivergence++;
+
+      if (consecutiveDivergence >= DIVERGENCE_PATIENCE_CYCLES) {
+        if (healthState == QuestHealthState.HEALTHY) {
+          healthState = QuestHealthState.DEGRADED;
+          Logger.recordOutput("PoseEstimator/QuestNav/HealthTransition", "HEALTHY -> DEGRADED");
+          logStateTransition("HEALTHY -> DEGRADED", "Persistent divergence from odometry");
+        }
+      }
+    } else {
+      if (consecutiveDivergence > 0) {
+        consecutiveDivergence--;
+      }
+
+      if (healthState == QuestHealthState.DEGRADED && consecutiveDivergence == 0) {
+        healthState = QuestHealthState.HEALTHY;
+        Logger.recordOutput("PoseEstimator/QuestNav/HealthTransition", "DEGRADED -> HEALTHY");
+        logStateTransition("DEGRADED -> HEALTHY", "Divergence resolved");
+      }
+    }
+
+    Logger.recordOutput("PoseEstimator/QuestNav/ConsecutiveDivergence", consecutiveDivergence);
+  }
+
+  private void startValidation(Pose2d initialQuestPose, double timestamp) {
+    validationInProgress = true;
+    validationStartTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    
+    // Choose validation reference based on mode
+    if (validationMode == Constants.QuestNav.InitMode.COMP_SEED && expectedSeedPose != null) {
+      validationSeedPose = expectedSeedPose;
+      logStateTransition("Starting validation", "COMP_SEED mode: validating against " + formatPose(expectedSeedPose));
+    } else {
+      validationSeedPose = initialQuestPose;
+      String modeStr = (validationMode != null) ? validationMode.toString() : "UNKNOWN->SHOP_DEFAULT";
+      Logger.recordOutput("PoseEstimator/QuestNav/ValidationMode", modeStr);
+      logStateTransition("Starting validation", "SHOP_RESUME mode: stability check");
+    }
+    
+    validationPassStreak = 0;
+
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationStarted", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationSeedPose", validationSeedPose);
+  }
+
+  private boolean checkValidation(Pose2d questPose) {
+    if (validationSeedPose == null) return false;
+
+    double error = questPose.getTranslation().getDistance(validationSeedPose.getTranslation());
+    
+    // Choose tolerance based on mode (null safety: default to SHOP)
+    double tolerance = (validationMode == Constants.QuestNav.InitMode.COMP_SEED) 
+        ? COMP_VALIDATION_TOLERANCE_METERS 
+        : SHOP_STABILITY_TOLERANCE_METERS;
+
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationError", error);
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationStreak", validationPassStreak);
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationTolerance", tolerance);
+
+    if (error < tolerance) {
+      validationPassStreak++;
+      if (validationPassStreak >= VALIDATION_REQUIRED_STREAK) {
+        return true;
+      }
+    } else {
+      validationPassStreak = 0;
+    }
+
+    return false;
+  }
+
+  private Matrix<N3, N1> getHealthAwareTrust(double age) {
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+    double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
+
+    double baseXY, baseTheta;
+    if (linearSpeed < 0.05 && angularSpeed < 0.05) {
+      baseXY = QUESTNAV_STD_DEVS_STOPPED[0];
+      baseTheta = QUESTNAV_STD_DEVS_STOPPED[2];
+      Logger.recordOutput("PoseEstimator/QuestNav/TrustMode", "STOPPED");
+    } else {
+      baseXY = QUESTNAV_STD_DEVS[0];
+      baseTheta = QUESTNAV_STD_DEVS[2];
+
+      if (linearSpeed > 1.0 || angularSpeed > 1.0) {
+        baseXY *= MOVING_TRUST_DEGRADATION_FACTOR;
+        baseTheta *= MOVING_TRUST_DEGRADATION_FACTOR;
+        Logger.recordOutput("PoseEstimator/QuestNav/TrustMode", "MOVING_FAST");
+      } else {
+        Logger.recordOutput("PoseEstimator/QuestNav/TrustMode", "MOVING_SLOW");
+      }
+    }
+
+    double healthFactor = 1.0;
+    switch (healthState) {
+      case HEALTHY:
+        healthFactor = 1.0;
+        break;
+      case DEGRADED:
+        healthFactor = DEGRADED_TRUST_FACTOR;
+        Logger.recordOutput("PoseEstimator/QuestNav/TrustDegraded", true);
+        break;
+      case UNHEALTHY:
+        healthFactor = UNHEALTHY_TRUST_FACTOR;
+        Logger.recordOutput("PoseEstimator/QuestNav/TrustUnhealthy", true);
+        break;
+      case UNVALIDATED:
+        baseXY = QUESTNAV_STD_DEVS_INITIAL[0];
+        baseTheta = QUESTNAV_STD_DEVS_INITIAL[2];
+        break;
+    }
+
+    double finalXY = baseXY * healthFactor * (1.0 + age * 2.0);
+    double finalTheta = baseTheta * healthFactor * (1.0 + age * 3.0);
+
+    Logger.recordOutput("PoseEstimator/QuestNav/StdDevXY", finalXY);
+    Logger.recordOutput("PoseEstimator/QuestNav/StdDevTheta", Math.toDegrees(finalTheta));
+    Logger.recordOutput("PoseEstimator/QuestNav/HealthFactor", healthFactor);
+
+    return VecBuilder.fill(finalXY, finalXY, finalTheta);
+  }
+
+  public void notifyEstimatorReset() {
+    lastResetTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    lastAcceptedQuestTimestamp = -1.0;
+    lastAcceptedQuestPose = null;
+    consecutiveDivergence = 0;
+    consecutiveTeleports = 0;
+
+    Logger.recordOutput("PoseEstimator/QuestNav/ResetGraceStarted", true);
+  }
+
+  public void notifyTrackingLost() {
+    healthState = QuestHealthState.UNVALIDATED;
+    validationInProgress = false;
+
+    Logger.recordOutput("PoseEstimator/QuestNav/TrackingLost", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/HealthState", "UNVALIDATED");
+    logStateTransition("-> UNVALIDATED", "Tracking lost");
+  }
+
+  public void notifyTrackingRegained() {
+    healthState = QuestHealthState.UNVALIDATED;
+    validationInProgress = false;
+    consecutiveDivergence = 0;
+    consecutiveTeleports = 0;
+
+    Logger.recordOutput("PoseEstimator/QuestNav/TrackingRegained", true);
+    Logger.recordOutput("PoseEstimator/QuestNav/HealthState", "UNVALIDATED");
+    logStateTransition("-> UNVALIDATED", "Tracking regained - revalidation required");
+  }
+
+  public void setExpectedSeedPose(Pose2d pose) {
+    this.expectedSeedPose = pose;
+    Logger.recordOutput("PoseEstimator/QuestNav/ExpectedSeedPose", pose);
+  }
+
+  public void setValidationMode(Constants.QuestNav.InitMode mode) {
+    this.validationMode = mode;
+    Logger.recordOutput("PoseEstimator/QuestNav/ValidationMode", mode.toString());
+  }
+
+  public QuestHealthState getHealthState() {
+    return healthState;
+  }
+
   private boolean velocityGatePass() {
     ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
     double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
     double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
-    
+
     boolean linearOk = linearSpeed <= MAX_LINEAR_SPEED_FOR_FUSION_MPS;
     boolean angularOk = angularSpeed <= MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC;
-    
+
     Logger.recordOutput("PoseEstimator/QuestNav/VelocityGate/LinearSpeed", linearSpeed);
     Logger.recordOutput("PoseEstimator/QuestNav/VelocityGate/AngularSpeed", angularSpeed);
-    Logger.recordOutput("PoseEstimator/QuestNav/VelocityGate/LinearOk", linearOk);
-    Logger.recordOutput("PoseEstimator/QuestNav/VelocityGate/AngularOk", angularOk);
     Logger.recordOutput("PoseEstimator/QuestNav/VelocityGate/Passed", linearOk && angularOk);
-    
+
     return linearOk && angularOk;
   }
-  
-  /**
-   * 2) + 3) INNOVATION GATING with REACQUIRE mode
-   * 
-   * REACQUIRE MODE (when stopped):
-   * - Position gate: 65cm (was 10cm)
-   * - Rotation gate: 25° (was 5°)
-   * - Allows rapid convergence when robot stops moving
-   * 
-   * MOVING MODE (normal):
-   * - Tight gates with conservative motion-based expansion
-   */
-  private boolean innovationGatePass(Pose2d measurement, double age) {
-    Pose2d predictedPose = swervePoseEstimator.getEstimatedPosition();
-    
-    double posError = measurement.getTranslation().getDistance(predictedPose.getTranslation());
-    double rotError = Math.abs(measurement.getRotation().minus(predictedPose.getRotation()).getRadians());
-    
-    // Get current robot motion
-    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
-    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
-    double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
-    
-    // Determine if robot is stopped (for reacquire mode)
-    boolean isStopped = (linearSpeed < REACQUIRE_STOPPED_LINEAR_THRESHOLD && 
-                         angularSpeed < REACQUIRE_STOPPED_ANGULAR_THRESHOLD);
-    
-    double posGate, rotGate;
-    
-    if (isStopped) {
-      // 3) REACQUIRE MODE: Wide gates for rapid convergence
-      posGate = REACQUIRE_POS_GATE_METERS;
-      rotGate = Math.toRadians(REACQUIRE_ROT_GATE_DEGREES);
-      Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/Mode", "REACQUIRE");
-    } else {
-      // MOVING MODE: Tight gates with motion-based expansion
-      posGate = INNOVATION_GATE_POS_BASE_METERS + INNOVATION_GATE_POS_PER_SPEED * linearSpeed * age;
-      rotGate = Math.toRadians(INNOVATION_GATE_ROT_BASE_DEGREES) + INNOVATION_GATE_ROT_PER_OMEGA * angularSpeed * age;
-      Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/Mode", "MOVING");
-    }
-    
-    boolean passed = posError <= posGate && rotError <= rotGate;
-    
-    if (!passed) {
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectionReason", 
-          String.format("Innovation gate: pos=%.3fm (gate=%.3fm), rot=%.1f° (gate=%.1f°), mode=%s", 
-              posError, posGate, Math.toDegrees(rotError), Math.toDegrees(rotGate), 
-              isStopped ? "REACQUIRE" : "MOVING"));
-      Logger.recordOutput("PoseEstimator/QuestNav/RejectedPose", measurement);
-    }
-    
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/PosError", posError);
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/RotError", Math.toDegrees(rotError));
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/PosGate", posGate);
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/RotGate", Math.toDegrees(rotGate));
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/Passed", passed);
-    Logger.recordOutput("PoseEstimator/QuestNav/InnovationGate/IsStopped", isStopped);
-    
-    return passed;
-  }
-  
-  /**
-   * 4) TRUST MODELING: Motion-dependent covariance (degrades trust, doesn't reject)
-   * 
-   * STRATEGY:
-   * - STOPPED: Highest trust (2cm XY, 1.7° theta) - like stationary AprilTag
-   * - MOVING: Degraded trust based on speed - allows gentle correction
-   * - ROTATION: Reduce theta trust significantly during spin
-   * - LATENCY: Degrade trust with age (older = less reliable)
-   * 
-   * INTENT: Motion reduces trust (larger std dev = less weight in Kalman filter)
-   * but doesn't hard-reject. Allows slow convergence during motion if needed.
-   * 
-   * @param age Measurement latency in seconds
-   * @return Standard deviation matrix [XY, XY, Theta] in meters and radians
-   */
-  private Matrix<N3, N1> getTrustForCurrentState(double age) {
-    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
-    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
-    double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
-    
-    // Start with moving trust (moderate)
-    double xyStdDev = QUESTNAV_STD_DEVS[0]; // 8cm
-    double thetaStdDev = QUESTNAV_STD_DEVS[2]; // 4°
-    
-    // STOPPED: Very high trust (like stationary AprilTag)
-    if (linearSpeed < 0.05 && angularSpeed < 0.05) {
-      xyStdDev = QUESTNAV_STD_DEVS_STOPPED[0]; // 2cm
-      thetaStdDev = QUESTNAV_STD_DEVS_STOPPED[2]; // 1.7°
-      Logger.recordOutput("PoseEstimator/QuestNav/TrustMode", "STOPPED");
-    }
-    // MOVING: Degrade trust based on speed (not rejection!)
-    else {
-      // 4) IMPROVED: Degrade XY trust with linear speed
-      xyStdDev *= (1.0 + linearSpeed * 0.5); // +50% per m/s of linear motion
-      
-      // 4) IMPROVED: Heavily degrade theta trust during rotation
-      if (angularSpeed > 0.3) {
-        thetaStdDev *= (1.0 + angularSpeed * 2.0); // +200% per rad/s of rotation
-      }
-      
-      Logger.recordOutput("PoseEstimator/QuestNav/TrustMode", "MOVING");
-    }
-    
-    // Degrade trust with age (measurement latency)
-    xyStdDev *= (1.0 + age * 2.0); // +100% per second of age
-    thetaStdDev *= (1.0 + age * 3.0); // +200% per second of age
-    
-    Logger.recordOutput("PoseEstimator/QuestNav/StdDev/XY", xyStdDev);
-    Logger.recordOutput("PoseEstimator/QuestNav/StdDev/Theta", Math.toDegrees(thetaStdDev));
-    Logger.recordOutput("PoseEstimator/QuestNav/LinearSpeed", linearSpeed);
-    Logger.recordOutput("PoseEstimator/QuestNav/AngularSpeed", angularSpeed);
-    
-    return VecBuilder.fill(xyStdDev, xyStdDev, thetaStdDev);
-  }
-  
-  /**
-   * Get standard deviations for initial alignment (MAXIMUM trust)
-   * Used at auto start for one-time pose initialization
-   * 
-   * TRUST: 1cm XY, 1.1° theta (highest trust in entire system)
-   * 
-   * @return Standard deviation matrix for initial alignment
-   */
+
   public Matrix<N3, N1> getInitialAlignmentStdDevs() {
-    double xyTrust = QUESTNAV_STD_DEVS_INITIAL[0];     // 1cm
-    double thetaTrust = QUESTNAV_STD_DEVS_INITIAL[2];  // 1.1°
-    
+    double xyTrust = QUESTNAV_STD_DEVS_INITIAL[0];
+    double thetaTrust = QUESTNAV_STD_DEVS_INITIAL[2];
+
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/XY_Initial", xyTrust);
     Logger.recordOutput("PoseEstimator/QuestNav/StdDev/Theta_Initial", thetaTrust);
-    
+
     return VecBuilder.fill(xyTrust, xyTrust, thetaTrust);
+  }
+
+  public boolean forceAcceptMeasurement() {
+    if (!questNavSubsystem.isTracking()) {
+      SmartLogger.logConsoleError("[ForceAccept] Quest not tracking");
+      return false;
+    }
+
+    var questMeas = questNavSubsystem.peekLatestMeasurement();
+    if (!questMeas.isPresent()) {
+      SmartLogger.logConsoleError("[ForceAccept] No unconsumed measurement");
+      return false;
+    }
+
+    Pose2d forcedPose = questMeas.get().pose;
+    double timestamp = questMeas.get().receiveTimestampFPGA; // FPGA receive time
+    long sequence = questMeas.get().sequence;
+
+    double currentTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+    double measurementAge = currentTime - timestamp;
+
+    if (measurementAge < 0 || measurementAge > 0.25) {
+      SmartLogger.logConsoleError("[ForceAccept] Stale measurement (age: " + 
+          String.format("%.3fs)", measurementAge));
+      return false;
+    }
+
+    if (!questNavSubsystem.acknowledgeMeasurement(sequence)) {
+      SmartLogger.logConsoleError("[ForceAccept] Acknowledge failed");
+      return false;
+    }
+
+    var veryHighTrust = VecBuilder.fill(0.01, 0.01, Math.toRadians(1.0));
+    swervePoseEstimator.addVisionMeasurement(forcedPose, timestamp, veryHighTrust);
+
+    lastAcceptedQuestTimestamp = timestamp;
+    lastAcceptedQuestPose = forcedPose;
+    poseEstimatorSubsystem.notifyQuestNavFusionOccurred(timestamp);
+
+    SmartLogger.logConsole("[ForceAccept] Success: " + formatPose(forcedPose));
+    Logger.recordOutput("PoseEstimator/ForceAccept/Success", true);
+
+    return true;
+  }
+
+  // Console logging helper: Only log state transitions (not steady-state)
+  private void logStateTransition(String transition, String reason) {
+    SmartLogger.logConsole("[QuestNav Health] " + transition + " - " + reason);
+  }
+
+  private String formatPose(Pose2d pose) {
+    return String.format("(%.2fm, %.2fm, %.1f°)", 
+        pose.getX(), 
+        pose.getY(), 
+        pose.getRotation().getDegrees());
   }
 }

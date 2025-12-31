@@ -12,33 +12,45 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.QuestNavSubsystem;
+import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
 
+// Determines initialization mode: COMP_SEED (seed Quest to known start) vs SHOP_RESUME (use Quest's existing tracking)
 public class PoseInitializer {
   
   public enum InitializationState {
-    WAITING_FOR_VISION,
-    VISION_INITIALIZED,
-    FALLBACK_USED
+    WAITING,        // Not yet initialized
+    INITIALIZED,    // Successfully initialized (either mode)
+    FALLBACK_USED   // Fallback used (not currently implemented)
+  }
+  
+  public static class InitResult {
+    public final Pose2d pose;
+    public final boolean shouldSeedQuest;
+    public final String reason;
+    
+    public InitResult(Pose2d pose, boolean shouldSeedQuest, String reason) {
+      this.pose = pose;
+      this.shouldSeedQuest = shouldSeedQuest;
+      this.reason = reason;
+    }
   }
   
   private final QuestNavSubsystem questNavSubsystem;
-  private final QuestNavFusion questNavFusion;
-  private final Timer visionWaitTimer = new Timer();
+  private final Timer initWaitTimer = new Timer();
   
-  private InitializationState initState = InitializationState.WAITING_FOR_VISION;
+  private InitializationState initState = InitializationState.WAITING;
   private SendableChooser<Command> autoChooser;
-  private boolean initializedFromAuto = false;
   private boolean noPoseWarningShown = false;
 
   private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
   private static final double FIELD_MARGIN_METERS = 0.3;
+  private static final double MAX_SANE_POSE_MAGNITUDE = 100.0; // Sanity check for unanchored poses
   
-  public PoseInitializer(QuestNavSubsystem questNavSubsystem, QuestNavFusion questNavFusion) {
+  public PoseInitializer(QuestNavSubsystem questNavSubsystem) {
     this.questNavSubsystem = questNavSubsystem;
-    this.questNavFusion = questNavFusion;
-    visionWaitTimer.start();
+    initWaitTimer.start();
   }
   
   public void setAutoChooser(SendableChooser<Command> autoChooser) {
@@ -48,13 +60,25 @@ public class PoseInitializer {
   public void updateReadiness() {
     Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
     boolean hasQuestNavPose = (questNavPose != null);
+    boolean isFMSAttached = DriverStation.isFMSAttached();
     
     if (hasQuestNavPose) {
-      SmartDashboard.putString("Pose/InitStatus", "QuestNav ONLY (Vision disabled for testing)");
-      SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
+      if (isFMSAttached) {
+        SmartDashboard.putString("Pose/InitStatus", "QuestNav ready - FIELD ALIGNED");
+        SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
+        SmartDashboard.putBoolean("Pose/FieldAligned", true);
+        Logger.recordOutput("PoseEstimator/Readiness/FieldAligned", true);
+      } else {
+        SmartDashboard.putString("Pose/InitStatus", "QuestNav ready - TELEOP ONLY (not field-aligned)");
+        SmartDashboard.putBoolean("Pose/ReadyToEnable", true);
+        SmartDashboard.putBoolean("Pose/FieldAligned", false);
+        Logger.recordOutput("PoseEstimator/Readiness/FieldAligned", false);
+      }
     } else {
-      SmartDashboard.putString("Pose/InitStatus", "MANUAL RESET REQUIRED (Vision disabled)");
+      SmartDashboard.putString("Pose/InitStatus", "MANUAL RESET REQUIRED");
       SmartDashboard.putBoolean("Pose/ReadyToEnable", false);
+      SmartDashboard.putBoolean("Pose/FieldAligned", false);
+      Logger.recordOutput("PoseEstimator/Readiness/FieldAligned", false);
     }
     
     SmartDashboard.putBoolean("Vision/MultiTagReady", false);
@@ -65,51 +89,63 @@ public class PoseInitializer {
     Logger.recordOutput("PoseEstimator/Readiness/QuestNav", hasQuestNavPose);
   }
   
-  public Pose2d attemptInitialization() {
-    if (DriverStation.isAutonomousEnabled() || 
-        (DriverStation.isDisabled() && DriverStation.isFMSAttached())) {
+  public InitResult attemptInitialization() {
+    // === COMP_SEED MODE: Disabled + FMS attached (prevents mid-auto re-init) ===
+    if (DriverStation.isDisabled() && DriverStation.isFMSAttached()) {
       
       Pose2d autoStartPose = getExpectedAutoStartPose();
       
       if (autoStartPose != null && isWithinField(autoStartPose.getTranslation())) {
-        initState = InitializationState.VISION_INITIALIZED;
-        initializedFromAuto = true;
+        initState = InitializationState.INITIALIZED;
         
-        System.out.println("=== INITIALIZED FROM AUTO STARTING POSE ===");
-        System.out.println("Auto: " + (autoChooser != null ? autoChooser.getSelected().getName() : "Unknown"));
-        System.out.println("Starting pose: " + autoStartPose);
-        System.out.println("QuestNav will track from here with INITIAL HIGH TRUST");
+        double waitTime = initWaitTimer.get();
+        Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
         
-        SmartDashboard.putString("Pose/InitMethod", "Auto Start + QuestNav Initial Alignment");
+        SmartLogger.logConsole("=== COMP_SEED MODE ===");
+        SmartLogger.logConsole("Auto: " + (autoChooser != null ? autoChooser.getSelected().getName() : "Unknown"));
+        SmartLogger.logConsole("Starting pose: " + formatPose(autoStartPose));
+        SmartLogger.logConsole("Quest will be SEEDED to this pose");
+        SmartLogger.logConsole("Wait time: " + String.format("%.2fs", waitTime));
+        SmartLogger.logConsole("====================");
+        
         Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
-        Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentUsed", true);
+        Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
         
-        return autoStartPose;
+        return new InitResult(autoStartPose, true, "COMP_SEED: Auto start pose from chooser");
       }
     }
     
-    if (DriverStation.isTeleopEnabled() || 
-        (DriverStation.isDisabled() && !DriverStation.isFMSAttached())) {
+    // === SHOP_RESUME MODE: Teleop or disabled without FMS ===
+    // Pose is UNANCHORED - skip field bounds check, just sanity-check
+    if (!DriverStation.isFMSAttached()) {
       
       Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
-      if (questNavPose != null && isWithinField(questNavPose.getTranslation())) {
-        initState = InitializationState.VISION_INITIALIZED;
+      if (questNavPose != null && isSanePose(questNavPose)) {
+        initState = InitializationState.INITIALIZED;
         
-        System.out.println("=== INITIALIZED FROM QUESTNAV (TELEOP START) ===");
-        System.out.println("TESTING: Vision disabled - QuestNav-only mode with INITIAL HIGH TRUST");
-        System.out.println("Pose: " + questNavPose);
+        double waitTime = initWaitTimer.get();
+        Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
         
-        SmartDashboard.putString("Pose/InitMethod", "QuestNav Initial Alignment (Vision disabled)");
+        SmartLogger.logConsole("=== SHOP_RESUME MODE ===");
+        SmartLogger.logConsole("Using Quest's existing tracking (NOT SEEDED)");
+        SmartLogger.logConsole("Pose: " + formatPose(questNavPose));
+        SmartLogger.logConsole("Wait time: " + String.format("%.2fs", waitTime));
+        SmartLogger.logConsoleError("WARNING: Pose is in Quest's own frame (NOT field-aligned!)");
+        SmartLogger.logConsoleError("Do NOT use for autonomous - teleop practice only!");
+        SmartLogger.logConsole("====================");
+        
         Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
-        Logger.recordOutput("PoseEstimator/QuestNav/InitialAlignmentUsed", true);
+        Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
+        Logger.recordOutput("PoseEstimator/UnanchoredFrame", true);
         
-        return questNavPose;
+        return new InitResult(questNavPose, false, "SHOP_RESUME: Quest existing tracking (UNANCHORED - teleop only)");
       }
     }
     
-    SmartDashboard.putString("Pose/InitMethod", "BLOCKED - MANUAL RESET REQUIRED (QuestNav-only mode)");
+    SmartDashboard.putString("Pose/InitMethod", "BLOCKED - Quest not tracking");
     
     if (!noPoseWarningShown) {
+      SmartLogger.logConsoleError("Cannot initialize: Quest not tracking");
       Logger.recordOutput("PoseEstimator/NoPoseWarningShown", true);
       noPoseWarningShown = true;
     }
@@ -142,6 +178,7 @@ public class PoseInitializer {
     }
   }
   
+  // Field bounds check (only for COMP_SEED mode - known field frame)
   private boolean isWithinField(Translation2d point) {
     return point.getX() > FIELD_MARGIN_METERS &&
            point.getX() < FIELD_LENGTH_METERS - FIELD_MARGIN_METERS &&
@@ -149,8 +186,32 @@ public class PoseInitializer {
            point.getY() < FIELD_WIDTH_METERS - FIELD_MARGIN_METERS;
   }
   
+  // Sanity check for unanchored poses (SHOP_RESUME mode)
+  // Rejects NaN/Inf and absurdly large values (>100m suggests Quest error)
+  private boolean isSanePose(Pose2d pose) {
+    double x = pose.getX();
+    double y = pose.getY();
+    double theta = pose.getRotation().getRadians();
+    
+    // Check for NaN/Inf
+    if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(theta)) {
+      Logger.recordOutput("PoseInitializer/InsanePose", "NaN/Inf detected");
+      return false;
+    }
+    
+    // Check for absurdly large values (Quest bug/corruption)
+    double magnitude = Math.hypot(x, y);
+    if (magnitude > MAX_SANE_POSE_MAGNITUDE) {
+      Logger.recordOutput("PoseInitializer/InsanePose", 
+          String.format("Magnitude too large: %.2fm", magnitude));
+      return false;
+    }
+    
+    return true;
+  }
+  
   public boolean isInitialized() {
-    return initState == InitializationState.VISION_INITIALIZED || 
+    return initState == InitializationState.INITIALIZED || 
            initState == InitializationState.FALLBACK_USED;
   }
   
@@ -163,6 +224,13 @@ public class PoseInitializer {
   }
   
   public double getWaitTime() {
-    return visionWaitTimer.get();
+    return initWaitTimer.get();
+  }
+  
+  private String formatPose(Pose2d pose) {
+    return String.format("(%.2fm, %.2fm, %.1f°)", 
+        pose.getX(), 
+        pose.getY(), 
+        pose.getRotation().getDegrees());
   }
 }

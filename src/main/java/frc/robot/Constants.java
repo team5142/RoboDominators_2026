@@ -249,6 +249,50 @@ public final class Constants {
     public static final double REACQUIRE_ROT_GATE_DEGREES = 25.0; // 25° when stopped
     public static final double REACQUIRE_STOPPED_LINEAR_THRESHOLD = 0.05; // m/s
     public static final double REACQUIRE_STOPPED_ANGULAR_THRESHOLD = 0.05; // rad/s
+
+    // === HEALTH MONITORING THRESHOLDS ===
+    
+    // Physical limits (for teleport detection)
+    public static final double MAX_PHYSICAL_SPEED_MPS = 5.5; // Max robot speed + margin
+    public static final double MAX_PHYSICAL_OMEGA_RAD_PER_SEC = 13.0; // ~745 deg/s
+    public static final double PHYSICAL_PLAUSIBILITY_MARGIN = 1.3; // 30% over max for burst detection
+    
+    // Teleport rejection (absolute backstops)
+    public static final double TELEPORT_TRANSLATION_METERS = 0.6; // 60cm jump in one frame
+    public static final double TELEPORT_ROTATION_RADIANS = 0.9; // ~50° jump in one frame
+    
+    // Divergence detection (Quest vs Odom comparison)
+    public static final double DIVERGENCE_THRESHOLD_METERS = 0.20; // 20cm disagreement per cycle
+    public static final int DIVERGENCE_PATIENCE_CYCLES = 15; // 15 bad cycles = 300ms @ 50Hz
+    public static final int DIVERGENCE_RECOVERY_CYCLES = 25; // 25 good cycles to recover
+    public static final double DIVERGENCE_ANGULAR_WEIGHT = 0.3; // Convert rad to meters (30cm per radian)
+    
+    // Startup validation
+    public static final double VALIDATION_TOLERANCE_METERS = 0.15; // 15cm from seed pose
+    public static final double VALIDATION_TIMEOUT_SEC = 0.5; // 500ms max wait
+    public static final int VALIDATION_REQUIRED_STREAK = 5; // 5 consecutive good samples
+    
+    // Reset grace period
+    public static final double POST_RESET_GRACE_SEC = 0.1; // 100ms after resetPose()
+    
+    // DT safety
+    public static final double MIN_DT_FOR_IMPLIED_VELOCITY = 0.005; // 5ms minimum (avoid divide-by-zero)
+    
+    // Motion-aware trust scaling (replaces binary velocity gate for trust)
+    public static final double MOVING_TRUST_DEGRADATION_FACTOR = 1.5; // 1.5x std dev when moving fast
+    public static final double DEGRADED_TRUST_FACTOR = 5.0; // 5x std dev when DEGRADED
+    public static final double UNHEALTHY_TRUST_FACTOR = 50.0; // 50x std dev when UNHEALTHY (almost no influence)
+
+    // === INITIALIZATION MODE ===
+    public enum InitMode {
+      COMP_SEED,    // Seed Quest to known auto start (match/competition)
+      SHOP_RESUME   // Use Quest's existing tracking (practice/testing)
+    }
+    
+    // Validation mode thresholds
+    public static final double COMP_VALIDATION_TOLERANCE_METERS = 0.15; // Must match seed within 15cm
+    public static final double SHOP_STABILITY_TOLERANCE_METERS = 0.05; // Must show <5cm drift while stopped
+    public static final int SHOP_STABILITY_REQUIRED_CYCLES = 5; // 5 cycles of stability (100ms)
   }
 
   // Autonomous path following (PathPlanner PID tuning)

@@ -8,70 +8,45 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
-import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.SmartLogger;
 import gg.questnav.questnav.QuestNav;
 import gg.questnav.questnav.PoseFrame;
-import org.littletonrobotics.junction.Logger;
 
 import java.util.OptionalInt;
 
-/**
- * QuestNav SLAM - Meta Quest 3 VR headset for visual-inertial odometry
- * 
- * FRAME CONSUMPTION MODEL:
- * - drainQuestNavFrames() runs in periodic() (SINGLE CONSUMER)
- * - Latest frame is cached with monotonic sequence number
- * - consumeLatestMeasurement() returns cached frame ONCE per sequence
- * - Prevents re-injection of same measurement into pose estimator
- * 
- * TIMESTAMP SEMANTICS (RECEIVE-ALIGNED):
- * - QuestNav does NOT provide reliable per-frame capture timestamps
- * - measurementTimeFPGA = FPGA receive time (NOT capture time)
- * - This is conservative: treats latency as zero rather than guessing
- * - SwerveDrivePoseEstimator applies measurement at receive time
- * - Age calculations reflect "time since receipt," not "time since capture"
- */
+// Meta Quest 3 SLAM - Two modes: COMP_SEED (reset Quest to known pose) vs SHOP_RESUME (use existing tracking)
 public class QuestNavSubsystem extends SubsystemBase {
   private final QuestNav questNav;
   private final Transform3d robotToQuest;
   
-  // CACHED VALUES (single consumer pattern)
+  // Cached measurement (single consumer via QuestNavFusion)
   private Pose2d cachedRobotPose = null;
   private Pose3d cachedRobotPose3d = null;
-  private double cachedQuestTimestamp = -1.0; // Raw Quest timestamp (for debugging only)
-  private double cachedFPGAReceiveTime = -1.0; // When we got the frame (TRUE measurement time)
-  private long cachedFrameSequence = -1; // Monotonic sequence to prevent re-consumption
+  private double cachedReceiveTimestampFPGA = -1.0;
+  private long cachedFrameSequence = -1; // Single source of truth for sequence numbering
   
-  // Consumption tracking
-  private long lastConsumedSequence = -1; // Last sequence number consumed by fusion
-  private long currentSequence = 0; // Monotonically increasing frame counter
+  // Consumption tracking (SINGLE CONSUMER: QuestNavFusion only)
+  private long lastConsumedSequence = -1;
   
-  // Timestamp alignment (Quest → FPGA) - NOT USED for measurement timestamps
-  // Kept for debugging/monitoring only
-  private double timestampOffset = 0.0; // (FPGA time - Quest time) offset
-  private boolean timestampAligned = false;
-  private static final double TIMESTAMP_FILTER_BETA = 0.05; // Low-pass filter
-  private static final double MAX_MEASUREMENT_AGE_SECONDS = 2.0; // Reject stale data
-  private static final double MIN_MEASUREMENT_AGE_SECONDS = -0.05; // Allow slight clock drift
+  // Mode tracking
+  private boolean isSeeded = false;
   
-  private boolean isCalibrated = false;
-  private int totalFramesProcessed = 0;
-  private int rejectedFrameCount = 0;
+  // Frame statistics
+  private int totalFramesProcessed = 0; // All frames from getAllUnreadPoseFrames() (including rejected)
+  private int acceptedFrameCount = 0;   // Successfully cached frames
+  private int rejectedFrameCount = 0;   // Frames rejected (null pose, etc)
+  private String lastRejectionReason = ""; // Throttle rejection logging
   
-  /**
-   * Represents a consumable QuestNav measurement with receive-aligned timestamp
-   */
   public static class QuestMeasurement {
     public final Pose2d pose;
-    public final double timestampFPGA; // FPGA receive time (NOT capture time)
-    public final long sequence; // Frame sequence number
+    public final double receiveTimestampFPGA; // When RoboRIO received the frame
+    public final long sequence;
     
-    public QuestMeasurement(Pose2d pose, double timestampFPGA, long sequence) {
+    public QuestMeasurement(Pose2d pose, double receiveTimestampFPGA, long sequence) {
       this.pose = pose;
-      this.timestampFPGA = timestampFPGA;
+      this.receiveTimestampFPGA = receiveTimestampFPGA;
       this.sequence = sequence;
     }
   }
@@ -88,28 +63,24 @@ public class QuestNavSubsystem extends SubsystemBase {
       throw e;
     }
     
-    // Store transform for manual application (older API)
     robotToQuest = new Transform3d(
         new Translation3d(QUEST_X_METERS, QUEST_Y_METERS, QUEST_Z_METERS),
         new Rotation3d(0, 0, Math.toRadians(QUEST_YAW_DEG))
     );
     
     SmartLogger.logConsole("Robot-to-Quest transform: " + robotToQuest);
-    
     testConnection();
     SmartLogger.logConsole("========================================\n");
   }
   
   @Override
   public void periodic() {
-    // Service QuestNav communications every loop
     try {
       questNav.commandPeriodic();
     } catch (Exception e) {
       SmartLogger.logReplay("QuestNav/PeriodicError", e.getMessage());
     }
     
-    // ONLY PLACE that drains frames from QuestNav
     drainQuestNavFrames();
     
     boolean connected = isConnected();
@@ -117,13 +88,12 @@ public class QuestNavSubsystem extends SubsystemBase {
     
     SmartLogger.logReplay("QuestNav/Connected", connected);
     SmartLogger.logReplay("QuestNav/Tracking", tracking);
-    SmartLogger.logReplay("QuestNav/Calibrated", isCalibrated);
+    SmartLogger.logReplay("QuestNav/Seeded", isSeeded);
     
     try {
       SmartLogger.logReplay("QuestNav/FrameCount", (double) questNav.getFrameCount().orElse(-1));
       SmartLogger.logReplay("QuestNav/TrackingLostCount", (double) questNav.getTrackingLostCounter().orElse(0));
       SmartLogger.logReplay("QuestNav/Latency", questNav.getLatency());
-      SmartLogger.logReplay("QuestNav/AppTimestamp", questNav.getAppTimestamp().orElse(-1.0));
     } catch (Exception e) {
       SmartLogger.logReplay("QuestNav/MetricsError", e.getMessage());
     }
@@ -137,83 +107,43 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
     
     SmartLogger.logReplay("QuestNav/CachedPoseAvailable", cachedRobotPose != null);
-    SmartLogger.logReplay("QuestNav/TimestampAligned", timestampAligned);
-    SmartLogger.logReplay("QuestNav/TimestampOffset", timestampOffset);
-    SmartLogger.logReplay("QuestNav/CurrentSequence", (double) currentSequence);
+    SmartLogger.logReplay("QuestNav/CurrentSequence", (double) cachedFrameSequence);
     SmartLogger.logReplay("QuestNav/LastConsumedSequence", (double) lastConsumedSequence);
-    SmartLogger.logReplay("QuestNav/UnconsumedMeasurementAvailable", hasUnconsumedMeasurement());
+    SmartLogger.logReplay("QuestNav/HasUnconsumedMeasurement", hasUnconsumedMeasurement());
     
     if (cachedRobotPose != null) {
       SmartLogger.logReplay("QuestNav/RobotPose", cachedRobotPose);
-      SmartLogger.logReplay("QuestNav/MeasurementTimeFPGA", cachedFPGAReceiveTime);
+      SmartLogger.logReplay("QuestNav/ReceiveTimestampFPGA", cachedReceiveTimestampFPGA);
       SmartLogger.logReplay("QuestNav/MeasurementAge", getMeasurementAge());
     }
     
     SmartLogger.logReplay("QuestNav/TotalFramesProcessed", (double) totalFramesProcessed);
+    SmartLogger.logReplay("QuestNav/AcceptedFrameCount", (double) acceptedFrameCount);
     SmartLogger.logReplay("QuestNav/RejectedFrameCount", (double) rejectedFrameCount);
+    SmartLogger.logReplay("QuestNav/LastRejectionReason", lastRejectionReason);
   }
   
-  /**
-   * SINGLE CONSUMER: Drain all unread frames and cache the latest
-   * Called ONLY from periodic()
-   * 
-   * TIMESTAMP SEMANTICS:
-   * - Cached timestamp is FPGA receive time (NOT capture time)
-   * - This is conservative: we don't guess at latency
-   * - Fusion uses receive time as measurement time
-   */
+  // Drain all unread frames, cache latest with FPGA receive timestamp
   private void drainQuestNavFrames() {
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
-      if (frames == null || frames.length == 0) {
-        return; // No new data
-      }
+      if (frames == null || frames.length == 0) return;
       
-      // Get FPGA time when we received these frames (THIS IS THE MEASUREMENT TIMESTAMP)
+      // Count ALL processed frames (including those we'll discard)
+      totalFramesProcessed += frames.length;
+      
       double fpgaReceiveTime = Timer.getFPGATimestamp();
-      
-      // Process ONLY the latest frame (discard older stale frames)
       PoseFrame latestFrame = frames[frames.length - 1];
       
       if (frames.length > 1) {
         SmartLogger.logReplay("QuestNav/FramesDiscarded", (double) (frames.length - 1));
       }
       
-      // Get camera pose from Quest
       Pose3d cameraPose3d = latestFrame.questPose3d();
       if (cameraPose3d == null) {
         rejectedFrameCount++;
-        SmartLogger.logReplay("QuestNav/RejectionReason", "Null camera pose");
-        return;
-      }
-      
-      // Get raw Quest timestamp (for debugging/monitoring only)
-      double questRawTimestamp = latestFrame.dataTimestamp();
-      
-      // SANITY CHECK: Quest timestamp must be positive
-      if (questRawTimestamp <= 0) {
-        rejectedFrameCount++;
-        SmartLogger.logReplay("QuestNav/RejectionReason", 
-            String.format("Invalid Quest timestamp: %.3f", questRawTimestamp));
-        return;
-      }
-      
-      // Update timestamp offset for monitoring (NOT used for measurement timestamps)
-      double newOffset = fpgaReceiveTime - questRawTimestamp;
-      if (!timestampAligned) {
-        timestampOffset = newOffset;
-        timestampAligned = true;
-      } else {
-        timestampOffset = (1.0 - TIMESTAMP_FILTER_BETA) * timestampOffset + TIMESTAMP_FILTER_BETA * newOffset;
-      }
-      
-      // SANITY CHECK: Reject extremely stale frames (> 2s old based on offset)
-      double estimatedAge = fpgaReceiveTime - (questRawTimestamp + timestampOffset);
-      if (estimatedAge < MIN_MEASUREMENT_AGE_SECONDS || estimatedAge > MAX_MEASUREMENT_AGE_SECONDS) {
-        rejectedFrameCount++;
-        SmartLogger.logReplay("QuestNav/RejectionReason", 
-            String.format("Invalid estimated age: %.3fs (min=%.2f, max=%.2f)", 
-                estimatedAge, MIN_MEASUREMENT_AGE_SECONDS, MAX_MEASUREMENT_AGE_SECONDS));
+        String reason = "Null camera pose";
+        logRejectionIfChanged(reason);
         return;
       }
       
@@ -224,43 +154,42 @@ public class QuestNavSubsystem extends SubsystemBase {
           robotPose3d.getY(),
           robotPose3d.getRotation().toRotation2d());
       
-      // Increment sequence number (monotonic counter)
-      currentSequence++;
+      // Increment sequence (now single source of truth)
+      cachedFrameSequence++;
       
-      // Cache all values (only after passing sanity checks)
       cachedRobotPose = robotPose2d;
       cachedRobotPose3d = robotPose3d;
-      cachedQuestTimestamp = questRawTimestamp;
-      cachedFPGAReceiveTime = fpgaReceiveTime; // THIS IS THE MEASUREMENT TIMESTAMP
-      cachedFrameSequence = currentSequence;
+      cachedReceiveTimestampFPGA = fpgaReceiveTime;
       
-      totalFramesProcessed++;
+      acceptedFrameCount++;
       
       SmartLogger.logReplay("QuestNav/FrameAccepted", true);
-      SmartLogger.logReplay("QuestNav/EstimatedAgeOnReceipt", estimatedAge);
       
     } catch (Exception e) {
+      rejectedFrameCount++;
+      String reason = "Exception: " + e.getMessage();
+      logRejectionIfChanged(reason);
       SmartLogger.logReplay("QuestNav/GetFramesError", e.getMessage());
     }
   }
   
-  /**
-   * PEEK (NON-CONSUMING): Get latest measurement WITHOUT consuming it
-   * Allows fusion to inspect measurement before deciding to accept/reject
-   * 
-   * @return QuestMeasurement if available, empty otherwise
-   * GUARANTEE: Does NOT mark frame as consumed
-   */
+  // Throttle rejection logging (only log when reason changes)
+  private void logRejectionIfChanged(String reason) {
+    if (!reason.equals(lastRejectionReason)) {
+      SmartLogger.logReplay("QuestNav/RejectionReason", reason);
+      lastRejectionReason = reason;
+    }
+  }
+  
+  // Peek: Get measurement without consuming
   public java.util.Optional<QuestMeasurement> peekLatestMeasurement() {
-    // Check if there's an unconsumed measurement
     if (cachedRobotPose == null || cachedFrameSequence <= lastConsumedSequence) {
       return java.util.Optional.empty();
     }
     
-    // Return measurement WITHOUT marking as consumed
     QuestMeasurement measurement = new QuestMeasurement(
         cachedRobotPose,
-        cachedFPGAReceiveTime,
+        cachedReceiveTimestampFPGA,
         cachedFrameSequence
     );
     
@@ -268,14 +197,18 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   /**
-   * ACKNOWLEDGE: Mark measurement as consumed after successful fusion
-   * Only call this after measurement has been accepted and added to pose estimator
+   * SINGLE CONSUMER CONTRACT: Only QuestNavFusion should call this!
    * 
-   * @param sequence Sequence number to acknowledge
+   * Acknowledges that a measurement has been successfully fused into the pose estimator.
+   * This prevents the same frame from being consumed multiple times.
+   * 
+   * @param sequence The sequence number to acknowledge (from QuestMeasurement)
    * @return true if acknowledged, false if already consumed or invalid
+   * 
+   * @throws IllegalStateException If called from outside QuestNavFusion
+   * (in practice we log instead of throwing to avoid crashes)
    */
   public boolean acknowledgeMeasurement(long sequence) {
-    // Verify sequence is the current unconsumed frame
     if (sequence != cachedFrameSequence || sequence <= lastConsumedSequence) {
       SmartLogger.logReplay("QuestNav/AcknowledgeFailed", 
           "Attempted to ack seq=" + sequence + " but current=" + cachedFrameSequence + 
@@ -283,69 +216,32 @@ public class QuestNavSubsystem extends SubsystemBase {
       return false;
     }
     
-    // Mark as consumed
     lastConsumedSequence = sequence;
-    
     SmartLogger.logReplay("QuestNav/MeasurementAcknowledged", (double) sequence);
-    
     return true;
   }
   
-  /**
-   * DEPRECATED: Old consume-once method - use peek + acknowledge instead
-   */
   @Deprecated
   public java.util.Optional<QuestMeasurement> consumeLatestMeasurement() {
-    var peeked = peekLatestMeasurement();
-    if (peeked.isPresent()) {
-      acknowledgeMeasurement(peeked.get().sequence);
-    }
-    return peeked;
+    SmartLogger.logConsoleError("consumeLatestMeasurement() is deprecated! Use QuestNavFusion.forceAccept() instead");
+    return java.util.Optional.empty();
   }
   
-  /**
-   * Check if there's an unconsumed measurement available
-   * 
-   * @return true if new frame available since last consumption
-   */
   public boolean hasUnconsumedMeasurement() {
     return cachedRobotPose != null && cachedFrameSequence > lastConsumedSequence;
   }
   
-  /**
-   * Get cached robot pose (READ ONLY - for display/debugging)
-   * WARNING: Does NOT consume measurement. Use consumeLatestMeasurement() for fusion.
-   */
   public java.util.Optional<Pose2d> getRobotPose() {
     return java.util.Optional.ofNullable(cachedRobotPose);
   }
   
-  /**
-   * Get cached robot pose 3D (READ ONLY - for display/debugging)
-   * WARNING: Does NOT consume measurement.
-   */
   public java.util.Optional<Pose3d> getRobotPose3d() {
     return java.util.Optional.ofNullable(cachedRobotPose3d);
   }
   
-  /**
-   * Get cached measurement timestamp in FPGA time
-   * 
-   * TIMESTAMP SEMANTICS: This is FPGA RECEIVE time, NOT capture time
-   * 
-   * WARNING: Does NOT consume measurement. Use consumeLatestMeasurement() for fusion.
-   */
-  public java.util.Optional<Double> getMeasurementTimeFPGA() {
-    return cachedFPGAReceiveTime >= 0 ? java.util.Optional.of(cachedFPGAReceiveTime) : java.util.Optional.empty();
-  }
-  
-  /**
-   * Get age since RECEIPT (not capture)
-   * Measures how stale the cached measurement is
-   */
   public double getMeasurementAge() {
-    if (cachedFPGAReceiveTime < 0) return Double.POSITIVE_INFINITY;
-    return Timer.getFPGATimestamp() - cachedFPGAReceiveTime; // Age since receipt
+    if (cachedReceiveTimestampFPGA < 0) return Double.POSITIVE_INFINITY;
+    return Timer.getFPGATimestamp() - cachedReceiveTimestampFPGA;
   }
   
   public Rotation2d getRotation() {
@@ -354,29 +250,13 @@ public class QuestNavSubsystem extends SubsystemBase {
         .orElse(new Rotation2d());
   }
   
-  /**
-   * DEPRECATED: Use hasUnconsumedMeasurement() instead
-   * This method does NOT check consumption state!
-   * 
-   * Kept only for backwards compatibility - will be removed in future.
-   */
-  @Deprecated
-  public boolean hasNewData() {
-    // Simply delegate to correct method
-    return hasUnconsumedMeasurement();
-  }
-  
   public boolean isConnected() {
     try {
       OptionalInt battery = questNav.getBatteryPercent();
-      if (battery.isPresent()) {
-        return true;
-      }
+      if (battery.isPresent()) return true;
       
       java.util.OptionalInt frameCount = questNav.getFrameCount();
-      if (frameCount.isPresent() && frameCount.getAsInt() >= 0) {
-        return true;
-      }
+      if (frameCount.isPresent() && frameCount.getAsInt() >= 0) return true;
       
       return questNav.isConnected();
     } catch (Exception e) {
@@ -392,8 +272,8 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
   }
   
-  public boolean isCalibrated() {
-    return isCalibrated;
+  public boolean isSeeded() {
+    return isSeeded;
   }
   
   public int getBatteryPercent() {
@@ -412,110 +292,45 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
   }
   
-  public void resetHeading() {
-    getRobotPose3d().ifPresent(currentRobotPose -> {
-      Pose3d newRobotPose = new Pose3d(
-          currentRobotPose.getTranslation(),
-          new Rotation3d(0, 0, 0)
-      );
-      
-      Pose3d newCameraPose = newRobotPose.transformBy(robotToQuest);
-      
-      try {
-        questNav.setPose(newCameraPose);
-        SmartLogger.logReplay("QuestNav/HeadingReset", true);
-        SmartLogger.logConsole("QuestNav heading reset to 0°");
-      } catch (Exception e) {
-        SmartLogger.logReplay("QuestNav/HeadingResetError", e.getMessage());
-      }
-    });
-  }
-  
-  public void setHeading(double angleDegrees) {
-    getRobotPose3d().ifPresent(currentRobotPose -> {
-      Pose3d newRobotPose = new Pose3d(
-          currentRobotPose.getTranslation(),
-          new Rotation3d(0, 0, Math.toRadians(angleDegrees))
-      );
-      
-      Pose3d newCameraPose = newRobotPose.transformBy(robotToQuest);
-      
-      try {
-        questNav.setPose(newCameraPose);
-        SmartLogger.logReplay("QuestNav/HeadingSet", (double) angleDegrees);
-        SmartLogger.logConsole("QuestNav heading set to: " + angleDegrees + "°");
-      } catch (Exception e) {
-        SmartLogger.logReplay("QuestNav/HeadingSetError", e.getMessage());
-      }
-    });
-  }
-  
-  /**
-   * Initialize QuestNav to a specific robot pose.
-   * Used when manually resetting robot pose (e.g. auto start, manual alignment).
-   * 
-   * @param initialPose Robot pose to initialize to (field-space)
-   */
-  public void initialize(Pose2d initialPose) {
+  // COMP MODE: Seed Quest to known field pose (resets tracking)
+  public void seedToPose(Pose2d fieldPose) {
     try {
-      Pose3d initialPose3d = new Pose3d(
-          initialPose.getX(),
-          initialPose.getY(),
+      Pose3d fieldPose3d = new Pose3d(
+          fieldPose.getX(),
+          fieldPose.getY(),
           0.0,
-          new Rotation3d(0, 0, initialPose.getRotation().getRadians())
+          new Rotation3d(0, 0, fieldPose.getRotation().getRadians())
       );
       
-      // Transform robot pose to camera pose
-      Pose3d cameraPose = initialPose3d.transformBy(robotToQuest);
-      
-      // Set camera pose (older API)
+      Pose3d cameraPose = fieldPose3d.transformBy(robotToQuest);
       questNav.setPose(cameraPose);
       
-      isCalibrated = true;
-      SmartLogger.logReplay("QuestNav/Initialized", initialPose);
-      SmartLogger.logConsole("QuestNav initialized to: " + formatPose(initialPose));
+      isSeeded = true;
+      
+      // Invalidate cache (Quest frame has changed)
+      cachedRobotPose = null;
+      cachedRobotPose3d = null;
+      cachedReceiveTimestampFPGA = -1.0;
+      cachedFrameSequence = -1;
+      lastConsumedSequence = -1;
+      
+      SmartLogger.logReplay("QuestNav/SeedToPose", fieldPose);
+      SmartLogger.logConsole("QuestNav seeded to: " + formatPose(fieldPose));
     } catch (Exception e) {
-      SmartLogger.logReplay("QuestNav/InitError", e.getMessage());
-      SmartLogger.logConsoleError("QuestNav initialization failed: " + e.getMessage());
+      SmartLogger.logReplay("QuestNav/SeedError", e.getMessage());
+      SmartLogger.logConsoleError("QuestNav seed failed: " + e.getMessage());
     }
   }
   
-  /**
-   * Calibrate from vision (optional override for future use).
-   * 
-   * @param visionPose Robot pose from vision (field-space)
-   * @param confidence Confidence level (0-1)
-   */
-  public void calibrateFromVision(Pose2d visionPose, double confidence) {
-    if (confidence < 0.8) {
-      SmartLogger.logReplay("QuestNav/CalibrationRejected", "Low confidence: " + confidence);
-      return;
-    }
-    
-    try {
-      Pose3d visionPose3d = new Pose3d(
-          visionPose.getX(),
-          visionPose.getY(),
-          0.0,
-          new Rotation3d(0, 0, visionPose.getRotation().getRadians())
-      );
-      
-      Pose3d cameraPose = visionPose3d.transformBy(robotToQuest);
-      questNav.setPose(cameraPose);
-      
-      SmartLogger.logReplay("QuestNav/CalibratedFromVision", visionPose);
-      SmartLogger.logConsole("QuestNav calibrated from vision: " + formatPose(visionPose));
-    } catch (Exception e) {
-      SmartLogger.logReplay("QuestNav/CalibrationError", e.getMessage());
-    }
+  // SHOP MODE: Keep Quest's existing tracking (no setPose call)
+  public void enterResumeMode() {
+    isSeeded = false;
+    SmartLogger.logConsole("QuestNav in RESUME mode - using existing tracking");
+    SmartLogger.logReplay("QuestNav/ResumeMode", true);
   }
   
-  /**
-   * SINGLE CONSUMER: Removed frame draining from testConnection()
-   * Now only checks status without consuming frames
-   */
   private void testConnection() {
-    SmartLogger.logConsole("Testing QuestNav connection (USB > Ethernet > RoboRIO)", "QuestNav Test");
+    SmartLogger.logConsole("Testing QuestNav connection (USB > Ethernet > RoboRIO)");
     
     boolean tracking = isTracking();
     SmartLogger.logConsole("Tracking: " + tracking);
@@ -534,7 +349,6 @@ public class QuestNavSubsystem extends SubsystemBase {
       SmartLogger.logConsole("QuestNav is tracking!");
     }
     
-    // Frames will be drained in periodic() via drainQuestNavFrames()
     SmartLogger.logConsole("Pose data will be available after first periodic() cycle");
   }
   
