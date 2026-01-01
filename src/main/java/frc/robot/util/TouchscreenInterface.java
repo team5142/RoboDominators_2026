@@ -1,134 +1,132 @@
 package frc.robot.util;
 
-import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.networktables.BooleanPublisher;
-import edu.wpi.first.networktables.BooleanSubscriber;
-import edu.wpi.first.networktables.NetworkTable;
-import edu.wpi.first.networktables.NetworkTableInstance;
-import frc.robot.RobotState;
-import frc.robot.commands.auto.DriveToSavedPosition;
-import frc.robot.commands.util.SetStartingPoseCommand;
-import frc.robot.subsystems.*;
 import static frc.robot.Constants.StartingPositions.*;
 
+import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.networktables.BooleanTopic;
+import edu.wpi.first.networktables.NetworkTable;
+import edu.wpi.first.networktables.NetworkTableEvent;
+import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.wpilibj2.command.Command;
+import frc.robot.RobotState;
+import frc.robot.commands.drive.SmartDriveToPosition;
+import frc.robot.subsystems.DriveSubsystem;
+import frc.robot.subsystems.GyroSubsystem;
+import frc.robot.subsystems.PoseEstimatorSubsystem;
+import frc.robot.subsystems.QuestNavSubsystem;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Map;
 
 // Touchscreen operator interface - subscribes to NetworkTables commands from HTML dashboard
 public class TouchscreenInterface {
-  
+
   private final RobotState robotState;
   private final DriveSubsystem driveSubsystem;
   private final PoseEstimatorSubsystem poseEstimator;
-  private final GyroSubsystem gyro;
   private final QuestNavSubsystem questNav;
-  
+
+  private final NetworkTableInstance ntInst = NetworkTableInstance.getDefault();
+
+  private Command activeOperatorDrive = null;
+
+  private static class SmartDriveTarget {
+    public final Pose2d staging;
+    public final Pose2d precise;
+
+    public SmartDriveTarget(Pose2d staging, Pose2d precise) {
+      this.staging = staging;
+      this.precise = precise;
+    }
+  }
+
+  private final Map<String, SmartDriveTarget> targets = new HashMap<>();
+  private final Map<String, Boolean> lastValueByKey = new HashMap<>();
+
   public TouchscreenInterface(
       RobotState robotState,
       DriveSubsystem driveSubsystem,
       PoseEstimatorSubsystem poseEstimator,
       GyroSubsystem gyro,
       QuestNavSubsystem questNav) {
-    
+
     this.robotState = robotState;
     this.driveSubsystem = driveSubsystem;
     this.poseEstimator = poseEstimator;
-    this.gyro = gyro;
     this.questNav = questNav;
   }
-  
-  // Configure all touchscreen subscriptions and publishers
+
   public void configure() {
-    // Position map - centralized in TouchscreenInterface
-    Map<String, Pose2d> positions = Map.of(
-        "BLUE_REEF_TAG_17", BLUE_REEF_TAG_17,
-        "BLUE_REEF_TAG_18", BLUE_REEF_TAG_18,
-        "BLUE_REEF_TAG_21", BLUE_REEF_TAG_21,
-        "BLUE_REEF_TAG_22", BLUE_REEF_TAG_22,
-        "BLUE_TAG_16", BLUE_TAG_16,
-        "BLUE_TAG_12", BLUE_TAG_12
-    );
-    
-    NetworkTable opTable = NetworkTableInstance.getDefault().getTable("OperatorInterface");
-    
-    // Drive-to-position commands
-    positions.forEach((positionName, pose) -> {
-      BooleanSubscriber sub = opTable
-          .getSubTable("DriveToPosition")
-          .getBooleanTopic(positionName)
-          .subscribe(false);
-      
-      new Thread(() -> {
-        while (true) {
-          if (sub.get()) {
-            String displayName = positionName.replace("_", " ").toLowerCase();
-            new DriveToSavedPosition(pose, displayName, poseEstimator).schedule();
-            SmartLogger.logConsole("[Touchscreen] Drive to: " + displayName);
-          }
-          try {
-            Thread.sleep(50);
-          } catch (InterruptedException e) {
-            break;
-          }
-        }
-      }).start();
+    targets.put("BLUE_REEF_TAG_17", new SmartDriveTarget(BLUE_REEF_TAG_17, PRECISE_17_POSE));
+    targets.put("BLUE_REEF_TAG_18", new SmartDriveTarget(BLUE_REEF_TAG_18, PRECISE_18_POSE));
+    targets.put("BLUE_REEF_TAG_21", new SmartDriveTarget(BLUE_REEF_TAG_21, PRECISE_21_POSE));
+    targets.put("BLUE_REEF_TAG_22", new SmartDriveTarget(BLUE_REEF_TAG_22, PRECISE_22_POSE));
+    targets.put("BLUE_TAG_16", new SmartDriveTarget(BLUE_TAG_16, PRECISE_16_POSE));
+    targets.put("BLUE_TAG_12", new SmartDriveTarget(BLUE_TAG_12, PRECISE_12_POSE));
+
+    NetworkTable opTable = ntInst.getTable("OperatorInterface");
+    NetworkTable driveTable = opTable.getSubTable("DriveToPosition");
+
+    targets.forEach((key, target) -> {
+      BooleanTopic topic = driveTable.getBooleanTopic(key);
+      lastValueByKey.put(key, false);
+
+      ntInst.addListener(
+          topic,
+          EnumSet.of(NetworkTableEvent.Kind.kValueAll),
+          event -> onDriveTopicEvent(key, event));
     });
-    
-    // Orient to field command
-    BooleanSubscriber orientFieldSub = opTable
-        .getSubTable("Action")
-        .getBooleanTopic("OrientToField")
-        .subscribe(false);
-    
-    new Thread(() -> {
-      while (true) {
-        if (orientFieldSub.get()) {
-          driveSubsystem.createOrientToFieldCommand(robotState).schedule();
-          SmartLogger.logConsole("[Touchscreen] Orient to Field");
-        }
-        try {
-          Thread.sleep(50);
-        } catch (InterruptedException e) {
-          break;
-        }
-      }
-    }).start();
-    
-    // Set Reef 17 position command
-    BooleanSubscriber setReef17Sub = opTable
-        .getSubTable("Action")
-        .getBooleanTopic("SetReef17")
-        .subscribe(false);
-    
-    new Thread(() -> {
-      while (true) {
-        if (setReef17Sub.get()) {
-          new SetStartingPoseCommand(BLUE_REEF_TAG_17, "Blue Reef Tag 17", gyro, questNav, driveSubsystem, poseEstimator).schedule();
-          SmartLogger.logConsole("[Touchscreen] Set Reef 17 Start Position");
-        }
-        try {
-          Thread.sleep(50);
-        } catch (InterruptedException e) {
-          break;
-        }
-      }
-    }).start();
-    
-    // Publish robot state to touchscreen
-    BooleanPublisher connectedPub = opTable.getBooleanTopic("RobotConnected").publish();
-    BooleanPublisher enabledPub = opTable.getBooleanTopic("RobotEnabled").publish();
-    
-    new Thread(() -> {
-      while (true) {
-        connectedPub.set(true);
-        enabledPub.set(robotState.isEnabled());
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException e) {
-          break;
-        }
-      }
-    }).start();
-    
+
     SmartLogger.logConsole("Touchscreen operator interface configured", "Touchscreen Ready", 5);
+  }
+
+  private void onDriveTopicEvent(String key, NetworkTableEvent event) {
+    if (event.valueData == null) {
+      return;
+    }
+
+    boolean value;
+    try {
+      value = event.valueData.value.getBoolean();
+    } catch (Exception e) {
+      return;
+    }
+
+    boolean last = lastValueByKey.getOrDefault(key, false);
+    lastValueByKey.put(key, value);
+
+    if (!value || last) {
+      return;
+    }
+
+    SmartDriveTarget target = targets.get(key);
+    if (target == null) {
+      return;
+    }
+
+    scheduleOperatorSmartDrive(key, target);
+  }
+
+  private void scheduleOperatorSmartDrive(String key, SmartDriveTarget target) {
+    cancelActiveOperatorDrive();
+
+    robotState.setOperatorDriveLockout(true);
+
+    Command cmd = SmartDriveToPosition.create(target.staging, target.precise)
+        .finallyDo(interrupted -> robotState.setOperatorDriveLockout(false));
+
+    activeOperatorDrive = cmd;
+    cmd.schedule();
+
+    SmartLogger.logConsole("[Touchscreen] SmartDrive: " + key);
+  }
+
+  public void cancelActiveOperatorDrive() {
+    if (activeOperatorDrive != null) {
+      activeOperatorDrive.cancel();
+      activeOperatorDrive = null;
+    }
+    robotState.setOperatorDriveLockout(false);
+    SmartLogger.logConsole("[Touchscreen] Driver override - canceled operator SmartDrive");
   }
 }

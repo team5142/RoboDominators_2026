@@ -36,6 +36,12 @@ public class QuestNavSubsystem extends SubsystemBase {
   private long lastAcceptedFrameCount = -1;
 
   private boolean fusionPaused = false;
+
+  private int logCounter = 0;
+  private static final int LOG_SKIP_CYCLES = 9;
+
+  private boolean cachedConnected = false;
+  private boolean cachedTracking = false;
   
   public static class QuestMeasurement {
     public final Pose2d pose;
@@ -113,19 +119,25 @@ public class QuestNavSubsystem extends SubsystemBase {
     
     drainQuestNavFrames();
     
-    SmartLogger.logReplay("QuestNav/Connected", isConnected());
-    SmartLogger.logReplay("QuestNav/Tracking", isTracking());
-    SmartLogger.logReplay("QuestNav/Seeded", isSeeded);
-    
-    if (cachedRobotPose != null) {
+    logCounter++;
+    boolean doLog = (logCounter % (LOG_SKIP_CYCLES + 1) == 0);
+
+    if (doLog) {
+      cachedConnected = isConnected();
+      cachedTracking = isTracking();
+
+      SmartLogger.logReplay("QuestNav/Connected", cachedConnected);
+      SmartLogger.logReplay("QuestNav/Tracking", cachedTracking);
+      SmartLogger.logReplay("QuestNav/Seeded", isSeeded);
+    }
+
+    if (cachedRobotPose != null && doLog) {
       SmartLogger.logReplay("QuestNav/RobotPose", cachedRobotPose);
     }
   }
   
   public void pauseFusion() {
     fusionPaused = true;
-    SmartLogger.logReplay("QuestNav/FusionPaused", true);
-    SmartLogger.logConsole("[QuestNav] Fusion paused (SmartDrive Phase 2)");
   }
   
   public void resumeFusion() {
@@ -327,7 +339,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       lastAcceptedFrameCount = -1;
       
       SmartLogger.logReplay("QuestNav/SeedToPose", fieldPose);
-      SmartLogger.logConsole("QuestNav seeded to: " + formatPose(fieldPose));
+      SmartLogger.logConsole("QuestNav seeded to: " + SmartLogger.formatPose(fieldPose));
     } catch (Exception e) {
       SmartLogger.logReplay("QuestNav/SeedError", e.getMessage());
       SmartLogger.logConsoleError("QuestNav seed failed: " + e.getMessage());
@@ -361,12 +373,5 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
     
     SmartLogger.logConsole("Pose data will be available after first periodic() cycle");
-  }
-  
-  private String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", 
-        pose.getX(), 
-        pose.getY(), 
-        pose.getRotation().getDegrees());
   }
 }

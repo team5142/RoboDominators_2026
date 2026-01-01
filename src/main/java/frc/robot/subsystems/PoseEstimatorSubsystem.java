@@ -95,6 +95,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   public void setAutoChooser(SendableChooser<Command> autoChooser) {
     initializer.setAutoChooser(autoChooser);
     validator.setAutoChooser(autoChooser);
+    validator.setPoseInitializer(initializer);
   }
 
   public void addVisionMeasurement(Pose2d visionPose, double timestampSeconds, int tagCount) {
@@ -191,14 +192,14 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
     
     SmartLogger.logConsole("=== MANUAL COMP_SEED ===");
-    SmartLogger.logConsole("Target pose: " + formatPose(pose));
-    SmartLogger.logConsole("Gyro angle: " + String.format("%.1f°", gyroAngleNow.getDegrees()));
+    SmartLogger.logConsole("Target pose: " + SmartLogger.formatPose(pose));
+    SmartLogger.logConsole("Gyro angle: " + String.format("%.1f deg", gyroAngleNow.getDegrees()));
     
     // Diagnostic: Warn if gyro angle doesn't match pose rotation (suggests timing issue)
     double angleDiff = Math.abs(gyroAngleNow.minus(pose.getRotation()).getDegrees());
     if (angleDiff > 5.0) {
       SmartLogger.logConsoleError(String.format(
-          "[manualCompSeed] WARNING: Gyro angle (%.1f°) differs from pose rotation (%.1f°) by %.1f°",
+          "[manualCompSeed] WARNING: Gyro angle (%.1f deg) differs from pose rotation (%.1f deg) by %.1f deg",
           gyroAngleNow.getDegrees(), pose.getRotation().getDegrees(), angleDiff));
       Logger.recordOutput("PoseEstimator/ManualCompSeed/AngleMismatch", angleDiff);
     }
@@ -215,17 +216,16 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     SmartLogger.logConsole("✓ QuestNav seeded");
     
     // Step 3: Configure QuestNavFusion for COMP_SEED validation
-    questNavFusion.setExpectedSeedPose(pose);
     questNavFusion.setValidationMode(Constants.QuestNav.InitMode.COMP_SEED);
     questNavFusion.onManualSeed(pose); // NEW: Reset acceptance baseline + enable fast-track
     currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
-    SmartLogger.logConsole("✓ Validation configured (COMP_SEED mode)");
+    SmartLogger.logConsole("Validation configured: COMP_SEED");
     
-    // Step 4: Mark as initialized (prevent PoseInitializer from re-initing)
+    // Mark as initialized (prevent PoseInitializer from re-initing)
     if (!initializer.isInitialized()) {
       initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
     }
-    SmartLogger.logConsole("✓ Initialization state set");
+    SmartLogger.logConsole("Initialization state set");
     
     // Consolidated logging (avoid duplicates)
     Logger.recordOutput("PoseEstimator/ManualCompSeed/Success", true);
@@ -237,8 +237,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     // Verify
     Pose2d actualPose = getEstimatedPose();
     double actualGyro = driveSubsystem.getGyroRotation().getDegrees();
-    SmartLogger.logConsole("Actual pose: " + formatPose(actualPose));
-    SmartLogger.logConsole("Actual gyro: " + String.format("%.1f°", actualGyro));
+    SmartLogger.logConsole("Actual pose: " + SmartLogger.formatPose(actualPose));
+    SmartLogger.logConsole("Actual gyro: " + String.format("%.1f deg", actualGyro));
     SmartLogger.logConsole("========================");
     
     Logger.recordOutput("PoseEstimator/ManualCompSeed/VerifyPose", actualPose);
@@ -251,6 +251,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   public boolean isInitialized() {
     return initializer.isInitialized();
+  }
+
+  public PoseInitializer getPoseInitializer() {
+    return initializer;
   }
 
   @Override
@@ -288,10 +292,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
           
           driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
-          SmartLogger.logConsole("✓ Field orientation locked to " + 
-              String.format("%.1f°", initResult.pose.getRotation().getDegrees()));
+          SmartLogger.logConsole("Field orientation locked to " + 
+              String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
           
-          SmartLogger.logConsole("COMP_SEED: Quest seeded to " + formatPose(initResult.pose));
+          SmartLogger.logConsole("COMP_SEED: Quest seeded to " + SmartLogger.formatPose(initResult.pose));
           Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
           Logger.recordOutput("QuestNav/Seeded", true);
         } else {
@@ -304,8 +308,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           
           // FIX: Lock field orientation to Quest's pose rotation (not gyro)
           driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
-          SmartLogger.logConsole("✓ Field orientation locked to Quest heading: " + 
-              String.format("%.1f°", initResult.pose.getRotation().getDegrees()));
+          SmartLogger.logConsole("Field orientation locked to Quest heading: " + 
+              String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
               
           SmartLogger.logConsole("SHOP_RESUME: Using Quest's existing tracking (not seeded)");
           Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
@@ -326,7 +330,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
         
         if (questNavSubsystem.getRobotPose().isPresent()) {
           Pose2d questPose = questNavSubsystem.getRobotPose().get();
-          SmartLogger.logConsoleError("  Quest pose: " + formatPose(questPose));
+          SmartLogger.logConsoleError("  Quest pose: " + SmartLogger.formatPose(questPose));
         }
         
         SmartLogger.logConsoleError("============================================");
@@ -412,12 +416,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
     
     if (from == RobotState.Mode.ENABLED_AUTO && to == RobotState.Mode.ENABLED_TELEOP) {
-      SmartLogger.logConsole("=== AUTO → TELEOP TRANSITION ===");
-      SmartLogger.logConsole("KEEPING pose from auto - no reset!");
+      SmartLogger.logConsole("=== AUTO TO TELEOP TRANSITION ===");
+      SmartLogger.logConsole("Keeping pose from auto");
       
       Pose2d currentPose = getEstimatedPose();
-      SmartLogger.logConsole("Current pose: " + formatPose(currentPose));
-      SmartLogger.logConsole("Current heading: " + currentPose.getRotation().getDegrees() + "°");
+      SmartLogger.logConsole("Current pose: " + SmartLogger.formatPose(currentPose));
+      SmartLogger.logConsole("Current heading: " + String.format("%.1f deg", currentPose.getRotation().getDegrees()));
       
       driveSubsystem.setOperatorPerspectiveForward(currentPose.getRotation());
       
@@ -441,13 +445,6 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
       Logger.recordOutput("PoseEstimator/InitializedViaMultiTagVision", true);
     }
-  }
-  
-  private String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", 
-        pose.getX(), 
-        pose.getY(), 
-        pose.getRotation().getDegrees());
   }
   
   public boolean forceAcceptQuestNavPose() {

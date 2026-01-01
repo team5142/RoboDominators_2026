@@ -321,20 +321,22 @@ public final class Constants {
 
   // Field positions (all blue alliance - red is mirrored automatically)
   public static final class StartingPositions {
+    
+    // TUNING POSITION
+    public static final Pose2d PID_TUNING_POSITION = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(0.0));
+    // LED CALIBRATION TEST POSITION (from actual Limelight reading)
+    public static final Pose2d LED_TEST_POSITION = new Pose2d(1.2748, 2.3987, Rotation2d.fromDegrees(-6.56));
+    
     // Staging poses (Phase 1: PathPlanner pathfind targets)
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(2.300, 1.850, Rotation2d.fromDegrees(-130.0));
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.990, 1.543, Rotation2d.fromDegrees(-90.0));
     public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.359, 2.077, Rotation2d.fromDegrees(60.0));
     public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(2.070, 4.027, Rotation2d.fromDegrees(0.0));
     public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(6.889, 4.025, Rotation2d.fromDegrees(180.0));
     public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.552, 2.168, Rotation2d.fromDegrees(120.0));
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.990, 1.543, Rotation2d.fromDegrees(-90.0));
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(2.300, 1.850, Rotation2d.fromDegrees(-130.0));
     public static final Pose2d TEST_SPOT_1 = new Pose2d(5.84, 1.850, Rotation2d.fromDegrees(133.0));
-   
-    public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
-    public static final Pose2d PID_TUNING_POSITION = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(0.0));
-    
-    // LED CALIBRATION TEST POSITION (from actual Limelight reading)
-    public static final Pose2d LED_TEST_POSITION = new Pose2d(1.2748, 2.3987, Rotation2d.fromDegrees(-6.56));
+    // AUTO RESET POSE STAGING
+    public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(5.533, 1.185, Rotation2d.fromDegrees(180.0));
     
     // Precision poses (Phase 2: AutoPilot final targets)
     public static final Pose2d PRECISE_12_POSE = new Pose2d(1.35, 1.07, Rotation2d.fromDegrees(-130.0));
@@ -344,7 +346,8 @@ public final class Constants {
     public static final Pose2d PRECISE_21_POSE = new Pose2d(5.741, 4.025, Rotation2d.fromDegrees(180.0));
     public static final Pose2d PRECISE_22_POSE = new Pose2d(5.114, 2.941, Rotation2d.fromDegrees(120.0));
     public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
-   
+    // AUTO RESET POSE PRECISE
+    public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
   }
 
   // AutoPilot precision navigation library (singleton instances)
@@ -363,13 +366,13 @@ public final class Constants {
     
     // Precision profile (SmartDrive Phase 2)
     private static final APConstraints PRECISION_CONSTRAINTS = new APConstraints()
-        .withAcceleration(8.0)
-        .withJerk(4.0);
+        .withAcceleration(10.0)//8 to 12
+        .withJerk(5.0);//4 to 6
     
     private static final APProfile PRECISION_PROFILE = new APProfile(PRECISION_CONSTRAINTS)
-        .withErrorXY(Centimeters.of(5))
-        .withErrorTheta(Degrees.of(2.0))
-        .withBeelineRadius(Centimeters.of(8));
+        .withErrorXY(Centimeters.of(6))//5 to 8
+        .withErrorTheta(Degrees.of(2.5))//2 to 3
+        .withBeelineRadius(Centimeters.of(10));//8 to 12
     
     public static final Autopilot PRECISION_AUTOPILOT = new Autopilot(PRECISION_PROFILE);
     

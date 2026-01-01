@@ -19,6 +19,7 @@ public class RobotState {
   private Mode mode = Mode.DISABLED;
   private boolean enabled = false;
   private boolean sysIdMode = false;
+  private boolean operatorDriveLockout = false;
   
   // Robot intent (high-level actions)
   public enum RobotIntent {
@@ -82,4 +83,16 @@ public class RobotState {
   }
   
   public boolean isSysIdMode() { return sysIdMode; }
+  
+  public boolean isOperatorDriveLockout() {
+    return operatorDriveLockout;
+  }
+
+  public void setOperatorDriveLockout(boolean operatorDriveLockout) {
+    if (this.operatorDriveLockout == operatorDriveLockout) {
+      return;
+    }
+    this.operatorDriveLockout = operatorDriveLockout;
+    SmartLogger.logReplay("RobotState/OperatorDriveLockout", operatorDriveLockout);
+  }
 }

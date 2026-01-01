@@ -17,6 +17,7 @@ public class LogSpaceMonitor {
   private static double s_lastCheckTime = 0.0;
   private static boolean s_hasWarned = false;
   private static boolean s_hasCriticalWarned = false;
+  private static final File ROOT = Filesystem.getOperatingDirectory();
   
   /**
    * Check disk space and log warnings if low (call in Robot.periodic())
@@ -32,12 +33,9 @@ public class LogSpaceMonitor {
     
     s_lastCheckTime = currentTime;
     
-    // Get RoboRIO root filesystem
-    File root = Filesystem.getOperatingDirectory();
-    
     // Get free space
-    long freeBytes = root.getFreeSpace();
-    long totalBytes = root.getTotalSpace();
+    long freeBytes = ROOT.getFreeSpace();
+    long totalBytes = ROOT.getTotalSpace();
     long usedBytes = totalBytes - freeBytes;
     
     // Convert to GB
@@ -80,7 +78,10 @@ public class LogSpaceMonitor {
     
     // Periodic console output (every 5 minutes = 10 checks)
     if ((int)(currentTime / CHECK_INTERVAL_SECONDS) % 10 == 0) {
-      System.out.printf("[LogSpace] %.2fGB / %.2fGB free (%.1f%% used)%n", freeGB, totalGB, usedPercent);
+      SmartLogger.logConsole(
+          String.format("[LogSpace] %.2fGB / %.2fGB free (%.1f%% used)", freeGB, totalGB, usedPercent),
+          "LogSpace",
+          5);
     }
   }
   
@@ -88,9 +89,8 @@ public class LogSpaceMonitor {
    * Get human-readable disk space summary
    */
   public static String getStatusString() {
-    File root = Filesystem.getOperatingDirectory();
-    long freeBytes = root.getFreeSpace();
-    long totalBytes = root.getTotalSpace();
+    long freeBytes = ROOT.getFreeSpace();
+    long totalBytes = ROOT.getTotalSpace();
     
     double freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
     double totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);

@@ -48,6 +48,11 @@ public class DriveWithJoysticks extends Command {
 
   @Override
   public void execute() {
+    if (robotState.isOperatorDriveLockout()) {
+      driveSubsystem.drive(0.0, 0.0, 0.0, true);
+      return;
+    }
+
     // Apply deadband to ignore stick drift
     double x = MathUtil.applyDeadband(xSupplier.getAsDouble(), JOYSTICK_DEADBAND);
     double y = MathUtil.applyDeadband(ySupplier.getAsDouble(), JOYSTICK_DEADBAND);

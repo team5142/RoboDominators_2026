@@ -104,8 +104,7 @@ public class SmartDriveToPosition {
               lockAcquired[0] = accepted;
               
               if (accepted) {
-                SmartLogger.logConsole("[SmartDrive] QuestNav locked: " + 
-                    formatPose(s_poseEstimator.getEstimatedPose()));
+                SmartLogger.logConsole("[SmartDrive] QuestNav locked: " + SmartLogger.formatPose(s_poseEstimator.getEstimatedPose()));
                 SmartLogger.logReplay("SmartDrive/ForceAcceptSuccess", true);
               } else {
                 SmartLogger.logConsole("[SmartDrive] WARNING: Force-accept failed after fresh pose detected");
@@ -138,7 +137,7 @@ public class SmartDriveToPosition {
         
         Commands.runOnce(() -> {
           s_robotState.setNavigationPhase(RobotState.NavigationPhase.PRECISION_PATH);
-          SmartLogger.logConsole("[SmartDrive] Phase 3: AutoPilot to " + formatPose(finalTargetPose));
+          SmartLogger.logConsole("[SmartDrive] Phase 3: AutoPilot to " + SmartLogger.formatPose(finalTargetPose));
           SmartLogger.logReplay("SmartDrive/PrecisionTarget", finalTargetPose);
           SmartLogger.logReplay("SmartDrive/Phase", "AutoPilot");
         }),
@@ -166,9 +165,5 @@ public class SmartDriveToPosition {
         3.5,
         Math.toRadians(540.0),
         Math.toRadians(720.0));
-  }
-  
-  private static String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
   }
 }

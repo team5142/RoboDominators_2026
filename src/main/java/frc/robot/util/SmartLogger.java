@@ -64,4 +64,12 @@ public class SmartLogger {
   public static void logReplay(String key, double[] value) {
     Logger.recordOutput(key, value);
   }
+
+  public static String formatPose(Pose2d pose) {
+    if (pose == null) return "(null)";
+    return String.format("(%.2fm, %.2fm, %.1f deg)",
+        pose.getX(),
+        pose.getY(),
+        pose.getRotation().getDegrees());
+  }
 }

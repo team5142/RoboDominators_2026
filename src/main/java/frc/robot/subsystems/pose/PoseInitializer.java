@@ -91,27 +91,24 @@ public class PoseInitializer {
   
   public InitResult attemptInitialization() {
     // === COMP_SEED MODE: Disabled + FMS attached (prevents mid-auto re-init) ===
-    if (DriverStation.isDisabled() && DriverStation.isFMSAttached()) {
-      
+    if (DriverStation.isDisabled()) {
       Pose2d autoStartPose = getExpectedAutoStartPose();
-      
       if (autoStartPose != null && isWithinField(autoStartPose.getTranslation())) {
         initState = InitializationState.INITIALIZED;
-        
+
         double waitTime = initWaitTimer.get();
         Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
-        
-        SmartLogger.logConsole("=== COMP_SEED MODE ===");
-        SmartLogger.logConsole("Auto: " + (autoChooser != null ? autoChooser.getSelected().getName() : "Unknown"));
-        SmartLogger.logConsole("Starting pose: " + formatPose(autoStartPose));
-        SmartLogger.logConsole("Quest will be SEEDED to this pose");
-        SmartLogger.logConsole("Wait time: " + String.format("%.2fs", waitTime));
-        SmartLogger.logConsole("====================");
-        
+
         Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
-        Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
-        
-        return new InitResult(autoStartPose, true, "COMP_SEED: Auto start pose from chooser");
+        Logger.recordOutput("PoseEstimator/InitMode",
+            DriverStation.isFMSAttached() ? "COMP_SEED" : "PRACTICE_AUTO_SEED");
+
+        return new InitResult(
+            autoStartPose,
+            true,
+            DriverStation.isFMSAttached()
+                ? "COMP_SEED: Auto start pose from chooser"
+                : "PRACTICE_AUTO_SEED: Auto start pose from chooser");
       }
     }
     
@@ -128,7 +125,7 @@ public class PoseInitializer {
         
         SmartLogger.logConsole("=== SHOP_RESUME MODE ===");
         SmartLogger.logConsole("Using Quest's existing tracking (NOT SEEDED)");
-        SmartLogger.logConsole("Pose: " + formatPose(questNavPose));
+        SmartLogger.logConsole("Pose: " + SmartLogger.formatPose(questNavPose));
         SmartLogger.logConsole("Wait time: " + String.format("%.2fs", waitTime));
         SmartLogger.logConsoleError("WARNING: Pose is in Quest's own frame (NOT field-aligned!)");
         SmartLogger.logConsoleError("Do NOT use for autonomous - teleop practice only!");
@@ -153,25 +150,35 @@ public class PoseInitializer {
     return null;
   }
   
+  public Pose2d getStartPoseForAutoName(String autoName) {
+    if (autoName == null || autoName.isEmpty()) return null;
+
+    switch (autoName.toLowerCase()) {
+      case "leftside1piece":
+      case "leftside3piece":
+        return new Pose2d(7.20, 0.45, Rotation2d.fromDegrees(180.0));
+      case "rightside1piece":
+        return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
+      default:
+        return null;
+    }
+  }
+
   private Pose2d getExpectedAutoStartPose() {
     if (autoChooser == null) return null;
-    
+
     try {
       Command selectedAuto = autoChooser.getSelected();
       if (selectedAuto == null) return null;
-      
+
       String autoName = selectedAuto.getName();
-      
-      switch (autoName.toLowerCase()) {
-        case "leftside1piece":
-        case "leftside3piece":
-          return new Pose2d(7.20, 0.45, Rotation2d.fromDegrees(180.0));
-        case "rightside1piece":
-          return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
-        default:
-          Logger.recordOutput("PoseInitializer/UnknownAuto", autoName);
-          return null;
+      Pose2d pose = getStartPoseForAutoName(autoName);
+
+      if (pose == null) {
+        Logger.recordOutput("PoseInitializer/UnknownAuto", autoName);
       }
+
+      return pose;
     } catch (Exception e) {
       Logger.recordOutput("PoseInitializer/GetPoseError", e.getMessage());
       return null;
@@ -225,12 +232,5 @@ public class PoseInitializer {
   
   public double getWaitTime() {
     return initWaitTimer.get();
-  }
-  
-  private String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", 
-        pose.getX(), 
-        pose.getY(), 
-        pose.getRotation().getDegrees());
   }
 }

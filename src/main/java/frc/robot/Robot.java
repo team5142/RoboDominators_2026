@@ -27,6 +27,7 @@ public class Robot extends LoggedRobot {
   private ElasticDashboard elasticDashboard;
   
   private double cachedBatteryVoltage = 0.0; // Cache to avoid multiple reads per loop
+  private boolean lastBrownout = false;
 
   // Runs ONCE at robot boot - setup logging and create subsystems
   @Override
@@ -46,7 +47,7 @@ public class Robot extends LoggedRobot {
     
     try {
       robotState = new RobotState();
-      robotContainer = new RobotContainer();
+      robotContainer = new RobotContainer(robotState);
       SmartLogger.logConsole("Robot container initialized successfully");
       
       // Only setup Limelight stream in practice mode
@@ -57,7 +58,7 @@ public class Robot extends LoggedRobot {
       }
       
       elasticDashboard = new ElasticDashboard(
-          robotContainer.robotState,
+          robotState,
           robotContainer.poseEstimator,
           robotContainer.questNav,
           robotContainer.tagVisionSubsystem,
@@ -102,12 +103,12 @@ public class Robot extends LoggedRobot {
     Logger.recordOutput("Battery/Current", RobotController.getInputCurrent());
     
     // Check brownout
-    if (RobotController.isBrownedOut()) {
-      Logger.recordOutput("Robot/BrownedOut", true);
-      SmartLogger.logConsoleError("!!! BROWNOUT DETECTED !!!");
-    } else {
-      Logger.recordOutput("Robot/BrownedOut", false);
+    boolean brownedOut = RobotController.isBrownedOut();
+    Logger.recordOutput("Robot/BrownedOut", brownedOut);
+    if (brownedOut && !lastBrownout) {
+      SmartLogger.logConsoleError("BROWNOUT DETECTED");
     }
+    lastBrownout = brownedOut;
 
     if (robotContainer != null) {
       robotContainer.periodic();
@@ -115,7 +116,7 @@ public class Robot extends LoggedRobot {
     
     // Null check for elasticDashboard
     if (elasticDashboard != null) {
-      elasticDashboard.update();
+      elasticDashboard.update(cachedBatteryVoltage);
     }
     
     LogSpaceMonitor.periodic();

@@ -48,11 +48,6 @@ public class LEDSubsystem extends SubsystemBase {
     
     // Configure for 12V strip mode
     blinkin.set(Pattern.MODE_12V);
-    try {
-      Thread.sleep(100);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
     
     // Set default pattern (will only work when enabled)
     blinkin.set(Pattern.LAVA);
