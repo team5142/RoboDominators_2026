@@ -328,23 +328,23 @@ public final class Constants {
     public static final Pose2d LED_TEST_POSITION = new Pose2d(1.2748, 2.3987, Rotation2d.fromDegrees(-6.56));
     
     // Staging poses (Phase 1: PathPlanner pathfind targets)
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(2.300, 1.850, Rotation2d.fromDegrees(-130.0));
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(5.990, 1.543, Rotation2d.fromDegrees(-90.0));
-    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.359, 2.077, Rotation2d.fromDegrees(60.0));
-    public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(2.070, 4.027, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(6.889, 4.025, Rotation2d.fromDegrees(180.0));
+    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.72, 1.51, Rotation2d.fromDegrees(-130.0));
+    public static final Pose2d BLUE_TAG_16 = new Pose2d(6.09, 1.2, Rotation2d.fromDegrees(-90.0));
+    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.65, 2.37, Rotation2d.fromDegrees(60.0));
+    public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(2.67, 4.03, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(6.6, 4.05, Rotation2d.fromDegrees(180.0));
     public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.552, 2.168, Rotation2d.fromDegrees(120.0));
     public static final Pose2d TEST_SPOT_1 = new Pose2d(5.84, 1.850, Rotation2d.fromDegrees(133.0));
     // AUTO RESET POSE STAGING
     public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(5.533, 1.185, Rotation2d.fromDegrees(180.0));
     
     // Precision poses (Phase 2: AutoPilot final targets)
-    public static final Pose2d PRECISE_12_POSE = new Pose2d(1.35, 1.07, Rotation2d.fromDegrees(-130.0));
-    public static final Pose2d PRECISE_16_POSE = new Pose2d(5.99, 0.56, Rotation2d.fromDegrees(-90.0));
-    public static final Pose2d PRECISE_17_POSE = new Pose2d(3.92, 2.9, Rotation2d.fromDegrees(60.0));
-    public static final Pose2d PRECISE_18_POSE = new Pose2d(3.233, 4.027, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d PRECISE_21_POSE = new Pose2d(5.741, 4.025, Rotation2d.fromDegrees(180.0));
-    public static final Pose2d PRECISE_22_POSE = new Pose2d(5.114, 2.941, Rotation2d.fromDegrees(120.0));
+    public static final Pose2d PRECISE_12_POSE = new Pose2d(1.335, 1.02, Rotation2d.fromDegrees(-130.0));
+    public static final Pose2d PRECISE_16_POSE = new Pose2d(6.09, 0.5, Rotation2d.fromDegrees(-90.0));
+    public static final Pose2d PRECISE_17_POSE = new Pose2d(3.94, 2.86, Rotation2d.fromDegrees(60.0));
+    public static final Pose2d PRECISE_18_POSE = new Pose2d(3.27, 4.03, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d PRECISE_21_POSE = new Pose2d(5.99, 4.05, Rotation2d.fromDegrees(180.0));
+    public static final Pose2d PRECISE_22_POSE = new Pose2d(5.29, 2.86, Rotation2d.fromDegrees(120.0));
     public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));

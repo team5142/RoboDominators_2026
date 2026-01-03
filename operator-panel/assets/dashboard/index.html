@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoboDominators 5142 - Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Alert Border -->
+    <div id="alert-border" class="alert-border"></div>
+
+    <!-- Main Game Timer -->
+    <div id="main-timer" class="main-timer">
+        <span id="timer-minutes">02</span>:<span id="timer-seconds">30</span>
+    </div>
+
+    <!-- Game Segment Indicator -->
+    <div id="game-segment" class="game-segment">DISABLED</div>
+
+    <!-- LED Message Display -->
+    <div id="led-message" class="led-message">READY</div>
+
+    <!-- Team Logo -->
+    <div class="logo">
+        <img src="assets/5142.png" alt="Team 5142" width="150">
+    </div>
+
+    <!-- PREGAME/DISABLED VIEW -->
+    <div id="pregame-view" class="view-container active">
+        <div class="view-grid">
+            <!-- Auto Selector -->
+            <div class="status-card">
+                <h3>Auto Selected</h3>
+                <div id="auto-selected" class="large-value">None</div>
+            </div>
+
+            <!-- Alliance & Position -->
+            <div class="status-card">
+                <h3>Alliance</h3>
+                <div id="alliance-color" class="large-value">Blue</div>
+                <div id="ds-position" class="sub-value">Position 1</div>
+            </div>
+
+            <!-- Battery Status -->
+            <div class="status-card">
+                <h3>Robot Battery</h3>
+                <div id="robot-battery" class="large-value">12.6V</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Quest Battery</h3>
+                <div id="quest-battery" class="large-value">--</div>
+            </div>
+
+            <!-- Subsystem Status Grid -->
+            <div class="status-card wide">
+                <h3>Subsystem Status</h3>
+                <div class="subsystem-grid">
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">Drive</span>
+                        <span id="drive-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">Gyro (Quest)</span>
+                        <span id="quest-gyro-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">Gyro (Pigeon)</span>
+                        <span id="pigeon-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">Tag Vision</span>
+                        <span id="tag-vision-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">Object Vision</span>
+                        <span id="object-vision-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">LED</span>
+                        <span id="led-status" class="status-indicator">●</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <span class="subsystem-name">CAN Bus</span>
+                        <span id="can-status" class="status-indicator">●</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Camera Status -->
+            <div class="status-card">
+                <h3>Camera Status</h3>
+                <div id="camera-count" class="large-value">0/4</div>
+                <div class="sub-value">Online</div>
+            </div>
+
+            <!-- Field Position -->
+            <div class="status-card">
+                <h3>Field Position</h3>
+                <div id="field-x" class="coord-value">X: 0.00m</div>
+                <div id="field-y" class="coord-value">Y: 0.00m</div>
+                <div id="field-heading" class="coord-value">θ: 0.0°</div>
+            </div>
+
+            <!-- Pose Accuracy -->
+            <div class="status-card">
+                <h3>Odometry</h3>
+                <div id="pose-error" class="large-value">0.00m</div>
+                <div class="sub-value">Avg Error</div>
+                <div id="visible-tags" class="sub-value">Tags: 0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUTONOMOUS VIEW -->
+    <div id="auto-view" class="view-container">
+        <div class="view-grid auto-layout">
+            <div class="status-card mega">
+                <h3>Current Auto</h3>
+                <div id="auto-running" class="mega-value">None</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Auto Timer</h3>
+                <div id="auto-timer" class="large-value countdown">15</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Field Position</h3>
+                <div id="auto-field-x" class="coord-value">X: 0.00m</div>
+                <div id="auto-field-y" class="coord-value">Y: 0.00m</div>
+                <div id="auto-field-heading" class="coord-value">θ: 0.0°</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Odometry</h3>
+                <div id="auto-pose-error" class="large-value">0.00m</div>
+                <div class="sub-value">Avg Error</div>
+                <div id="auto-visible-tags" class="sub-value">Tags: 0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELEOP VIEW -->
+    <div id="teleop-view" class="view-container">
+        <div class="view-grid teleop-layout">
+            <!-- Drive State -->
+            <div class="status-card">
+                <h3>Drive Mode</h3>
+                <div id="drive-mode" class="large-value">NORMAL</div>
+            </div>
+
+            <!-- Vision/Aim Status -->
+            <div class="status-card">
+                <h3>Vision Lock</h3>
+                <div id="vision-lock" class="large-value">NONE</div>
+                <div id="aim-error" class="sub-value">Error: --</div>
+            </div>
+
+            <!-- Pose Confidence -->
+            <div class="status-card">
+                <h3>Pose Quality</h3>
+                <div id="teleop-pose-confidence" class="large-value">GOOD</div>
+                <div id="teleop-visible-tags" class="sub-value">Tags: 0</div>
+            </div>
+
+            <!-- Object Detection -->
+            <div class="status-card wide">
+                <h3>Object Detection</h3>
+                <div class="detection-grid">
+                    <div class="detection-item">
+                        <span class="label">Count:</span>
+                        <span id="object-count" class="value">0</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Distance:</span>
+                        <span id="object-distance" class="value">--</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Angle:</span>
+                        <span id="object-angle" class="value">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field Position -->
+            <div class="status-card">
+                <h3>Field Position</h3>
+                <div id="teleop-field-x" class="coord-value">X: 0.00m</div>
+                <div id="teleop-field-y" class="coord-value">Y: 0.00m</div>
+                <div id="teleop-field-heading" class="coord-value">θ: 0.0°</div>
+            </div>
+
+            <!-- Odometry Status -->
+            <div class="status-card">
+                <h3>Odometry</h3>
+                <div id="teleop-pose-error" class="large-value">0.00m</div>
+                <div class="sub-value">Avg Error</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENDGAME PHASE 1 VIEW -->
+    <div id="endgame1-view" class="view-container">
+        <!-- Same as teleop, but with endgame info added -->
+        <div class="view-grid teleop-layout">
+            <!-- Drive State -->
+            <div class="status-card">
+                <h3>Drive Mode</h3>
+                <div id="endgame1-drive-mode" class="large-value">NORMAL</div>
+            </div>
+
+            <!-- Vision/Aim Status -->
+            <div class="status-card">
+                <h3>Vision Lock</h3>
+                <div id="endgame1-vision-lock" class="large-value">NONE</div>
+                <div id="endgame1-aim-error" class="sub-value">Error: --</div>
+            </div>
+
+            <!-- Pose Confidence -->
+            <div class="status-card">
+                <h3>Pose Quality</h3>
+                <div id="endgame1-pose-confidence" class="large-value">GOOD</div>
+                <div id="endgame1-visible-tags" class="sub-value">Tags: 0</div>
+            </div>
+
+            <!-- Object Detection -->
+            <div class="status-card wide">
+                <h3>Object Detection</h3>
+                <div class="detection-grid">
+                    <div class="detection-item">
+                        <span class="label">Count:</span>
+                        <span id="endgame1-object-count" class="value">0</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Distance:</span>
+                        <span id="endgame1-object-distance" class="value">--</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Angle:</span>
+                        <span id="endgame1-object-angle" class="value">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field Position -->
+            <div class="status-card">
+                <h3>Field Position</h3>
+                <div id="endgame1-field-x" class="coord-value">X: 0.00m</div>
+                <div id="endgame1-field-y" class="coord-value">Y: 0.00m</div>
+                <div id="endgame1-field-heading" class="coord-value">θ: 0.0°</div>
+            </div>
+
+            <!-- Endgame Status - Bottom Right -->
+            <div class="status-card endgame-highlight">
+                <h3>⚠ ENDGAME ⚠</h3>
+                <div id="endgame-status" class="large-value">PREPARE</div>
+                <div class="sub-value">Climb Ready</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENDGAME PHASE 2 VIEW -->
+    <div id="endgame2-view" class="view-container">
+        <div class="view-grid teleop-layout">
+            <!-- Row 1: Keep visible, normal opacity -->
+            <div class="status-card">
+                <h3>Drive Mode</h3>
+                <div id="endgame2-drive-mode" class="large-value">NORMAL</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Vision Lock</h3>
+                <div id="endgame2-vision-lock" class="large-value">NONE</div>
+            </div>
+
+            <div class="status-card">
+                <h3>Pose Quality</h3>
+                <div id="endgame2-pose-confidence" class="large-value">GOOD</div>
+            </div>
+
+            <!-- Row 2 & 3: These will be hidden, replaced by endgame-critical box -->
+            <div class="status-card wide">
+                <h3>Object Detection</h3>
+                <div class="detection-grid">
+                    <div class="detection-item">
+                        <span class="label">Count:</span>
+                        <span id="endgame2-object-count" class="value">0</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Distance:</span>
+                        <span id="endgame2-object-distance" class="value">--</span>
+                    </div>
+                    <div class="detection-item">
+                        <span class="label">Angle:</span>
+                        <span id="endgame2-object-angle" class="value">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-card">
+                <h3>Field Position</h3>
+                <div id="endgame2-field-x" class="coord-value">X: 0.00m</div>
+                <div id="endgame2-field-y" class="coord-value">Y: 0.00m</div>
+                <div id="endgame2-field-heading" class="coord-value">θ: 0.0°</div>
+            </div>
+
+            <!-- Endgame Status - EMPHASIZED - Replaces rows 2 & 3 -->
+            <div class="status-card mega endgame-critical">
+                <h3>🚨 FINAL CLIMB 🚨</h3>
+                <div id="endgame2-status" class="mega-value">EXECUTE</div>
+                <div class="sub-value">Time Critical</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="nt4.js"></script>
+    <script src="dashboard.js"></script>
+
+    <!-- Debug Control Menu (hidden by default) -->
+    <div id="debug-menu" class="debug-menu">
+        <button id="debug-toggle" class="debug-toggle">⚙</button>
+        <div id="debug-controls" class="debug-controls">
+            <h4>Debug Controls</h4>
+            <div class="debug-buttons">
+                <button onclick="dashboard.setPhase('disabled')">Disabled</button>
+                <button onclick="dashboard.setPhase('auto')">Auto</button>
+                <button onclick="dashboard.setPhase('teleop')">Teleop</button>
+                <button onclick="dashboard.setPhase('endgame1')">Endgame 1</button>
+                <button onclick="dashboard.setPhase('endgame2')">Endgame 2</button>
+            </div>
+            <div class="debug-option">
+                <label>
+                    <input type="checkbox" id="demo-mode" checked>
+                    Demo Data
+                </label>
+            </div>
+            <div class="debug-option">
+                <label>
+                    <input type="checkbox" id="auto-cycle">
+                    Auto Cycle Phases
+                </label>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

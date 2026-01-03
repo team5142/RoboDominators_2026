@@ -291,7 +291,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           questNavFusion.onManualSeed(initResult.pose); // Existing call
           currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
           
-          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+          // Operator perspective should be inverse of robot starting heading
+          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation().unaryMinus());
+
           SmartLogger.logConsole("Field orientation locked to " + 
               String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
           
@@ -307,7 +309,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           currentInitMode = Constants.QuestNav.InitMode.SHOP_RESUME;
           
           // FIX: Lock field orientation to Quest's pose rotation (not gyro)
-          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation().unaryMinus());
+
           SmartLogger.logConsole("Field orientation locked to Quest heading: " + 
               String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
               
