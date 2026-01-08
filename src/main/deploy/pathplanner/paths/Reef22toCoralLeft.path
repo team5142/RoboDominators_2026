@@ -3,41 +3,25 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 5.137993421052631,
-        "y": 2.9377467105263158
+        "x": 5.166858552631578,
+        "y": 2.8607730263157896
       },
       "prevControl": null,
       "nextControl": {
-        "x": 5.739811643835617,
-        "y": 1.823737157534247
+        "x": 5.768676775414565,
+        "y": 1.7467634733237207
       },
       "isLocked": false,
       "linkedName": "Reef 22"
     },
     {
       "anchor": {
-        "x": 2.280345394736842,
-        "y": 1.388651315789474
+        "x": 1.5298519736842104,
+        "y": 0.840213815789474
       },
       "prevControl": {
-        "x": 2.5508659426820475,
-        "y": 1.6592086788031724
-      },
-      "nextControl": {
-        "x": 1.7364870756742592,
-        "y": 0.8447189831947639
-      },
-      "isLocked": false,
-      "linkedName": "CoralLeftApproach"
-    },
-    {
-      "anchor": {
-        "x": 1.6828767123287671,
-        "y": 0.7268621575342468
-      },
-      "prevControl": {
-        "x": 2.313955479452056,
-        "y": 1.4631207191780822
+        "x": 2.1609307408074994,
+        "y": 1.5764723774333094
       },
       "nextControl": null,
       "isLocked": false,
@@ -48,8 +32,8 @@
   "constraintZones": [
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 1.8,
-      "maxWaypointRelativePos": 2.0,
+      "minWaypointRelativePos": 0.9,
+      "maxWaypointRelativePos": 1.0,
       "constraints": {
         "maxVelocity": 0.5,
         "maxAcceleration": 0.5,
@@ -72,7 +56,7 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -130.0
+    "rotation": 53.0
   },
   "reversed": false,
   "folder": null,
