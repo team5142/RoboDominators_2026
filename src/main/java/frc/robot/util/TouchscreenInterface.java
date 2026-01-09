@@ -4,9 +4,12 @@ import static frc.robot.Constants.StartingPositions.*;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.networktables.BooleanTopic;
+import edu.wpi.first.networktables.BooleanPublisher;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEvent;
 import edu.wpi.first.networktables.NetworkTableInstance;
+import edu.wpi.first.networktables.StringTopic;
+import edu.wpi.first.networktables.StringSubscriber;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.RobotState;
 import frc.robot.commands.drive.SmartDriveToPosition;
@@ -17,6 +20,14 @@ import frc.robot.subsystems.QuestNavSubsystem;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpExchange;
+import java.util.concurrent.Executors;
 
 // Touchscreen operator interface - subscribes to NetworkTables commands from HTML dashboard
 public class TouchscreenInterface {
@@ -42,6 +53,10 @@ public class TouchscreenInterface {
 
   private final Map<String, SmartDriveTarget> targets = new HashMap<>();
   private final Map<String, Boolean> lastValueByKey = new HashMap<>();
+  private final Map<String, BooleanPublisher> publishers = new HashMap<>();
+  private String lastCommandPosition = "";
+
+  private HttpServer httpServer;
 
   public TouchscreenInterface(
       RobotState robotState,
@@ -64,6 +79,7 @@ public class TouchscreenInterface {
     targets.put("BLUE_TAG_16", new SmartDriveTarget(BLUE_TAG_16, PRECISE_16_POSE));
     targets.put("BLUE_TAG_12", new SmartDriveTarget(BLUE_TAG_12, PRECISE_12_POSE));
 
+    // Keep existing boolean listeners for AdvantageScope/Shuffleboard compatibility
     NetworkTable opTable = ntInst.getTable("OperatorInterface");
     NetworkTable driveTable = opTable.getSubTable("DriveToPosition");
 
@@ -71,11 +87,35 @@ public class TouchscreenInterface {
       BooleanTopic topic = driveTable.getBooleanTopic(key);
       lastValueByKey.put(key, false);
 
+      BooleanPublisher pub = topic.publish();
+      pub.set(false);
+      publishers.put(key, pub);
+
       ntInst.addListener(
           topic,
           EnumSet.of(NetworkTableEvent.Kind.kValueAll),
           event -> onDriveTopicEvent(key, event));
     });
+
+    // NEW: Subscribe to HTML client command topic
+    NetworkTable operatorUiTable = ntInst.getTable("OperatorUI");
+    StringTopic commandTopic = operatorUiTable.getStringTopic("Command");
+    
+    ntInst.addListener(
+        commandTopic,
+        EnumSet.of(NetworkTableEvent.Kind.kValueAll),
+        event -> onHtmlCommandEvent(event));
+
+    // NEW: HTTP server for HTML commands
+    try {
+      httpServer = HttpServer.create(new InetSocketAddress(5805), 0);
+      httpServer.createContext("/command", this::handleHttpCommand);
+      httpServer.setExecutor(Executors.newFixedThreadPool(2));
+      httpServer.start();
+      SmartLogger.logConsole("Touchscreen HTTP server started on port 5805");
+    } catch (Exception e) {
+      SmartLogger.logConsoleError("Failed to start HTTP server: " + e.getMessage());
+    }
 
     SmartLogger.logConsole("Touchscreen operator interface configured", "Touchscreen Ready", 5);
   }
@@ -105,6 +145,72 @@ public class TouchscreenInterface {
     }
 
     scheduleOperatorSmartDrive(key, target);
+  }
+
+  private void onHtmlCommandEvent(NetworkTableEvent event) {
+    if (event.valueData == null) return;
+
+    String pos;
+    try {
+      pos = event.valueData.value.getString();
+    } catch (Exception e) {
+      return;
+    }
+
+    if (pos == null || pos.isEmpty()) return;
+    if (pos.equals(lastCommandPosition)) return;
+    lastCommandPosition = pos;
+
+    SmartDriveTarget target = targets.get(pos);
+    if (target == null) {
+      SmartLogger.logConsole("[Touchscreen/HTML] Unknown position: " + pos);
+      return;
+    }
+
+    scheduleOperatorSmartDrive(pos, target);
+  }
+
+  private void handleHttpCommand(HttpExchange exchange) {
+    try {
+      if (!"POST".equals(exchange.getRequestMethod())) {
+        sendHttpResponse(exchange, 405, "Method Not Allowed");
+        return;
+      }
+
+      BufferedReader reader = new BufferedReader(new InputStreamReader(exchange.getRequestBody()));
+      String position = reader.readLine();
+      reader.close();
+
+      if (position == null || position.isEmpty()) {
+        sendHttpResponse(exchange, 400, "Missing position");
+        return;
+      }
+
+      SmartDriveTarget target = targets.get(position);
+      if (target == null) {
+        SmartLogger.logConsole("[Touchscreen/HTTP] Unknown position: " + position);
+        sendHttpResponse(exchange, 404, "Unknown position");
+        return;
+      }
+
+      scheduleOperatorSmartDrive(position, target);
+      sendHttpResponse(exchange, 200, "OK");
+    } catch (Exception e) {
+      try {
+        sendHttpResponse(exchange, 500, "Error");
+      } catch (Exception ignored) {}
+    }
+  }
+
+  private void sendHttpResponse(HttpExchange exchange, int code, String response) throws Exception {
+    // Add CORS header so browser does not block response
+    exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+    
+    byte[] bytes = response.getBytes();
+    exchange.sendResponseHeaders(code, bytes.length);
+    OutputStream os = exchange.getResponseBody();
+    os.write(bytes);
+    os.close();
   }
 
   private void scheduleOperatorSmartDrive(String key, SmartDriveTarget target) {

@@ -99,12 +99,19 @@ class NT4Client {
 
     handleAnnounce(params) {
         const { name, id, type, properties } = params;
+        console.log('[NT4] Announce:', name, 'ID:', id, 'Type:', type);
         this.topics.set(id, { name, type, properties });
+        
+        // Update any pending published topics with this ID
+        const pubInfo = this.publishedTopics.get(name);
+        if (pubInfo && pubInfo.topicId == null) {
+            pubInfo.topicId = id;
+            console.log('[NT4] Resolved topic ID for', name, ':', id);
+        }
         
         // Check if we have subscriptions for this topic
         this.subscriptions.forEach((sub, subId) => {
             if (this.topicMatchesPattern(name, sub.topics)) {
-                // Send subscription request
                 this.sendJson([{
                     method: 'subscribe',
                     params: {
@@ -128,36 +135,10 @@ class NT4Client {
     }
 
     processBinaryMessage(view) {
-        let offset = 0;
-        
-        while (offset < view.byteLength) {
-            // Read topic ID (int)
-            const topicId = view.getInt32(offset, true);
-            offset += 4;
-            
-            // Read timestamp (int64)
-            const timestamp = view.getBigInt64(offset, true);
-            offset += 8;
-            
-            // Read type info
-            const typeInfo = view.getInt32(offset, true);
-            offset += 4;
-            
-            const topic = this.topics.get(topicId);
-            if (!topic) continue;
-            
-            // Decode value based on type
-            const { value, bytesRead } = this.decodeValue(view, offset, topic.type);
-            offset += bytesRead;
-            
-            // Store value
-            this.values.set(topic.name, value);
-            
-            // Notify subscribers
-            if (this.onChange) {
-                this.onChange(topic.name, value, timestamp);
-            }
-        }
+        // We only publish via JSON setproperties, we do not consume binary updates
+        // Skip processing to avoid decode errors
+        console.log('[NT4] Ignoring binary message (not needed for publish-only client)');
+        return;
     }
 
     decodeValue(view, offset, type) {
@@ -263,10 +244,12 @@ class NT4Client {
         }
 
         if (!this.connected) {
+            console.warn('[NT4] Publish failed: not connected');
             return;
         }
 
         if (!pubInfo.announced) {
+            console.log('[NT4] Announcing topic:', topic);
             this.sendJson([{
                 method: 'publish',
                 params: {
@@ -277,80 +260,21 @@ class NT4Client {
                 }
             }]);
             pubInfo.announced = true;
-
-            // Topic ID comes from server announce; we will send values once it is known.
-            const found = Array.from(this.topics.entries()).find(([, t]) => t.name === topic);
-            if (found) {
-                pubInfo.topicId = found[0];
-            }
         }
 
-        // Refresh topicId if we did not have it yet
-        if (pubInfo.topicId == null) {
-            const found = Array.from(this.topics.entries()).find(([, t]) => t.name === topic);
-            if (found) {
-                pubInfo.topicId = found[0];
-            } else {
-                return;
+        // Use setproperties to publish value (JSON method, not binary)
+        console.log('[NT4] Publishing via setproperties:', topic, 'value:', value);
+        this.sendJson([{
+            method: 'setproperties',
+            params: {
+                name: topic,
+                update: {
+                    value: value
+                }
             }
-        }
-
-        this.sendBinaryValue(pubInfo.topicId, type, value);
+        }]);
     }
 
-    sendBinaryValue(topicId, type, value) {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            return;
-        }
-
-        // Frame format: int32 topicId, int64 timestamp, int32 typeInfo, value bytes
-        // typeInfo: currently unused by this client, send 0
-        const timestamp = BigInt(this.getServerTime());
-
-        let valueBytes;
-        let valueLen = 0;
-
-        if (type === 'boolean') {
-            valueLen = 1;
-            valueBytes = new Uint8Array(valueLen);
-            valueBytes[0] = value ? 1 : 0;
-        } else if (type === 'double') {
-            valueLen = 8;
-            valueBytes = new Uint8Array(valueLen);
-            new DataView(valueBytes.buffer).setFloat64(0, Number(value), true);
-        } else if (type === 'int') {
-            valueLen = 4;
-            valueBytes = new Uint8Array(valueLen);
-            new DataView(valueBytes.buffer).setInt32(0, Number(value) | 0, true);
-        } else if (type === 'string') {
-            const enc = new TextEncoder();
-            const strBytes = enc.encode(String(value));
-            valueLen = 4 + strBytes.length;
-            valueBytes = new Uint8Array(valueLen);
-            const dv = new DataView(valueBytes.buffer);
-            dv.setInt32(0, strBytes.length, true);
-            valueBytes.set(strBytes, 4);
-        } else {
-            // Unsupported type
-            return;
-        }
-
-        const buf = new ArrayBuffer(4 + 8 + 4 + valueLen);
-        const dv = new DataView(buf);
-        let off = 0;
-
-        dv.setInt32(off, topicId, true);
-        off += 4;
-        dv.setBigInt64(off, timestamp, true);
-        off += 8;
-        dv.setInt32(off, 0, true);
-        off += 4;
-
-        new Uint8Array(buf, off).set(valueBytes);
-
-        this.ws.send(buf);
-    }
-    
     disconnect() {
         if (this.ws) {
             this.ws.close();

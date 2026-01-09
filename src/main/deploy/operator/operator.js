@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  const ROBOT_ADDR = '10.51.42.2:5810';
+  const ROBOT_HTTP = 'http://10.51.42.2:5805';
   const CLICK_DEBOUNCE_MS = 200;
 
   const els = {
@@ -19,6 +21,7 @@
 
   const state = {
     lastClickMs: 0,
+    nt: null,
   };
 
   function nowMs() {
@@ -43,140 +46,71 @@
     return true;
   }
 
-  function reefIdFromPosition(pos) {
-    if (typeof pos !== 'string') return '';
-    const m = /_TAG_(\d+)$/.exec(pos);
-    return m ? m[1] : '';
-  }
-
-  function formatRequestLabel(name, args) {
-    if (!args || typeof args !== 'object') return name;
-
-    if (typeof args.tag === 'number') return `${name} (ID ${args.tag})`;
-
-    if (typeof args.position === 'string') {
-      const id = reefIdFromPosition(args.position);
-      if (id) return `${name} (ID ${id})`;
-      return `${name} (${args.position})`;
-    }
-
-    return name;
-  }
-
-  async function sendRequest(name, args) {
-    if (!window.opPanel || typeof window.opPanel.sendRequest !== 'function') {
-      setMessage('Bridge not ready');
-      return;
-    }
-    if (!canClick()) return;
-
-    try {
-      const res = await window.opPanel.sendRequest(name, args || null);
-      if (!res || !res.ok) {
-        setMessage(res && res.error ? String(res.error) : 'Request failed');
-        return;
+  function publishCommand(position) {
+    console.log('[HTTP] Sending command:', position);
+    fetch(ROBOT_HTTP + '/command', {
+      method: 'POST',
+      body: position
+    })
+    .then(res => {
+      if (res.ok) {
+        console.log('[HTTP] Command sent successfully');
+      } else {
+        console.warn('[HTTP] Command failed:', res.status);
       }
-      setMessage('Sent: ' + formatRequestLabel(name, args));
-    } catch {
-      setMessage('Send failed');
-    }
-  }
-
-  function bindClick(el, name, argsFactory) {
-    if (!el) return;
-    el.addEventListener('click', function () {
-      const args = typeof argsFactory === 'function' ? argsFactory(el) : null;
-      sendRequest(name, args);
+    })
+    .catch(err => {
+      console.error('[HTTP] Request failed:', err);
     });
   }
 
-  function safeParseJson(s) {
-    if (!s || typeof s !== 'string') return null;
-    try {
-      return JSON.parse(s);
-    } catch {
-      return null;
-    }
+  function sendReefRequest(position) {
+    if (!canClick()) return;
+    publishCommand(position);
+    setMessage('Sent: ' + position);
   }
 
-  function setElementVisible(el, visible) {
+  function sendProcessorRequest(position) {
+    if (!canClick()) return;
+    publishCommand(position);
+    setMessage('Sent: Processor');
+  }
+
+  function sendCoralStationRequest(position) {
+    if (!canClick()) return;
+    publishCommand(position);
+    setMessage('Sent: Coral Station');
+  }
+
+  function bindClick(el, handler) {
     if (!el) return;
-    el.style.display = visible ? '' : 'none';
-  }
-
-  function setElementEnabled(el, enabled) {
-    if (!el) return;
-    if ('disabled' in el) el.disabled = !enabled;
-    if (enabled) el.classList.remove('disabled');
-    else el.classList.add('disabled');
-  }
-
-  function applyUiModel(model) {
-    if (!model || typeof model !== 'object') return;
-
-    if (typeof model.enabled === 'boolean') setLightConnected(els.enabledLight, model.enabled);
-
-    const controls = model.controls && typeof model.controls === 'object' ? model.controls : null;
-    if (!controls) return;
-
-    const ids = Object.keys(controls);
-    for (let i = 0; i < ids.length; i += 1) {
-      const id = ids[i];
-      const c = controls[id];
-      if (!c || typeof c !== 'object') continue;
-
-      const el = document.getElementById(id);
-      if (!el) continue;
-
-      if (typeof c.visible === 'boolean') setElementVisible(el, c.visible);
-      if (typeof c.enabled === 'boolean') setElementEnabled(el, c.enabled);
-      if (typeof c.label === 'string') el.textContent = c.label;
-    }
-  }
-
-  function bindBridge() {
-    if (!window.opPanel) return;
-
-    if (typeof window.opPanel.onConnection === 'function') {
-      window.opPanel.onConnection(function (p) {
-        setLightConnected(els.connectionLight, !!(p && p.connected));
-      });
-    }
-
-    if (typeof window.opPanel.onUiModelUpdate === 'function') {
-      window.opPanel.onUiModelUpdate(function (p) {
-        const model = safeParseJson(p && p.json ? p.json : '');
-        if (model) applyUiModel(model);
-      });
-    }
-
-    if (typeof window.opPanel.onAck === 'function') {
-      window.opPanel.onAck(function (p) {
-        if (!p) return;
-        if (typeof p.seq === 'number') setMessage('Ack: ' + String(p.seq));
-      });
-    }
+    el.addEventListener('click', handler);
   }
 
   function bindUi() {
-    bindClick(els.orientField, 'orientToField', null);
-
-    bindClick(els.setReef17, 'setReefStart', function () {
-      return { tag: 17 };
+    bindClick(els.orientField, function () {
+      setMessage('Orient to field - not implemented via NT yet');
     });
 
-    bindClick(els.processor, 'goToProcessor', function (el) {
-      return { position: el.getAttribute('data-position') || '' };
+    bindClick(els.setReef17, function () {
+      setMessage('Set Reef 17 start - not implemented via NT yet');
     });
 
-    bindClick(els.coralStation, 'goToCoralStation', function (el) {
-      return { position: el.getAttribute('data-position') || '' };
+    bindClick(els.processor, function () {
+      const pos = els.processor.getAttribute('data-position') || '';
+      if (pos) sendProcessorRequest(pos);
+    });
+
+    bindClick(els.coralStation, function () {
+      const pos = els.coralStation.getAttribute('data-position') || '';
+      if (pos) sendCoralStationRequest(pos);
     });
 
     for (let i = 0; i < els.reefClickZones.length; i += 1) {
       const zone = els.reefClickZones[i];
-      bindClick(zone, 'selectReef', function (el) {
-        return { position: el.getAttribute('data-position') || '' };
+      bindClick(zone, function () {
+        const pos = zone.getAttribute('data-position') || '';
+        if (pos) sendReefRequest(pos);
       });
     }
 
@@ -188,10 +122,26 @@
     }
   }
 
+  function setupNt() {
+    state.nt = new NT4Client(ROBOT_ADDR, 'operator-panel');
+
+    state.nt.onConnect = function () {
+      setLightConnected(els.connectionLight, true);
+      setMessage('Connected');
+    };
+
+    state.nt.onDisconnect = function () {
+      setLightConnected(els.connectionLight, false);
+      setMessage('Disconnected - retrying...');
+    };
+
+    state.nt.connect();
+  }
+
   function init() {
-    setMessage('UI loaded');
+    setMessage('Connecting...');
     bindUi();
-    bindBridge();
+    setupNt();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
