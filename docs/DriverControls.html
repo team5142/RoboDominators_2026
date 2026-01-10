@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Controls - RoboDominators 5142</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 40px;
+            max-width: 900px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        h1 { color: #FF3333; text-align: center; margin-bottom: 10px; }
+        h2 { color: #8B0000; border-bottom: 3px solid #8B0000; padding-bottom: 10px; margin-top: 40px; }
+        h3 { color: #FF3333; margin-top: 25px; margin-bottom: 10px; }
+        
+        .control-group {
+            background: #2a2a2a;
+            border: 2px solid #8B0000;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+        }
+        
+        .control-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: #1a1a1a;
+            border-left: 4px solid #FF3333;
+            border-radius: 4px;
+        }
+        
+        .button-name {
+            color: #FF3333;
+            font-weight: bold;
+            font-size: 1.1em;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .function {
+            color: #fff;
+            margin-left: 20px;
+        }
+        
+        .notes {
+            color: #888;
+            font-size: 0.9em;
+            margin-left: 20px;
+            font-style: italic;
+        }
+        
+        .quick-ref {
+            background: #000;
+            border: 3px solid #8B0000;
+            padding: 20px;
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        @media print {
+            body { background: white; color: black; }
+            h1, h2, h3 { color: #8B0000; }
+            .control-group { border-color: #8B0000; background: #f5f5f5; }
+            .control-item { background: white; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 RoboDominators 5142 - Driver Controls</h1>
+    <p style="text-align: center; color: #888;">Robot: Lebron2 | Season: 2026 REEFSCAPE</p>
+
+    <h2>📍 Movement Controls</h2>
+    <div class="control-group">
+        <div class="control-item">
+            <span class="button-name">Left Stick (Y-Axis)</span>
+            <div class="function">Forward / Backward movement</div>
+            <div class="notes">Always field-relative (push "up" moves away from driver wall)</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Left Stick (X-Axis)</span>
+            <div class="function">Left / Right strafing</div>
+            <div class="notes">Always field-relative</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Right Stick (X-Axis)</span>
+            <div class="function">Robot rotation (turning)</div>
+            <div class="notes">Continuous rotation control</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Right Bumper (Hold)</span>
+            <div class="function">Slow Mode (Precision driving)</div>
+            <div class="notes">Reduces speed for fine control near scoring positions</div>
+        </div>
+    </div>
+
+    <h2>🧭 Heading Snap Controls</h2>
+    <div class="control-group">
+        <h3>D-Pad Buttons (Hold to maintain heading)</h3>
+        
+        <div class="control-item">
+            <span class="button-name">D-Pad UP</span>
+            <div class="function">Snap to 0° (Face away from driver)</div>
+            <div class="notes">Still allows translation with left stick while held</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">D-Pad RIGHT</span>
+            <div class="function">Snap to -90° (Face right)</div>
+            <div class="notes">Still allows translation with left stick while held</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">D-Pad DOWN</span>
+            <div class="function">Snap to 180° (Face toward driver)</div>
+            <div class="notes">Still allows translation with left stick while held</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">D-Pad LEFT</span>
+            <div class="function">Snap to 90° (Face left)</div>
+            <div class="notes">Still allows translation with left stick while held</div>
+        </div>
+    </div>
+
+    <h2>🚗 Autonomous Navigation</h2>
+    <div class="control-group">
+        <h3>Face Buttons (Hold to drive, release to stop)</h3>
+        
+        <div class="control-item">
+            <span class="button-name">Y Button (Yellow)</span>
+            <div class="function">Auto-drive to Blue Reef Tag 17</div>
+            <div class="notes">Uses PathPlanner on-the-fly path generation</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">B Button (Red)</span>
+            <div class="function">Auto-drive to Processor Position</div>
+            <div class="notes">Release button immediately stops robot</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">A Button (Green)</span>
+            <div class="function">Auto-drive to Intake Position</div>
+            <div class="notes">Release button immediately stops robot</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">X Button (Blue) - Press Once</span>
+            <div class="function">Save Current Position</div>
+            <div class="notes">Stores current location for later navigation</div>
+        </div>
+    </div>
+
+    <h2>⚙️ Utility Controls</h2>
+    <div class="control-group">
+        <div class="control-item">
+            <span class="button-name">Back Button - Press Once</span>
+            <div class="function">Reset Gyro / Field Orientation</div>
+            <div class="notes">Makes current robot direction = 0° on field</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Start Button - Press Once</span>
+            <div class="function">Set Starting Pose (Reef Tag 17)</div>
+            <div class="notes">Use before autonomous starts - tells robot where it is</div>
+        </div>
+    </div>
+
+    <h2>🔮 Reserved / Future Controls</h2>
+    <div class="control-group">
+        <div class="control-item">
+            <span class="button-name">Left Trigger</span>
+            <div class="function">⏳ Reserved for Vision Alignment</div>
+            <div class="notes">Future: Auto-align with nearest AprilTag</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Right Trigger</span>
+            <div class="function">⏳ Reserved for Auto-Intake</div>
+            <div class="notes">Future: Detect and automatically pick up game pieces</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Left Bumper</span>
+            <div class="function">🔓 Unassigned</div>
+            <div class="notes">Available for future use</div>
+        </div>
+    </div>
+
+    <h2>💡 Driving Tips</h2>
+    <div class="control-group">
+        <div class="control-item">
+            <span class="button-name">Field-Relative Driving</span>
+            <div class="function">Left stick movement is ALWAYS relative to the field, not the robot</div>
+            <div class="notes">Push stick "up" and robot moves toward opposite alliance wall, regardless of robot orientation</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Precision Mode</span>
+            <div class="function">Hold RIGHT BUMPER when lining up for scoring</div>
+            <div class="notes">Slower movement = more accurate positioning</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Quick 180°</span>
+            <div class="function">Press D-PAD DOWN to instantly face backwards</div>
+            <div class="notes">Useful when you need to reverse direction quickly</div>
+        </div>
+        
+        <div class="control-item">
+            <span class="button-name">Save Good Positions</span>
+            <div class="function">When you find a perfect scoring spot, press X to save it</div>
+            <div class="notes">Can drive back to saved positions later with face buttons</div>
+        </div>
+    </div>
+
+    <h2>🖨️ Quick Reference Card</h2>
+    <div class="quick-ref">
+<pre style="color: #FF3333;">
+═══════════════════════════════════════════════════════════════
+  ROBODOMINATORS 5142 - DRIVER QUICK REFERENCE
+═══════════════════════════════════════════════════════════════
+
+MOVEMENT
+  Left Stick    → Move robot (field-relative)
+  Right Stick   → Rotate robot
+  Right Bumper  → SLOW MODE (precision)
+
+HEADING SNAP (Hold)
+  D-Pad UP      → Face 0° (away from driver)
+  D-Pad RIGHT   → Face -90° (right)
+  D-Pad DOWN    → Face 180° (toward driver)
+  D-Pad LEFT    → Face 90° (left)
+
+AUTO NAVIGATION (Hold to drive)
+  Y Button      → Drive to Reef Tag 17
+  B Button      → Drive to Processor
+  A Button      → Drive to Intake
+  X Button      → Save current position
+
+UTILITY (Press once)
+  Back Button   → Reset gyro heading
+  Start Button  → Set starting pose (before auto!)
+
+═══════════════════════════════════════════════════════════════
+</pre>
+    </div>
+
+    <p style="text-align: center; color: #666; margin-top: 60px;">
+        Last Updated: January 2026 | Team 5142 RoboDominators<br>
+        <em>Print this page (Ctrl+P) for a laminated driver station reference</em>
+    </p>
+</body>
+</html>

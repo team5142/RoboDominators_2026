@@ -1,0 +1,124 @@
+<!-- ...existing code from controller.html... -->
+
+    <script src="nt4.js"></script>
+    <script>
+        // ES5-compatible version for Android 7
+        function TabletController() {
+            var self = this;
+            this.nt = null;
+            this.activeHeading = null;
+            this.buttons = {
+                up: document.getElementById('btn-up'),
+                right: document.getElementById('btn-right'),
+                down: document.getElementById('btn-down'),
+                left: document.getElementById('btn-left')
+            };
+            this.statusEl = document.getElementById('status');
+            this.headingValueEl = document.getElementById('heading-value');
+            
+            this.initNetworkTables();
+            this.initButtons();
+        }
+
+        TabletController.prototype.initNetworkTables = function() {
+            var self = this;
+            this.nt = new NT4Client('10.51.42.2:5810', 'TabletController');
+            
+            this.nt.onConnect = function() {
+                console.log('Connected to robot');
+                self.statusEl.textContent = 'Connected';
+                self.statusEl.classList.add('connected');
+                self.publishHeading();
+            };
+            
+            this.nt.onDisconnect = function() {
+                console.log('Disconnected');
+                self.statusEl.textContent = 'Disconnected';
+                self.statusEl.classList.remove('connected');
+            };
+            
+            this.nt.connect();
+        };
+
+        TabletController.prototype.initButtons = function() {
+            var self = this;
+            var buttons = Object.keys(this.buttons);
+            
+            for (var i = 0; i < buttons.length; i++) {
+                var key = buttons[i];
+                var button = this.buttons[key];
+                
+                // Touch events
+                button.addEventListener('touchstart', function(e) {
+                    e.preventDefault();
+                    self.handleButtonPress(this);
+                }.bind(button));
+                
+                // Click events for testing
+                button.addEventListener('click', function() {
+                    self.handleButtonPress(this);
+                }.bind(button));
+            }
+        };
+
+        TabletController.prototype.handleButtonPress = function(button) {
+            var heading = parseFloat(button.getAttribute('data-heading'));
+            
+            if (this.activeHeading === heading) {
+                this.setHeading(null);
+            } else {
+                this.setHeading(heading);
+            }
+        };
+
+        TabletController.prototype.setHeading = function(heading) {
+            var buttons = Object.keys(this.buttons);
+            
+            // Remove active class from all buttons
+            for (var i = 0; i < buttons.length; i++) {
+                this.buttons[buttons[i]].classList.remove('active');
+            }
+            
+            this.activeHeading = heading;
+            
+            if (heading !== null) {
+                // Find and activate button
+                for (var i = 0; i < buttons.length; i++) {
+                    var btn = this.buttons[buttons[i]];
+                    if (parseFloat(btn.getAttribute('data-heading')) === heading) {
+                        btn.classList.add('active');
+                        break;
+                    }
+                }
+                
+                this.headingValueEl.textContent = heading + '°';
+            } else {
+                this.headingValueEl.textContent = 'NONE';
+            }
+            
+            this.publishHeading();
+            
+            // Haptic feedback
+            if (navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        };
+
+        TabletController.prototype.publishHeading = function() {
+            if (!this.nt || !this.nt.connected) return;
+            
+            var value = this.activeHeading !== null ? this.activeHeading : -1;
+            console.log('Publishing /Tablet/TargetHeading: ' + value);
+            
+            // Publish to NetworkTables
+            this.nt.publish('/Tablet/TargetHeading', 'double', value);
+        };
+
+        // Initialize on page load
+        var controller;
+        document.addEventListener('DOMContentLoaded', function() {
+            controller = new TabletController();
+        });
+    </script>
+</body>
+</html>
