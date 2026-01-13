@@ -53,6 +53,8 @@ public class RobotContainer {
   final PoseEstimatorSubsystem poseEstimator;
   final TagVisionSubsystem tagVisionSubsystem;
   public final LEDSubsystem ledSubsystem;
+  final ShooterSubsystem shooterSubsystem; // NEW: Make it a field
+  final TurretSubsystem turretSubsystem;   // NEW: Add turret subsystem
 
   // Autonomous
   private final SendableChooser<Command> autoChooser;
@@ -78,7 +80,15 @@ public class RobotContainer {
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
     tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
     ledSubsystem = new LEDSubsystem(this.robotState, tagVisionSubsystem);
-
+    
+    // Initialize shooter and turret subsystems
+    shooterSubsystem = new ShooterSubsystem();
+    shooterSubsystem.setPoseEstimator(poseEstimator);
+    
+    turretSubsystem = new TurretSubsystem();
+    turretSubsystem.setPoseEstimator(poseEstimator);
+    turretSubsystem.setShooter(shooterSubsystem);
+    
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
     
     if (COMPETITION_MODE) {
@@ -89,8 +99,8 @@ public class RobotContainer {
     SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav);
     
     configurePathPlanner();
-    registerSmartDriveEvents(); // Register PathPlanner event markers
-    configureDefaultCommands();
+    registerSmartDriveEvents();
+    configureDefaultCommands(); // This will set turret auto-tracking
     configureButtonBindings();
     
     if (USE_TOUCHSCREEN_OPERATOR) {
@@ -146,6 +156,9 @@ public class RobotContainer {
             () -> -driverController.getRightX(),
             () -> true,
             () -> driverController.getLeftBumper()));
+    
+    // Turret continuously tracks hub when in shooting zone
+    turretSubsystem.setDefaultCommand(turretSubsystem.createAutoTrackCommand());
   }
 
   // Map controller buttons to commands

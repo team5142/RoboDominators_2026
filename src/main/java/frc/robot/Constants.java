@@ -145,6 +145,11 @@ public final class Constants {
       config.MagnetSensor.SensorDirection = SensorDirectionValue.CounterClockwise_Positive;
       return config;
     }
+    
+    // Robot frame dimensions (bumpers included) - UPDATE WHEN FINAL ROBOT BUILT
+    public static final double ROBOT_LENGTH_METERS = Units.inchesToMeters(32.0); // Front bumper to back bumper
+    public static final double ROBOT_WIDTH_METERS = Units.inchesToMeters(28.0);  // Side to side
+    public static final double BUMPER_THICKNESS_METERS = Units.inchesToMeters(3.25); // Per FRC rules
   }
 
   // Vision cameras for AprilTag pose estimation and object detection
@@ -348,6 +353,54 @@ public final class Constants {
     public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
+    
+    // BLUE ALLIANCE HUB (top-loading goal - shoot from driver station side only)
+    // X=181.5", Y=158.3" from blue alliance origin (0,0)
+    public static final Pose2d BLUE_HUB_CENTER = new Pose2d(
+        Units.inchesToMeters(181.5),  // 4.61m downfield from blue origin
+        Units.inchesToMeters(158.3),  // 4.02m across from blue origin
+        Rotation2d.fromDegrees(0));   // No facing constraint (top-load)
+    
+    // Shooting zone boundary (robot bumper must stay at or before this X coordinate)
+    // Rules allow robot to extend past line as long as part of bumper frame stays legal
+    public static final double SHOOTING_ZONE_MAX_X_INCHES = 156.06;
+    public static final double SHOOTING_ZONE_MAX_X_METERS = Units.inchesToMeters(156.06); // 3.964m
+    
+    // Effective shooting zone accounting for robot length (robot center can be farther)
+    // Add half robot length to allow front bumper to touch/cross line while center stays back
+    public static final double EFFECTIVE_SHOOTING_ZONE_MAX_X_METERS = 
+        SHOOTING_ZONE_MAX_X_METERS + (Swerve.ROBOT_LENGTH_METERS / 2.0); // TODO: Update when final robot built
+    
+    // Hub geometry (replaces generic "target")
+    public static final double HUB_HEIGHT_INCHES = 72.0; // 6ft off ground
+    public static final double HUB_OPENING_WIDTH_INCHES = 41.0;
+    
+    // Actual shooting zone geometry (based on field rules)
+    // Minimum distance: Hub X (181.5") - Zone Max (156.06") = 25.44" = 2.12 feet
+    // Maximum distance: Zone Max (156.06") from alliance wall = 13.0 feet
+    public static final double MIN_SHOT_DISTANCE_FEET = 2.12; // Closest legal shot (just inside zone boundary)
+    public static final double MAX_SHOT_DISTANCE_FEET = 13.0; // Farthest shot (back of zone at alliance wall)
+    
+    // Safe shooting position (stays in zone, centered on hub Y)
+    public static final Pose2d BLUE_HUB_SAFE_SHOOTING_POS = new Pose2d(
+        Units.inchesToMeters(150.0),  // 6" buffer from zone boundary
+        Units.inchesToMeters(158.3),  // Aligned with hub Y
+        Rotation2d.fromDegrees(0));   // Face downfield toward hub
+
+    // BLUE ALLIANCE PASSING TARGETS (for fuel collection in neutral zone)
+    // Pass fuel deep into alliance area to avoid boundary penalties
+    public static final Pose2d BLUE_PASS_TARGET_RIGHT_SIDE = new Pose2d(
+        1.5,  // Mid-depth in alliance (3.964m boundary - 1.5m = 2.46m safety buffer)
+        2.0,  // Right side of alliance area (Y < 4.0m)
+        Rotation2d.fromDegrees(0));  // Facing downfield
+    
+    public static final Pose2d BLUE_PASS_TARGET_LEFT_SIDE = new Pose2d(
+        1.5,  // Same X as right side (consistent depth)
+        6.0,  // Left side of alliance area (Y > 4.0m)
+        Rotation2d.fromDegrees(0));  // Facing downfield
+    
+    // Y-axis threshold to switch between right/left passing targets
+    public static final double PASS_TARGET_Y_THRESHOLD = 4.0; // Middle of field width
   }
 
   // AutoPilot precision navigation library (singleton instances)
@@ -380,5 +433,76 @@ public final class Constants {
     public static final double DEFAULT_MAX_JERK = 4.0;
     public static final double DEFAULT_ERROR_XY_METERS = 0.05;
     public static final double DEFAULT_ERROR_THETA_DEGREES = 2.0;
+  }
+
+  // Shooter subsystem constants
+  public static final class Shooter {
+    // Turret hardware
+    public static final int TURRET_MOTOR_ID = 24;
+    public static final int TURRET_CANCODER_ID = 25;
+    public static final double TURRET_CANCODER_OFFSET = 0.102;
+    public static final String SHOOTER_CAN_BUS = "Canivore";
+    
+    // Turret limits (hard stops)
+    public static final double TURRET_MIN_ANGLE_DEG = -180.0;
+    public static final double TURRET_MAX_ANGLE_DEG = 180.0;
+    public static final double TURRET_GEAR_RATIO = 180.0; // 180:1 reduction
+    
+    // Flywheel hardware
+    public static final int LEFT_FLYWHEEL_ID = 22;
+    public static final int RIGHT_FLYWHEEL_ID = 23;
+    public static final double FLYWHEEL_GEAR_RATIO = 1.5; // 1.5:1 overdrive
+    public static final double FLYWHEEL_DIAMETER_INCHES = 6.0;
+    
+    // Fixed shooter angle (measured from horizontal)
+    public static final double SHOOTER_ANGLE_DEG = 45.0;
+    public static final double SHOOTER_HEIGHT_INCHES = 26.0;
+    
+    // Target geometry
+    public static final double TARGET_HEIGHT_INCHES = 72.0; // 6ft off ground
+    public static final double TARGET_OPENING_WIDTH_INCHES = 41.0;
+    public static final double MIN_SHOT_DISTANCE_FEET = 5.0;
+    public static final double MAX_SHOT_DISTANCE_FEET = 20.0;
+    
+    // Flywheel speed targets (high throughput mode)
+    public static final double IDLE_RPM = 500.0;
+    public static final double SHOOTING_RPM = 3500.0;
+    public static final double MAX_RPM = 6000.0;
+    public static final double RPM_TOLERANCE = 50.0;
+    
+    // PID gains (tune via Phoenix Tuner characterization)
+    public static final double TURRET_KP = 24.0;
+    public static final double TURRET_KI = 0.0;
+    public static final double TURRET_KD = 1.5;
+    public static final double TURRET_KS = 0.1;
+    public static final double TURRET_KV = 0.12;
+    
+    public static final double FLYWHEEL_KP = 0.5;
+    public static final double FLYWHEEL_KI = 0.0;
+    public static final double FLYWHEEL_KD = 0.0;
+    public static final double FLYWHEEL_KS = 0.2;
+    public static final double FLYWHEEL_KV = 0.115;
+    
+    // Safety limits
+    public static final double TURRET_MAX_VELOCITY_DEG_PER_SEC = 180.0;
+    public static final double TURRET_MAX_ACCEL_DEG_PER_SEC2 = 360.0;
+    
+    // Current limits
+    public static final double TURRET_CURRENT_LIMIT_AMPS = 40.0;
+    public static final double FLYWHEEL_CURRENT_LIMIT_AMPS = 80.0;
+    
+    // Ballistics constants (for BallisticsCalculator)
+    public static final double BALL_MASS_KG = 0.227; // 0.5 lbs game piece
+    public static final double GRAVITY_MPS2 = 9.81; // Earth gravity
+    public static final double AIR_RESISTANCE_COEFF = 0.0; // Ignore for now (tune later if needed)
+    
+    // Timing constants
+    public static final double MAX_FLIGHT_TIME_SECONDS = 1.5; // Max expected flight time
+    public static final double FLYWHEEL_SPIN_UP_TIME_SECONDS = 0.5; // Time to reach target RPM
+    public static final double TURRET_AIM_TOLERANCE_DEG = 2.0; // Acceptable aiming error
+    
+    // Motion limits for shooting
+    public static final double MAX_SHOOTING_VELOCITY_MPS = 3.0; // Don't shoot above 3 m/s robot speed
+    public static final double MAX_SHOOTING_ANGULAR_VEL_RAD_PER_SEC = 1.0; // Don't shoot while spinning fast
   }
 }
