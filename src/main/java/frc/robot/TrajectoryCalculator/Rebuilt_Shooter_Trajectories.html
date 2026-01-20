@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FRC REBUILT – Shooter Sim (Scoring / Passing)</title>
+  <style>
+    :root{
+      --bg:#0b0f17; --panel:#121a27; --panel2:#0f1622; --text:#e7eefc; --muted:#9bb0d1;
+      --accent:#7cc3ff; --accent2:#7dffb0; --warn:#ffcc66; --bad:#ff6b6b; --grid:#22314a;
+      --line:#2a3a55;
+    }
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;}
+    .wrap{display:grid; grid-template-columns: 410px 1fr; gap:14px; padding:14px; box-sizing:border-box; height:100vh;}
+    .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px; overflow:auto; max-height:calc(100vh - 28px);}
+    .panel h2{margin:0 0 10px 0; font-size:14px; letter-spacing:.4px; color:var(--muted); font-weight:700; text-transform:uppercase;}
+    .row{display:flex; gap:10px; align-items:center;}
+    .row + .row{margin-top:10px;}
+    .col{flex:1;}
+    label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+    input[type="range"]{width:100%;}
+    input, select, button{
+      background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:10px;
+      padding:8px 10px; font-size:13px; outline:none;
+    }
+    input[type="number"]{width:100%;}
+    button{cursor:pointer; transition:transform .04s ease, border-color .15s ease;}
+    button:hover{border-color:#3e567d;}
+    button:active{transform:translateY(1px);}
+    .seg{display:flex; gap:8px; margin-bottom:10px;}
+    .seg button{flex:1; font-weight:700;}
+    .seg button.active{border-color:var(--accent); box-shadow:0 0 0 2px rgba(124,195,255,.12) inset;}
+    .pill{display:inline-flex; gap:8px; align-items:center; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.04); border:1px solid var(--line); font-size:12px; color:var(--muted);}
+    .pill b{color:var(--text); font-weight:800;}
+    .kpis{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
+    .btnRow{display:flex; gap:8px; flex-wrap:wrap;}
+    .btnRow button{flex:1;}
+    .canvasPanel{position:relative; background:linear-gradient(180deg, #0b1020 0%, #060a12 100%); border-radius:14px; border:1px solid var(--line); overflow:hidden; height:calc(100vh - 28px);}
+    canvas{display:block; width:100%; height:100%;}
+    .overlay{
+      position:absolute; left:12px; top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+      pointer-events:none;
+    }
+    .legend{position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:6px; pointer-events:none;}
+    .legend .pill{justify-content:space-between; min-width:220px;}
+    .muted{color:var(--muted);}
+    .small{font-size:12px;}
+    .bad{color:var(--bad);}
+    .warn{color:var(--warn);}
+    .good{color:var(--accent2);}
+    .hr{height:1px; background:var(--line); margin:12px 0;}
+    .readonly{opacity:.95;}
+    details{border:1px solid var(--line); border-radius:12px; padding:8px 10px; background:rgba(255,255,255,.02);}
+    details summary{cursor:pointer; color:var(--muted); font-weight:700; list-style:none;}
+    details summary::-webkit-details-marker{display:none;}
+    .topControls{display:flex; flex-direction:column; gap:10px;}
+    .radioGroup{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .radioGroup label{margin:0; display:flex; gap:6px; align-items:center; font-size:12px; color:var(--muted);}
+    .radioGroup input{accent-color:#7cc3ff;}
+    .fsBtn{position:absolute; left:12px; bottom:12px; z-index:5;}
+    .fsBtn button{pointer-events:auto;}
+    .tickLabel{font-size:11px; fill:rgba(231,238,252,0.55);}
+  </style>
+</head>
+<body>
+<div class="wrap" id="root">
+  <div class="panel" id="controlPanel">
+    <h2>Mode</h2>
+    <div class="seg">
+      <button id="btnScoring" class="active">Scoring</button>
+      <button id="btnPassing">Passing</button>
+    </div>
+
+    <!-- Top controls order: Distance, RPM, Angle, Robot Height -->
+    <div class="topControls">
+      <div class="row readonly">
+        <div class="col">
+          <label>Distance d (m)</label>
+          <input id="distD" type="number" step="0.01" value="0" disabled />
+        </div>
+        <div class="col">
+          <label>Target</label>
+          <input id="whichTarget" type="text" value="—" disabled />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Wheel RPM</label>
+          <input id="wheelRPM" type="range" min="0" max="8000" step="1" value="2388" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="wheelRPMNum" type="number" step="1" value="2388" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <div class="radioGroup">
+            <span class="muted small" style="min-width:90px;">RPM lock</span>
+            <label><input type="radio" name="rpmLock" id="rpmLocked" value="locked" checked> Locked</label>
+            <label><input type="radio" name="rpmLock" id="rpmAuto" value="auto"> Auto</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Angle (deg)</label>
+          <input id="angle" type="range" min="10" max="85" step="0.1" value="54" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="angleNum" type="number" step="0.1" value="54" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <div class="radioGroup">
+            <span class="muted small" style="min-width:90px;">Angle lock</span>
+            <label><input type="radio" name="angLock" id="angLocked" value="locked" checked> Locked</label>
+            <label><input type="radio" name="angLock" id="angAuto" value="auto"> Auto</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Robot height / release height</label>
+          <select id="relH">
+            <option value="0.5588" selected>22 in (0.5588 m)</option>
+            <option value="0.7620" >30 in (0.7620 m)</option>
+          </select>
+        </div>
+        <div class="col readonly">
+          <label>Release height (m)</label>
+          <input id="relHNum" type="number" step="0.0001" value="0.5588" disabled />
+        </div>
+      </div>
+    </div>
+
+    <div class="hr"></div>
+    <h2>Robot placement</h2>
+
+    <div class="row">
+      <div class="col">
+        <label id="lblRobotX">Robot X (m)</label>
+        <input id="robotX" type="range" min="0" max="3.9" step="0.01" value=".66" />
+      </div>
+      <div style="width:120px;">
+        <label>&nbsp;</label>
+        <input id="robotXNum" type="number" step="0.01" value=".66" />
+      </div>
+    </div>
+
+    <div class="hr"></div>
+    <h2>Actions</h2>
+
+    <div class="row">
+      <div class="btnRow" style="width:100%;">
+        <button id="findRpm">Solve (respect locks)</button>
+        <button id="presetScoring">Scoring preset</button>
+        <button id="presetPassing">Passing preset</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="btnRow" style="width:100%;">
+        <button id="playPause">Play</button>
+        <button id="resetAnim">Reset</button>
+      </div>
+    </div>
+
+    <details id="advanced" open>
+      <summary>Advanced (motor / drag / wheel / efficiency)</summary>
+      <div class="hr"></div>
+
+      <div class="row">
+        <div class="col">
+          <label>Motor (free speed)</label>
+          <select id="motor">
+            <option value="5676">REV NEO (5676 rpm)</option>
+            <option value="7500">KRAKEN X44 (7500 rpm)</option>
+            <option value="6380">CTRE Falcon 500 / TalonFX (6380 rpm)</option>
+            <option value="6000" selected>Kraken X60 (6000 rpm)</option>
+            <option value="11000">REV NEO 550 (11000 rpm)</option>
+          </select>
+        </div>
+        <div class="col">
+          <label>Gear ratio (motor : wheel)</label>
+          <input id="gear" type="number" step="0.01" value="1.00" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Air resistance (0..0.30)</label>
+          <input id="air" type="range" min="0" max="0.30" step="0.005" value="0.05" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="airNum" type="number" step="0.005" value="0.05" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Wheel radius (m)</label>
+          <input id="wheelR" type="range" min="0.02" max="0.10" step="0.001" value="0.0381" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="wheelRNum" type="number" step="0.001" value="0.0381" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Efficiency (0.1..1.0)</label>
+          <input id="eff" type="range" min="0.10" max="1.00" step="0.01" value="0.80" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="effNum" type="number" step="0.01" value="0.80" />
+        </div>
+      </div>
+    </details>
+
+    <div class="kpis">
+      <span class="pill"><span>Goal y</span> <b id="kGoalH">1.8288m</b></span>
+      <span class="pill"><span>y@target</span> <b id="kYAt">—</b></span>
+      <span class="pill"><span>error</span> <b id="kErr">—</b></span>
+      <span class="pill"><span>apex</span> <b id="kApex">—</b></span>
+      <span class="pill"><span>flight</span> <b id="kTflight">—</b></span>
+      <span class="pill"><span>motor rpm</span> <b id="kMotorRpm">—</b></span>
+      <span class="pill"><span>clamp</span> <b id="kClamp">—</b></span>
+    </div>
+
+    <div class="hr"></div>
+    <div class="small muted">
+      <div><b>Geometry:</b> wall x=0 (4m tall). Passing ground target centered x=2.0m. Scoring tower base spans x=4.0..5.2. Scoring opening at y=1.8288m, width 1.0414m centered at x=4.6.</div>
+      <div><b>Ball:</b> diameter 6in = 0.1524m (drawn to scale).</div>
+    </div>
+  </div>
+
+  <div class="canvasPanel" id="canvasPanel">
+    <canvas id="cv"></canvas>
+
+    <div class="overlay" id="overlayTop">
+      <span class="pill"><span>Mode</span> <b id="ovMode">Scoring</b></span>
+      <span class="pill"><span>Robot</span> <b id="ovRobot">x=1.00m</b></span>
+      <span class="pill"><span>d</span> <b id="ovD">—</b></span>
+      <span class="pill"><span>Angle</span> <b id="ovAng">75°</b></span>
+      <span class="pill"><span>Wheel</span> <b id="ovWheel">2500 rpm</b></span>
+      <span class="pill"><span>Height</span> <b id="ovH">0.762m</b></span>
+    </div>
+
+    <div class="legend">
+      <span class="pill"><span>Scoring opening</span><b style="color:var(--accent);">y=1.8288m</b></span>
+      <span class="pill"><span>Wall</span><b style="color:var(--warn);">x=0</b></span>
+      <span class="pill"><span>Ball dia</span><b style="color:rgba(255,215,0,0.95);">6in</b></span>
+    </div>
+
+    <div class="fsBtn">
+      <button id="toggleFS">Fullscreen</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ------------------------------------------------------------
+  // Fixed geometry (meters) with your latest corrections
+  // ------------------------------------------------------------
+  const WALL_X = 0.0;
+  const WALL_H = 4.0;                 // updated (was 3ft)
+  const FIELD_MAX_X = 16.0;
+
+  // Passing target (ground) centered at 2.0m, width 33cm (0.33m)
+  const X_PASS = 2.0;
+  const PASS_W = 0.33;
+  const PASS_SPAN = [X_PASS - PASS_W/2, X_PASS + PASS_W/2];
+
+  // Scoring tower base spans [4.0..5.2] (width 1.2m), opening is at y=72in and 41in wide centered at x=4.6
+  const SCORE_BASE = [4.0, 5.2];
+  const X_SCORE_OPEN = (SCORE_BASE[0] + SCORE_BASE[1]) / 2; // 4.6
+  const GOAL_Y = 1.8288;             // 72 in
+  const GOAL_W = 1.0414;             // 41 in
+  const SCORE_OPEN_SPAN = [X_SCORE_OPEN - GOAL_W/2, X_SCORE_OPEN + GOAL_W/2];
+
+  // Ball diameter (6 inches)
+  const BALL_D = 0.1524;
+  const BALL_R = BALL_D / 2;
+
+  // Modes
+  const Mode = { SCORING: 'SCORING', PASSING: 'PASSING' };
+  let mode = Mode.SCORING;
+  let lastMode  = mode;
+
+  // ------------------------------------------------------------
+  // UI handles
+  // ------------------------------------------------------------
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+
+  const root = document.getElementById('root');
+  const controlPanel = document.getElementById('controlPanel');
+  const canvasPanel = document.getElementById('canvasPanel');
+
+  const btnScoring = document.getElementById('btnScoring');
+  const btnPassing = document.getElementById('btnPassing');
+
+  const APEX_LIMIT_PASS = 2.5; // meters
+  const ROBOT_W = 0.6; // meters (must match drawRobot)
+
+
+  const robotX = document.getElementById('robotX');
+  const robotXNum = document.getElementById('robotXNum');
+  const distD = document.getElementById('distD');
+  const whichTarget = document.getElementById('whichTarget');
+
+  const wheelRPM = document.getElementById('wheelRPM');
+  const wheelRPMNum = document.getElementById('wheelRPMNum');
+  const angle = document.getElementById('angle');
+  const angleNum = document.getElementById('angleNum');
+
+  const rpmLocked = document.getElementById('rpmLocked');
+  const rpmAuto = document.getElementById('rpmAuto');
+  const angLocked = document.getElementById('angLocked');
+  const angAuto = document.getElementById('angAuto');
+
+  const relH = document.getElementById('relH');
+  const relHNum = document.getElementById('relHNum');
+
+  const motor = document.getElementById('motor');
+  const gear = document.getElementById('gear');
+  const air = document.getElementById('air');
+  const airNum = document.getElementById('airNum');
+  const wheelR = document.getElementById('wheelR');
+  const wheelRNum = document.getElementById('wheelRNum');
+  const eff = document.getElementById('eff');
+  const effNum = document.getElementById('effNum');
+
+  const findRpm = document.getElementById('findRpm');
+  const presetScoring = document.getElementById('presetScoring');
+  const presetPassing = document.getElementById('presetPassing');
+  const playPause = document.getElementById('playPause');
+  const resetAnim = document.getElementById('resetAnim');
+  const toggleFS = document.getElementById('toggleFS');
+
+  // KPIs
+  const kYAt = document.getElementById('kYAt');
+  const kErr = document.getElementById('kErr');
+  const kApex = document.getElementById('kApex');
+  const kTflight = document.getElementById('kTflight');
+  const kMotorRpm = document.getElementById('kMotorRpm');
+  const kClamp = document.getElementById('kClamp');
+
+  // overlay pills
+  const ovMode = document.getElementById('ovMode');
+  const ovRobot = document.getElementById('ovRobot');
+  const ovD = document.getElementById('ovD');
+  const ovAng = document.getElementById('ovAng');
+  const ovWheel = document.getElementById('ovWheel');
+  const ovH = document.getElementById('ovH');
+
+  // ------------------------------------------------------------
+  // Simulation state
+  // ------------------------------------------------------------
+  let simCache = null;  // {points:[{x,y,t}], apexY, yAtTarget, tAtTarget, crossed}
+let anim = {
+  playing: false,
+  t: 0,
+  tMax: 0,
+  shots: [],      // array of start times for each ball
+  spacing: 0.125  // 1/8 second
+};
+
+
+  // ------------------------------------------------------------
+  // Helpers
+  // ------------------------------------------------------------
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+  function fmt(n, d=2){ return Number.isFinite(n) ? n.toFixed(d) : '—'; }
+
+  function getTargetDesc(){
+    if (mode === Mode.SCORING) return `Scoring opening @ x=${X_SCORE_OPEN.toFixed(2)}m, y=1.8288m`;
+    return `Passing ground target @ x=${X_PASS.toFixed(2)}m`;
+  }
+
+ function getRobotXRange(){
+  const half = ROBOT_W / 2;
+
+  if (mode === Mode.SCORING){
+    // scoring zone body must stay within [0, 4.0]
+    // and cannot overlap the tower base [4.0, 5.2], so right edge must be <= 4.0
+    const zoneMin = 0.0;
+    const zoneMax = SCORE_BASE[0]; // 4.0 (tower start)
+
+    return [zoneMin + half, zoneMax - half];
+  } else {
+    // passing zone body must stay within [5.2, 16.0]
+    const zoneMin = 5.2;
+    const zoneMax = FIELD_MAX_X;
+
+    // Also keep it from overlapping the tower base [4.0,5.2] automatically via zoneMin
+    return [zoneMin + half, zoneMax - half];
+  }
+}
+
+function updateAnimTMax(){
+  const flightT = simCache?.points?.at(-1)?.t || 0;
+  const lastShot = (anim.shots && anim.shots.length) ? anim.shots[anim.shots.length - 1] : 0;
+  anim.tMax = flightT + lastShot;
+  anim.t = clamp(anim.t, 0, anim.tMax);
+}
+
+
+function clearsScoringTower(points){
+  // Scoring tower occupies x in [4.0, 5.2].
+  // The opening is centered at x=4.6 and is only "open above" y = GOAL_Y.
+  // So: BEFORE reaching the opening plane (x < X_SCORE_OPEN), the ball must be above the lip.
+  // We use ball center clearance: y >= GOAL_Y + BALL_R.
+  const x0 = SCORE_BASE[0];           // 4.0
+  const x1 = SCORE_BASE[1];           // 5.2
+  const lipY = GOAL_Y + BALL_R;       // clear the edge with ball radius
+
+  for (const p of points){
+    // Only care while approaching the tower face (before the opening plane)
+    if (p.x >= x0 && p.x <= x1 && p.x < X_SCORE_OPEN){
+      if (p.y < lipY) return false;
+    }
+  }
+  return true;
+}
+
+
+  function getViewXRange(){
+    // scoring: show wall..tower, passing: show wall..far right
+    if (mode === Mode.SCORING) return [0.0, 6.0];
+    return [0.0, FIELD_MAX_X];
+  }
+
+  function computeDistanceD(xRobot){
+    if (mode === Mode.SCORING) return X_SCORE_OPEN - xRobot;
+    return xRobot - X_PASS;
+  }
+
+  function syncRangeAndNumber(rangeEl, numEl, decimals){
+    const r = parseFloat(rangeEl.value);
+    const n = parseFloat(numEl.value);
+    const rOk = Number.isFinite(r);
+    const nOk = Number.isFinite(n);
+    if (document.activeElement === numEl && nOk){
+      rangeEl.value = n;
+    } else if (document.activeElement === rangeEl && rOk){
+      numEl.value = r.toFixed(decimals);
+    } else if (rOk){
+      numEl.value = r.toFixed(decimals);
+    }
+  }
+
+  function wheelRpmToSpeed(wheelRpm, wheelRadiusM, efficiency){
+    const omega = (wheelRpm / 60) * 2 * Math.PI; // rad/s
+    return omega * wheelRadiusM * efficiency;
+  }
+
+  function motorClampWheelRpm(wheelRpm){
+    const free = parseFloat(motor.value);
+    const gr = Math.max(0.01, parseFloat(gear.value) || 1.0); // motor:wheel
+    const motorRpm = wheelRpm * gr;
+    const clampedMotor = Math.min(motorRpm, free);
+    const wheelClamped = clampedMotor / gr;
+    return { wheel: wheelClamped, motor: clampedMotor, isClamped: motorRpm > free + 1e-9, free, gr };
+  }
+
+  function simulateTrajectory({x0,y0,targetX,targetY,angleDeg,wheelRpm,wheelRadius,efficiency,airK,maxT=8.0}){
+  const g = 9.80665;
+  const dt = 0.0025;
+  const k = airK * 0.35;
+
+  // scoring travels +x; passing travels -x (robot is to the right of pass target)
+  const dir = (mode === Mode.SCORING) ? +1 : -1;
+
+  const v0 = wheelRpmToSpeed(wheelRpm, wheelRadius, efficiency);
+  const th = angleDeg * Math.PI/180;
+
+  let vx = dir * v0 * Math.cos(th);
+  let vy = v0 * Math.sin(th);
+
+  let x = x0, y = y0, t = 0;
+  const points = [{x,y,t}];
+  let apexY = y;
+  let crossed = false;
+  let yAtTarget = NaN;
+  let tAtTarget = NaN;
+
+  function passedTarget(prevX, curX){
+    if (dir > 0) return (prevX <= targetX && curX >= targetX);
+    return (prevX >= targetX && curX <= targetX);
+  }
+
+  for (let i=0; i<Math.ceil(maxT/dt); i++){
+    const prevX = x, prevY = y, prevT = t;
+
+    const speed = Math.hypot(vx, vy);
+    const ax = (speed > 1e-9) ? (-k * vx * speed) : 0;
+    const ay = -g + ((speed > 1e-9) ? (-k * vy * speed) : 0);
+
+    vx += ax * dt;
+    vy += ay * dt;
+    x  += vx * dt;
+    y  += vy * dt;
+    t  += dt;
+
+    if (y > apexY) apexY = y;
+    points.push({x,y,t});
+
+    if (!crossed && passedTarget(prevX, x)){
+      const alpha = (targetX - prevX) / (x - prevX);
+      yAtTarget = prevY + alpha*(y - prevY);
+      tAtTarget = prevT + alpha*(t - prevT);
+      crossed = true;
+    }
+
+    if (y <= 0 && i > 3) break;
+    if (Math.abs(x) > 60 || y > 60) break;
+  }
+
+  const err = (Number.isFinite(yAtTarget)) ? (yAtTarget - targetY) : NaN;
+
+  // NEW: tower clearance flag (only meaningful in scoring mode)
+  const clearsTower = (mode === Mode.SCORING) ? clearsScoringTower(points) : true;
+
+  return { points, apexY, yAtTarget, tAtTarget, crossed, err, clearsTower };
+}
+
+
+  // ------------------------------------------------------------
+  // Auto-solving respecting locks
+  // ------------------------------------------------------------
+  function getLockState(){
+    return {
+      rpmAuto: rpmAuto.checked,
+      angAuto: angAuto.checked,
+      rpmLocked: rpmLocked.checked,
+      angLocked: angLocked.checked
+    };
+  }
+
+  function getCurrentParams(){
+    const [rx0, rx1] = getRobotXRange();
+    let xR = clamp(parseFloat(robotX.value) || rx0, rx0, rx1);
+    const y0 = parseFloat(relH.value);
+    const angleDeg = parseFloat(angle.value);
+    const rpmReq = Math.max(0, Math.round(parseFloat(wheelRPM.value)||0));
+
+    const clampRes = motorClampWheelRpm(rpmReq);
+    const rpmWheel = clampRes.wheel;
+
+    const wheelRadius = parseFloat(wheelR.value);
+    const efficiency = parseFloat(eff.value);
+    const airK = parseFloat(air.value);
+
+    const targetX = (mode === Mode.SCORING) ? X_SCORE_OPEN : X_PASS;
+    const targetY = (mode === Mode.SCORING) ? GOAL_Y : 0.0;
+
+    return { xR, y0, angleDeg, rpmReq, rpmWheel, clampRes, wheelRadius, efficiency, airK, targetX, targetY, rx0, rx1 };
+  }
+
+  function solveRespectLocks(){
+    const ls = getLockState();
+    const p = getCurrentParams();
+
+    // Case 1: both auto -> choose "efficient" angle and rpm to hit target.
+    // Here "efficient" = minimize wheel RPM while hitting within tolerance.
+    if (ls.rpmAuto && ls.angAuto){
+      const sol = solveMinRpmOverAngle(p);
+      if (sol){
+        angle.value = sol.angle.toFixed(1);
+        angleNum.value = sol.angle.toFixed(1);
+        wheelRPM.value = Math.round(sol.rpm);
+        wheelRPMNum.value = Math.round(sol.rpm);
+      }
+      recomputeAndRender();
+      return;
+    }
+
+    // Case 2: RPM locked, angle auto -> find best angle given RPM
+    if (!ls.rpmAuto && ls.angAuto){
+      const bestAng = solveBestAngleForFixedRpm(p);
+      if (Number.isFinite(bestAng)){
+        angle.value = bestAng.toFixed(1);
+        angleNum.value = bestAng.toFixed(1);
+      }
+      recomputeAndRender();
+      return;
+    }
+
+    // Case 3: Angle locked, RPM auto -> find RPM for fixed angle
+    if (ls.rpmAuto && !ls.angAuto){
+      const bestR = solveRpmForFixedAngle(p);
+      if (Number.isFinite(bestR)){
+        wheelRPM.value = Math.round(bestR);
+        wheelRPMNum.value = Math.round(bestR);
+      }
+      recomputeAndRender();
+      return;
+    }
+
+    // Case 4: both locked -> do nothing besides recompute
+    recomputeAndRender();
+  }
+
+  function solveRpmForFixedAngle(p){
+  // binary search wheel RPM (bounded by motor free speed / gear)
+  const free = parseFloat(motor.value);
+  const gr = Math.max(0.01, parseFloat(gear.value) || 1.0);
+  const maxWheel = free / gr;
+
+  const targetY = p.targetY;
+  const targetX = p.targetX;
+
+  function f(wheelRpm){
+    const res = simulateTrajectory({
+      x0: p.xR, y0: p.y0,
+      targetX, targetY,
+      angleDeg: p.angleDeg,
+      wheelRpm,
+      wheelRadius: p.wheelRadius,
+      efficiency: p.efficiency,
+      airK: p.airK
+    });
+    if (!res.crossed || !Number.isFinite(res.yAtTarget)) return NaN;
+
+    // NEW: reject RPMs that don't clear the tower face/lip (close-range bug fix)
+    if (mode === Mode.SCORING && !res.clearsTower) return NaN;
+
+    return res.yAtTarget - targetY;
+  }
+
+  let lo = 0;
+  let hi = Math.max(200, maxWheel);
+  let flo = f(lo);
+  let fhi = f(hi);
+
+  if (!Number.isFinite(flo)) flo = -1e9;
+  if (!Number.isFinite(fhi)) return hi; // can't reach target, max it
+
+  if (flo > 0 && fhi > 0) return 0;
+  if (flo < 0 && fhi < 0) return hi;
+
+  if (flo > 0 && fhi < 0){
+    [lo, hi] = [hi, lo];
+    [flo, fhi] = [fhi, flo];
+  }
+
+  let best = hi;
+  for (let i=0;i<34;i++){
+    const mid = 0.5*(lo+hi);
+    const fm = f(mid);
+    if (!Number.isFinite(fm)) { lo = mid; continue; }
+    if (Math.abs(fm) < 0.005){ best = mid; break; }
+    if (fm < 0) lo = mid;
+    else { hi = mid; best = mid; }
+  }
+  return best;
+}
+
+
+function solveBestAngleForFixedRpm(p){
+  // Search angles for minimum absolute error at target, GIVEN a fixed requested RPM.
+  // HARD CONSTRAINTS:
+  // - Passing mode: apex <= 3.0m (reject if higher)
+  // - Scoring mode: must clear scoring tower lip/face before opening plane (reject if not)
+
+  const targetX = p.targetX;
+  const targetY = p.targetY;
+
+  // Use motor clamp so we're solving with the actual achievable wheel RPM
+  const rpmWheel = motorClampWheelRpm(p.rpmReq).wheel;
+
+  const PASS_APEX_MAX = 3.0; // meters
+
+  let bestAng = NaN;
+  let bestScore = Infinity;
+
+  for (let ang = 15; ang <= 85; ang += 0.5){
+    const res = simulateTrajectory({
+      x0: p.xR, y0: p.y0,
+      targetX, targetY,
+      angleDeg: ang,
+      wheelRpm: rpmWheel,
+      wheelRadius: p.wheelRadius,
+      efficiency: p.efficiency,
+      airK: p.airK
+    });
+
+    // Passing: hard reject on apex
+    if (mode === Mode.PASSING && Number.isFinite(res.apexY) && res.apexY > PASS_APEX_MAX){
+      continue;
+    }
+
+    // Scoring: hard reject if ball clips the tower face/lip
+    if (mode === Mode.SCORING && !res.clearsTower){
+      continue;
+    }
+
+    const score = (res.crossed && Number.isFinite(res.err)) ? Math.abs(res.err) : 1e9;
+    if (score < bestScore){
+      bestScore = score;
+      bestAng = ang;
+    }
+  }
+
+  return bestAng;
+}
+
+
+
+  function solveMinRpmOverAngle(p){
+  // For each angle, solve RPM then pick the smallest RPM that hits within tolerance.
+  // HARD CONSTRAINTS:
+  // - Passing mode: reject apex > 3.0m
+  // - Scoring mode: reject any candidate that clips the tower lip/face before opening plane
+
+  const targetY = p.targetY;
+  const targetX = p.targetX;
+
+  const free = parseFloat(motor.value);
+  const gr = Math.max(0.01, parseFloat(gear.value) || 1.0);
+  const maxWheel = free / gr;
+
+  const tol = 0.01; // 1 cm
+
+  const PASS_APEX_MAX = 3.0; // meters
+
+  let best = null;
+
+  for (let ang = 20; ang <= 85; ang += 1){
+    function f(wheelRpm){
+      const res = simulateTrajectory({
+        x0: p.xR, y0: p.y0,
+        targetX, targetY,
+        angleDeg: ang,
+        wheelRpm,
+        wheelRadius: p.wheelRadius,
+        efficiency: p.efficiency,
+        airK: p.airK
+      });
+      if (!res.crossed || !Number.isFinite(res.yAtTarget)) return NaN;
+
+      // Scoring: enforce tower clearance even during the RPM solve
+      if (mode === Mode.SCORING && !res.clearsTower) return NaN;
+
+      return res.yAtTarget - targetY;
+    }
+
+    let lo = 0;
+    let hi = Math.max(200, maxWheel);
+    let flo = f(lo);
+    let fhi = f(hi);
+
+    if (!Number.isFinite(flo)) flo = -1e9;
+    if (!Number.isFinite(fhi)) continue; // can't reach at this angle
+
+    if (flo < 0 && fhi < 0) continue;
+
+    // If always above, candidate rpm is 0 (still needs constraints checked)
+    if (flo > 0 && fhi > 0){
+      const rpm = 0;
+
+      const test = simulateTrajectory({
+        x0: p.xR, y0: p.y0,
+        targetX, targetY,
+        angleDeg: ang,
+        wheelRpm: rpm,
+        wheelRadius: p.wheelRadius,
+        efficiency: p.efficiency,
+        airK: p.airK
+      });
+
+      if (mode === Mode.PASSING && Number.isFinite(test.apexY) && test.apexY > PASS_APEX_MAX) continue;
+      if (mode === Mode.SCORING && !test.clearsTower) continue;
+
+      if (!best || rpm < best.rpm - 1e-6 || (Math.abs(rpm - best.rpm) < 1e-6 && ang > best.angle)){
+        best = { angle: ang, rpm };
+      }
+      continue;
+    }
+
+    if (flo > 0 && fhi < 0){
+      [lo, hi] = [hi, lo];
+      [flo, fhi] = [fhi, flo];
+    }
+
+    let rpm = hi;
+    for (let i=0; i<30; i++){
+      const mid = 0.5 * (lo + hi);
+      const fm = f(mid);
+      if (!Number.isFinite(fm)) { lo = mid; continue; }
+      if (Math.abs(fm) < tol){ rpm = mid; break; }
+      if (fm < 0) lo = mid;
+      else { hi = mid; rpm = mid; }
+    }
+
+    if (!Number.isFinite(rpm)) continue;
+
+    const test = simulateTrajectory({
+      x0: p.xR, y0: p.y0,
+      targetX, targetY,
+      angleDeg: ang,
+      wheelRpm: rpm,
+      wheelRadius: p.wheelRadius,
+      efficiency: p.efficiency,
+      airK: p.airK
+    });
+
+    if (mode === Mode.PASSING && Number.isFinite(test.apexY) && test.apexY > PASS_APEX_MAX) continue;
+    if (mode === Mode.SCORING && !test.clearsTower) continue;
+
+    if (!best || rpm < best.rpm - 1e-6 || (Math.abs(rpm - best.rpm) < 1e-6 && ang > best.angle)){
+      best = { angle: ang, rpm };
+    }
+  }
+
+  return best;
+}
+
+
+
+    function computeViewYMax(){
+    // Keep enough headroom for goal + 1m and apex + 0.5m, cap for readability
+    const apex = simCache?.apexY ?? 0;
+    const base = Math.max(GOAL_Y + 1.0, apex + 0.5, 3.0);
+    return clamp(base, 2.5, 10.0);
+  }
+
+  function worldToScreen(x,y,view){
+    const sx = (x - view.xMin) / (view.xMax - view.xMin) * view.w;
+    const sy = view.h - (y - view.yMin) / (view.yMax - view.yMin) * view.h;
+    return {sx, sy};
+  }
+
+  function drawZones(view){
+    // Optional soft shading to give scale cues
+    ctx.save();
+    // left region near wall
+    ctx.fillStyle = "rgba(124,195,255,0.04)";
+    let a = worldToScreen(0, 0, view);
+    let b = worldToScreen(4.0, view.yMax, view);
+    ctx.fillRect(a.sx, b.sy, worldToScreen(4.0,0,view).sx - a.sx, worldToScreen(0,0,view).sy - b.sy);
+
+    // right region
+    ctx.fillStyle = "rgba(125,255,176,0.03)";
+    a = worldToScreen(5.2, 0, view);
+    b = worldToScreen(FIELD_MAX_X, view.yMax, view);
+    ctx.fillRect(a.sx, b.sy, worldToScreen(FIELD_MAX_X,0,view).sx - a.sx, worldToScreen(5.2,0,view).sy - b.sy);
+
+    ctx.restore();
+  }
+
+  function recomputeAndRender(){
+    // Sync paired inputs
+    syncRangeAndNumber(robotX, robotXNum, 2);
+    syncRangeAndNumber(angle, angleNum, 1);
+    syncRangeAndNumber(wheelRPM, wheelRPMNum, 0);
+    syncRangeAndNumber(air, airNum, 3);
+    syncRangeAndNumber(wheelR, wheelRNum, 4);
+    syncRangeAndNumber(eff, effNum, 2);
+
+    // Release height dropdown (already meters)
+    const y0 = parseFloat(relH.value);
+    relHNum.value = y0.toFixed(4);
+
+    // Clamp robot X by mode range
+    const [rx0, rx1] = getRobotXRange();
+    let xR = clamp(parseFloat(robotX.value)||rx0, rx0, rx1);
+    robotX.value = xR.toFixed(2);
+    robotXNum.value = xR.toFixed(2);
+
+    // Derived distance d
+    const d = computeDistanceD(xR);
+    distD.value = d.toFixed(2);
+
+    // Target description
+    whichTarget.value = getTargetDesc();
+
+    // If any lock is AUTO, solve respecting locks (but prevent recursion loop)
+    // We'll only auto-solve on "inputs that should trigger" - easiest: if either auto checked, call solver.
+    // NOTE: solver calls recomputeAndRender() itself, so we should only call solver here if we are not already solving.
+    if (rpmAuto.checked || angAuto.checked){
+      // Don't call solveRespectLocks() if this recompute was triggered by solveRespectLocks itself:
+      // We'll use a simple guard.
+      if (!recomputeAndRender._guard){
+        recomputeAndRender._guard = true;
+        try { solveRespectLocks(); } finally { recomputeAndRender._guard = false; }
+        return;
+      }
+    }
+
+    // Clamp wheel rpm to motor free speed
+    const rpmReq = Math.max(0, Math.round(parseFloat(wheelRPM.value)||0));
+    const clampRes = motorClampWheelRpm(rpmReq);
+    const usedWheel = clampRes.wheel;
+
+    kMotorRpm.textContent = `${Math.round(clampRes.motor)}`;
+    kClamp.textContent = clampRes.isClamped ? `CLAMP @ ${Math.round(clampRes.free)}rpm` : "OK";
+
+    // Sim (scoring target is opening at y=GOAL_Y; passing is ground y=0)
+    const targetX = (mode === Mode.SCORING) ? X_SCORE_OPEN : X_PASS;
+    const targetY = (mode === Mode.SCORING) ? GOAL_Y : 0.0;
+
+    simCache = simulateTrajectory({
+      x0: xR,
+      y0,
+      targetX,
+      targetY,
+      angleDeg: parseFloat(angle.value),
+      wheelRpm: usedWheel,
+      wheelRadius: parseFloat(wheelR.value),
+      efficiency: parseFloat(eff.value),
+      airK: parseFloat(air.value),
+      maxT: 8
+    });
+
+    // KPIs
+    if (simCache.crossed && Number.isFinite(simCache.yAtTarget)){
+      kYAt.textContent = `${fmt(simCache.yAtTarget, 2)}m`;
+      kErr.textContent = `${fmt(simCache.err, 2)}m`;
+      kTflight.textContent = `${fmt(simCache.tAtTarget, 2)}s`;
+    } else {
+      kYAt.textContent = "—";
+      kErr.textContent = "—";
+      kTflight.textContent = "—";
+    }
+    kApex.textContent = `${fmt(simCache.apexY, 2)}m`;
+
+    // Overlay
+    ovMode.textContent = (mode === Mode.SCORING) ? "Scoring" : "Passing";
+    ovRobot.textContent = `x=${xR.toFixed(2)}m`;
+    ovD.textContent = `${d.toFixed(2)}m`;
+    ovAng.textContent = `${parseFloat(angle.value).toFixed(1)}°`;
+    ovWheel.textContent = `${Math.round(usedWheel)} rpm`;
+    ovH.textContent = `${y0.toFixed(3)}m`;
+
+    // Animation bounds
+    updateAnimTMax();
+
+    render();
+  }
+  recomputeAndRender._guard = false;
+
+
+  
+    // ------------------------------------------------------------
+  // Rendering
+  // ------------------------------------------------------------
+  function render(){
+    const w = cv.width / (window.devicePixelRatio || 1);
+const h = cv.height / (window.devicePixelRatio || 1);
+ctx.clearRect(0, 0, w, h);
+
+
+    const [xMin, xMax] = getViewXRange();
+    const yMin = 0;
+    const yMax = computeViewYMax();
+
+    const view = { xMin, xMax, yMin, yMax, w, h };
+
+    drawGrid(view);
+    drawZones(view);
+    drawGround(view);
+    drawWall(view);
+    drawPassingTarget(view);
+    drawScoringTower(view);
+    drawTicks(view);
+    drawRobot(view);
+
+    if (simCache?.points?.length) {
+      drawTrajectory(view, simCache.points);
+      drawBalls(view, simCache.points, anim.t);
+    }
+  }
+
+  function drawWall(view){
+  ctx.save();
+  const p0 = worldToScreen(WALL_X, 0, view);
+  const p1 = worldToScreen(WALL_X, WALL_H, view);
+  ctx.strokeStyle = "orange";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(p0.sx, p0.sy);
+  ctx.lineTo(p1.sx, p1.sy);
+  ctx.stroke();
+  ctx.restore();
+}
+
+
+  function drawGrid(view){
+    ctx.save();
+    ctx.strokeStyle = "rgba(40,60,90,0.65)";
+    ctx.lineWidth = 1;
+
+    // vertical x lines each 1m
+    for (let x = Math.ceil(view.xMin); x <= view.xMax; x++){
+      const p0 = worldToScreen(x, view.yMin, view);
+      const p1 = worldToScreen(x, view.yMax, view);
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy);
+      ctx.lineTo(p1.sx, p1.sy);
+      ctx.stroke();
+    }
+
+    // horizontal y lines each 1m
+    for (let y = Math.ceil(view.yMin); y <= view.yMax; y++){
+      const p0 = worldToScreen(view.xMin, y, view);
+      const p1 = worldToScreen(view.xMax, y, view);
+      ctx.beginPath();
+      ctx.moveTo(p0.sx, p0.sy);
+      ctx.lineTo(p1.sx, p1.sy);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGround(view){
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    const p0 = worldToScreen(view.xMin, 0, view);
+    const p1 = worldToScreen(view.xMax, 0, view);
+    ctx.beginPath();
+    ctx.moveTo(p0.sx, p0.sy);
+    ctx.lineTo(p1.sx, p1.sy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawHood(view, baseX, baseY, angDeg, dir, scalePxPerM){
+  // baseX/baseY are in WORLD meters (launcher pivot point)
+  // dir = +1 (shoot right) or -1 (shoot left)
+  // scalePxPerM = pixels per meter at the robot location (for consistent thickness)
+
+  const th = angDeg * Math.PI / 180;
+
+  // Hood geometry in meters (tweak if you want it longer/shorter)
+  const hoodLenM = 0.45;     // ~18 in
+  const hoodGapM = 0.04;     // distance from pivot to start of hood
+  const hoodWidthM = 0.06;   // ~2.4 in
+
+  // Convert base to screen
+  const p0 = worldToScreen(baseX, baseY, view);
+
+  // Direction: rotate about +x for scoring, -x for passing
+  const ux = dir * Math.cos(th);
+  const uy = Math.sin(th);
+
+  // Start/end points of the hood "bar" (world)
+  const sx = baseX + ux * hoodGapM;
+  const sy = baseY + uy * hoodGapM;
+
+  const ex = baseX + ux * (hoodGapM + hoodLenM);
+  const ey = baseY + uy * (hoodGapM + hoodLenM);
+
+  const ps = worldToScreen(sx, sy, view);
+  const pe = worldToScreen(ex, ey, view);
+
+  // thickness in pixels (scale with zoom)
+  const thickPx = Math.max(3, Math.min(10, hoodWidthM * scalePxPerM));
+
+  // Draw hood bar
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.85)";
+  ctx.lineWidth = thickPx;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(ps.sx, ps.sy);
+  ctx.lineTo(pe.sx, pe.sy);
+  ctx.stroke();
+
+  // Draw a small "muzzle" ring at the end
+  ctx.strokeStyle = "rgba(255,255,255,0.65)";
+  ctx.lineWidth = Math.max(2, thickPx * 0.5);
+  ctx.beginPath();
+  ctx.arc(pe.sx, pe.sy, Math.max(4, thickPx * 0.9), 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Draw pivot dot
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.arc(p0.sx, p0.sy, Math.max(3, thickPx * 0.6), 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+
+  function drawScoringTower(view){
+    // base region x=4.0..5.2
+    ctx.save();
+    const left = worldToScreen(SCORE_BASE[0], 0, view);
+    const right = worldToScreen(SCORE_BASE[1], 0, view);
+    const top = worldToScreen(SCORE_BASE[0], view.yMax, view);
+
+    ctx.fillStyle = "rgba(200,80,80,0.10)";
+    ctx.fillRect(left.sx, top.sy, right.sx - left.sx, left.sy - top.sy);
+
+    // opening band at y=1.8288, width 1.0414 centered at x=4.6
+    const oL = worldToScreen(SCORE_OPEN_SPAN[0], GOAL_Y, view);
+    const oR = worldToScreen(SCORE_OPEN_SPAN[1], GOAL_Y, view);
+    ctx.strokeStyle = "cyan";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(oL.sx, oL.sy);
+    ctx.lineTo(oR.sx, oR.sy);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function drawPassingTarget(view){
+    ctx.save();
+    const pL = worldToScreen(PASS_SPAN[0], 0, view);
+    const pR = worldToScreen(PASS_SPAN[1], 0, view);
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(pL.sx, pL.sy);
+    ctx.lineTo(pR.sx, pR.sy);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTicks(view){
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.60)";
+    ctx.font = "12px system-ui";
+
+    // top ticks for x
+    for (let x = Math.ceil(view.xMin); x <= view.xMax; x++){
+      const p = worldToScreen(x, view.yMax, view);
+      ctx.fillRect(p.sx - 1, 0, 2, 8);
+      ctx.fillText(`${x}m`, p.sx - 10, 18);
+    }
+
+    // right ticks for y
+    for (let y = Math.ceil(view.yMin); y <= view.yMax; y++){
+      const p = worldToScreen(view.xMax, y, view);
+      ctx.fillRect(view.w - 8, p.sy - 1, 8, 2);
+      ctx.fillText(`${y}m`, view.w - 40, p.sy + 4);
+    }
+    ctx.restore();
+  }
+
+  function drawRobot(view){
+    // Robot height is release height (meters)
+    const x = parseFloat(robotX.value) || 0;
+    const h = parseFloat(relH.value) || 0.7620;
+    const w = 0.6;
+
+    const p0 = worldToScreen(x - w/2, 0, view);
+    const p1 = worldToScreen(x + w/2, h, view);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(100,180,255,0.25)";
+    ctx.strokeStyle = "rgba(100,180,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(p0.sx, p1.sy, p1.sx - p0.sx, p0.sy - p1.sy);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // ---- Hood visualization ----
+    const angDeg = parseFloat(angle.value) || 60;
+    const dir = (mode === Mode.SCORING) ? +1 : -1;
+
+    // Your robot uses x = robotX (center), width w, height h
+    // Put pivot near the "front" top edge of the robot.
+    const pivotX = x + dir * (w * 0.40);
+    const pivotY = h * 0.85;
+
+    drawHood(view, pivotX, pivotY, angDeg, dir);
+
+  }
+
+  function drawTrajectory(view, pts){
+    ctx.save();
+    ctx.strokeStyle = "rgba(150,255,180,0.90)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i=0;i<pts.length;i++){
+      const p = worldToScreen(pts[i].x, pts[i].y, view);
+      if (i === 0) ctx.moveTo(p.sx, p.sy);
+      else ctx.lineTo(p.sx, p.sy);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+function drawBalls(view, pts, t){
+  ctx.save();
+  ctx.fillStyle = "yellow";   // restore yellow balls
+
+  for(const t0 of anim.shots){
+    const localT = t - t0;
+    if(localT < 0) continue;
+
+    let i = 0;
+    while (i < pts.length - 1 && pts[i+1].t < localT) i++;
+    if(i >= pts.length-1) continue;
+
+    const a = pts[i];
+    const b = pts[i+1];
+    const u = (localT - a.t) / ((b.t - a.t) || 1e-9);
+    const x = a.x + u * (b.x - a.x);
+    const y = a.y + u * (b.y - a.y);
+
+    const p = worldToScreen(x, y, view);
+    const pR = worldToScreen(x + BALL_R, y, view);
+    const rPix = Math.abs(pR.sx - p.sx);
+
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, rPix, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+
+
+  function drawBall(view, pts, t){
+    // find segment around t
+    let i = 0;
+    while (i < pts.length - 1 && pts[i+1].t < t) i++;
+    const a = pts[i];
+    const b = pts[Math.min(i+1, pts.length - 1)];
+    const u = (t - a.t) / ((b.t - a.t) || 1e-9);
+    const x = a.x + u * (b.x - a.x);
+    const y = a.y + u * (b.y - a.y);
+
+    const p = worldToScreen(x, y, view);
+    const pR = worldToScreen(x + BALL_R, y, view);
+    const rPix = Math.abs(pR.sx - p.sx);
+
+    ctx.save();
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, rPix, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+
+  // ------------------------------------------------------------
+  // Fullscreen + resize wiring
+  // ------------------------------------------------------------
+  function resizeCanvas(){
+    const dpr = window.devicePixelRatio || 1;
+    const rect = cv.getBoundingClientRect();
+    cv.width = Math.max(2, Math.floor(rect.width * dpr));
+    cv.height = Math.max(2, Math.floor(rect.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+  }
+
+  function setFullscreenUI(isFs){
+    // Make the whole app fullscreen-ish without scroll
+    if (isFs){
+      root.style.position = "fixed";
+      root.style.inset = "0";
+      root.style.height = "100vh";
+      root.style.width = "100vw";
+      toggleFS.textContent = "Exit Fullscreen";
+      // Hide panel overflow scroll in fullscreen to reduce jitter
+      controlPanel.style.maxHeight = "calc(100vh - 28px)";
+    } else {
+      root.style.position = "";
+      root.style.inset = "";
+      root.style.height = "100vh";
+      root.style.width = "";
+      toggleFS.textContent = "Fullscreen";
+      controlPanel.style.maxHeight = "calc(100vh - 28px)";
+    }
+    // canvas size changes with layout
+    resizeCanvas();
+  }
+
+  toggleFS.addEventListener("click", async () => {
+    // Prefer native fullscreen if available; fallback to CSS fixed layout
+    const el = document.documentElement;
+    const hasNative = !!(el.requestFullscreen && document.fullscreenEnabled);
+
+    try{
+      if (hasNative){
+        if (!document.fullscreenElement){
+          await el.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } else {
+        // CSS-only fallback
+        const isFs = root.dataset.fs === "1";
+        root.dataset.fs = isFs ? "0" : "1";
+        setFullscreenUI(!isFs);
+      }
+    } catch (e){
+      // If native FS fails, do CSS fallback
+      const isFs = root.dataset.fs === "1";
+      root.dataset.fs = isFs ? "0" : "1";
+      setFullscreenUI(!isFs);
+    }
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    const isFs = !!document.fullscreenElement;
+    setFullscreenUI(isFs);
+  });
+
+  window.addEventListener("resize", resizeCanvas);
+
+  // ------------------------------------------------------------
+  // Mode wiring
+  // ------------------------------------------------------------
+
+function applyMode(){
+  const prev = lastMode;
+  lastMode = mode;
+
+  btnScoring.classList.toggle("active", mode === Mode.SCORING);
+  btnPassing.classList.toggle("active", mode === Mode.PASSING);
+
+  ovMode.textContent = (mode === Mode.SCORING) ? "Scoring" : "Passing";
+
+  // Update ranges FIRST
+  const [rx0, rx1] = getRobotXRange();
+  robotX.min = rx0; robotX.max = rx1;
+  robotXNum.min = rx0; robotXNum.max = rx1;
+
+  // If we just switched into PASSING, set default distance = 12m from pass target
+  // (robot is to the RIGHT, so x = X_PASS + 12)
+  if (mode === Mode.PASSING && prev !== Mode.PASSING){
+    const desiredX = X_PASS + 12.0; // 12m away from pass target
+    const xR = clamp(desiredX, rx0, rx1);
+    robotX.value = xR.toFixed(2);
+    robotXNum.value = xR.toFixed(2);
+  } else if (mode === Mode.SCORING && prev !== Mode.SCORING){
+    // Optional: set a scoring default on entry (leave if you want to preserve last x)
+     const desiredX = X_SCORE_OPEN - 3.0;
+     const xR = clamp(desiredX, rx0, rx1);
+     robotX.value = xR.toFixed(2);
+     robotXNum.value = xR.toFixed(2);
+  } else {
+    // Otherwise, just clamp existing value into the new range
+    const cur = parseFloat(robotX.value);
+    const xR = clamp(Number.isFinite(cur) ? cur : rx0, rx0, rx1);
+    robotX.value = xR.toFixed(2);
+    robotXNum.value = xR.toFixed(2);
+  }
+
+  whichTarget.value = getTargetDesc();
+
+  // Recompute after the mode-specific default has been applied
+  recomputeAndRender();
+}
+
+
+
+  btnScoring.addEventListener("click", () => { mode = Mode.SCORING; applyMode(); });
+  btnPassing.addEventListener("click", () => { mode = Mode.PASSING; applyMode(); });
+
+  // ------------------------------------------------------------
+  // Controls wiring
+  // ------------------------------------------------------------
+  function onInput(){
+    // If either lock is AUTO, the recompute will trigger solveRespectLocks() via guard.
+    recomputeAndRender();
+  }
+
+  robotX.addEventListener("input", onInput);
+  robotXNum.addEventListener("input", onInput);
+
+  wheelRPM.addEventListener("input", onInput);
+  wheelRPMNum.addEventListener("input", onInput);
+
+  angle.addEventListener("input", onInput);
+  angleNum.addEventListener("input", onInput);
+
+  relH.addEventListener("input", () => {
+    relHNum.value = parseFloat(relH.value).toFixed(4);
+    onInput();
+  });
+
+  motor.addEventListener("input", onInput);
+  gear.addEventListener("input", onInput);
+
+  air.addEventListener("input", onInput);
+  airNum.addEventListener("input", onInput);
+
+  wheelR.addEventListener("input", onInput);
+  wheelRNum.addEventListener("input", onInput);
+
+  eff.addEventListener("input", onInput);
+  effNum.addEventListener("input", onInput);
+
+  // Lock radios (Auto/Locked)
+  rpmLocked.addEventListener("change", onInput);
+  rpmAuto.addEventListener("change", onInput);
+  angLocked.addEventListener("change", onInput);
+  angAuto.addEventListener("change", onInput);
+
+  // Solve button explicitly runs solver
+  findRpm.addEventListener("click", () => {
+    // Ensure the guard doesn't block the explicit solve
+    recomputeAndRender._guard = false;
+    solveRespectLocks();
+  });
+
+  presetScoring.addEventListener("click", () => {
+    mode = Mode.SCORING;
+    // Scoring-ish defaults
+    robotX.value = ".66"; robotXNum.value = ".66";
+    angle.value = "54"; angleNum.value = "54.0";
+    wheelRPM.value = "2388"; wheelRPMNum.value = "2388";
+    relH.value = "0.5588";  // 22 in
+    relHNum.value = "0.5588";
+    air.value = "0.05"; airNum.value = "0.05";
+    eff.value = "0.80"; effNum.value = "0.80";
+    wheelR.value = "0.0381"; wheelRNum.value = "0.0381";
+    motor.value = "6000";
+    gear.value = "1.00";
+
+    // default locks: Locked
+    rpmLocked.checked = true; rpmAuto.checked = false;
+    angLocked.checked = true; angAuto.checked = false;
+
+    applyMode();
+  });
+
+  presetPassing.addEventListener("click", () => {
+    mode = Mode.PASSING;
+    // Put robot to right side of scoring tower (shoot left toward pass target at x=2)
+    robotX.value = "12.00"; robotXNum.value = "12.00";
+    angle.value = "24"; angleNum.value = "24.0";
+    wheelRPM.value = "4050"; wheelRPMNum.value = "4050";
+    relH.value = "0.7620";  // 30 in
+    relHNum.value = "0.7620";
+    air.value = "0.05"; airNum.value = "0.05";
+    eff.value = "0.80"; effNum.value = "0.80";
+    wheelR.value = "0.0381"; wheelRNum.value = "0.0381";
+    motor.value = "6000";
+    gear.value = "1.00";
+
+    rpmLocked.checked = true; rpmAuto.checked = false;
+    angLocked.checked = true; angAuto.checked = false;
+
+    applyMode();
+  });
+
+ playPause.addEventListener("click", () => {
+  anim.playing = !anim.playing;
+  playPause.textContent = anim.playing ? "Pause" : "Play";
+
+  if (anim.playing){
+    anim.t = 0;
+    anim.shots = [];
+    for (let i = 0; i < 20; i++){
+      anim.shots.push(i * anim.spacing); // 0, 0.125, 0.25, ...
+    }
+    updateAnimTMax(); // IMPORTANT: extend timeline for last shot
+  }
+
+  render();
+});
+
+
+ resetAnim.addEventListener("click", () => {
+  anim.t = 0;
+  anim.playing = false;
+  anim.shots = [];
+  playPause.textContent = "Play";
+  updateAnimTMax();
+  render();
+});
+
+  // ------------------------------------------------------------
+  // Init
+  // ------------------------------------------------------------
+  // Defaults: scoring mode, locks are Locked by default (already checked in HTML)
+  whichTarget.value = getTargetDesc();
+  relHNum.value = parseFloat(relH.value).toFixed(4);
+
+  applyMode();
+  resizeCanvas();
+  recomputeAndRender();
+
+  // Make sure animation loop is running (if you moved it earlier, keep only one call)
+  // requestAnimationFrame(tick);
+
+  // -------------------- Animation loop --------------------
+  let lastTs = 0;
+  function tick(ts){
+    if(!lastTs) lastTs = ts;
+    const dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+
+    if(anim.playing){
+      anim.t += dt;
+      if(anim.t >= anim.tMax){
+        anim.t = anim.tMax;
+        anim.playing = false;
+        playPause.textContent = "Play";
+      }
+      render();
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+
+})(); // end IIFE
+</script>
+</body>
+</html>
