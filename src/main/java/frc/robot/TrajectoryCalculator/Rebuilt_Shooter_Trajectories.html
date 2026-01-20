@@ -35,7 +35,7 @@
     .kpis{display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;}
     .btnRow{display:flex; gap:8px; flex-wrap:wrap;}
     .btnRow button{flex:1;}
-    .canvasPanel{position:relative; background:linear-gradient(180deg, #0b1020 0%, #060a12 100%); border-radius:14px; border:1px solid var(--line); overflow:hidden; height:calc(100vh - 28px);}
+    .canvasPanel{position:relative; background:linear-gradient(180deg, #000000 0%, #0a0a0a 100%); border-radius:14px; border:1px solid var(--line); overflow:hidden; height:calc(100vh - 28px);}
     canvas{display:block; width:100%; height:100%;}
     .overlay{
       position:absolute; left:12px; top:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
@@ -278,6 +278,7 @@
       <span class="pill"><span>Angle</span> <b id="ovAng">75°</b></span>
       <span class="pill"><span>Wheel</span> <b id="ovWheel">2500 rpm</b></span>
       <span class="pill"><span>Height</span> <b id="ovH">0.762m</b></span>
+      <span class="pill"><span>Exit vel</span> <b id="ovExitVel">—</b></span>
     </div>
 
     <div class="legend">
@@ -394,17 +395,18 @@
   const ovAng = document.getElementById('ovAng');
   const ovWheel = document.getElementById('ovWheel');
   const ovH = document.getElementById('ovH');
+  const ovExitVel = document.getElementById('ovExitVel');
 
   // ------------------------------------------------------------
   // Simulation state
   // ------------------------------------------------------------
   let simCache = null;  // {points:[{x,y,t}], apexY, yAtTarget, tAtTarget, crossed}
 let anim = {
-  playing: false,
+  playing: true,
   t: 0,
   tMax: 0,
-  shots: [],      // array of start times for each ball
-  spacing: 0.125  // 1/8 second
+  spacing: 0.125,  // 1/8 second between shots
+  maxVisibleBalls: 20  // Only track 20 most recent balls for performance
 };
 
 
@@ -441,9 +443,9 @@ let anim = {
 
 function updateAnimTMax(){
   const flightT = simCache?.points?.at(-1)?.t || 0;
-  const lastShot = (anim.shots && anim.shots.length) ? anim.shots[anim.shots.length - 1] : 0;
-  anim.tMax = flightT + lastShot;
-  anim.t = clamp(anim.t, 0, anim.tMax);
+  // Infinite loop: tMax is just the trajectory duration
+  anim.tMax = flightT;
+  // Don't clamp t anymore - let it run forever
 }
 
 
@@ -491,9 +493,28 @@ function clearsScoringTower(points){
     }
   }
 
-  function wheelRpmToSpeed(wheelRpm, wheelRadiusM, efficiency){
-    const omega = (wheelRpm / 60) * 2 * Math.PI; // rad/s
-    return omega * wheelRadiusM * efficiency;
+  function wheelRpmToSpeed(wheelRpm, wheelRadiusM, efficiency, backspinPercent, compressInches){
+    const topMultiplier = 1.0 - (backspinPercent / 100.0);
+    const bottomMultiplier = 1.0;
+    
+    const topRpm = wheelRpm * topMultiplier;
+    const bottomRpm = wheelRpm * bottomMultiplier;
+    
+    const omegaTop = (topRpm / 60) * 2 * Math.PI;
+    const omegaBottom = (bottomRpm / 60) * 2 * Math.PI;
+    
+    const vTop = omegaTop * wheelRadiusM * efficiency;
+    const vBottom = omegaBottom * wheelRadiusM * efficiency;
+    
+    // Compression factor (more compression = higher effective velocity)
+    const compressFactor = 1.0 + (compressInches / 12.0) * 0.05; // ~5% boost per inch
+    
+    const vExit = ((vTop + vBottom) / 2.0) * compressFactor;
+    
+    // Backspin angular velocity (rad/s)
+    const backspinOmega = (vBottom - vTop) / BALL_D;
+    
+    return { vExit, backspinOmega };
   }
 
   function motorClampWheelRpm(wheelRpm){
@@ -505,15 +526,18 @@ function clearsScoringTower(points){
     return { wheel: wheelClamped, motor: clampedMotor, isClamped: motorRpm > free + 1e-9, free, gr };
   }
 
-  function simulateTrajectory({x0,y0,targetX,targetY,angleDeg,wheelRpm,wheelRadius,efficiency,airK,maxT=8.0}){
+  function simulateTrajectory({x0,y0,targetX,targetY,angleDeg,wheelRpm,wheelRadius,efficiency,airK,backspinPercent,compressInches,maxT=8.0}){
   const g = 9.80665;
   const dt = 0.0025;
   const k = airK * 0.35;
 
-  // scoring travels +x; passing travels -x (robot is to the right of pass target)
   const dir = (mode === Mode.SCORING) ? +1 : -1;
 
-  const v0 = wheelRpmToSpeed(wheelRpm, wheelRadius, efficiency);
+  // Calculate exit velocity with backspin/compression
+  const result = wheelRpmToSpeed(wheelRpm, wheelRadius, efficiency, backspinPercent, compressInches);
+  const v0 = result.vExit;
+  const backspinOmega = result.backspinOmega;
+  
   const th = angleDeg * Math.PI/180;
 
   let vx = dir * v0 * Math.cos(th);
@@ -531,12 +555,25 @@ function clearsScoringTower(points){
     return (prevX >= targetX && curX <= targetX);
   }
 
+  // Magnus force constants (backspin creates downward force)
+  const rho = 1.225; // air density kg/m^3
+  const ballArea = Math.PI * (BALL_R ** 2);
+  const Cl = -0.15; // Negative = ball drops faster with backspin
+
   for (let i=0; i<Math.ceil(maxT/dt); i++){
     const prevX = x, prevY = y, prevT = t;
 
     const speed = Math.hypot(vx, vy);
+    
+    // Drag force
     const ax = (speed > 1e-9) ? (-k * vx * speed) : 0;
-    const ay = -g + ((speed > 1e-9) ? (-k * vy * speed) : 0);
+    
+    // Magnus lift (backspin downforce)
+    const magnusLift = (speed > 1e-9 && Math.abs(backspinOmega) > 1e-9) 
+        ? (0.5 * rho * ballArea * Cl * (speed ** 2) * Math.sign(backspinOmega))
+        : 0;
+    
+    const ay = -g + magnusLift + ((speed > 1e-9) ? (-k * vy * speed) : 0);
 
     vx += ax * dt;
     vy += ay * dt;
@@ -559,8 +596,6 @@ function clearsScoringTower(points){
   }
 
   const err = (Number.isFinite(yAtTarget)) ? (yAtTarget - targetY) : NaN;
-
-  // NEW: tower clearance flag (only meaningful in scoring mode)
   const clearsTower = (mode === Mode.SCORING) ? clearsScoringTower(points) : true;
 
   return { points, apexY, yAtTarget, tAtTarget, crossed, err, clearsTower };
@@ -596,7 +631,10 @@ function clearsScoringTower(points){
     const targetX = (mode === Mode.SCORING) ? X_SCORE_OPEN : X_PASS;
     const targetY = (mode === Mode.SCORING) ? GOAL_Y : 0.0;
 
-    return { xR, y0, angleDeg, rpmReq, rpmWheel, clampRes, wheelRadius, efficiency, airK, targetX, targetY, rx0, rx1 };
+    const backspinPercent = parseFloat(backspin.value);
+    const compressInches = parseFloat(compression.value);
+
+    return { xR, y0, angleDeg, rpmReq, rpmWheel, clampRes, wheelRadius, efficiency, airK, targetX, targetY, rx0, rx1, backspinPercent, compressInches };
   }
 
   function solveRespectLocks(){
@@ -660,7 +698,9 @@ function clearsScoringTower(points){
       wheelRpm,
       wheelRadius: p.wheelRadius,
       efficiency: p.efficiency,
-      airK: p.airK
+      airK: p.airK,
+      backspinPercent: p.backspinPercent,
+      compressInches: p.compressInches
     });
     if (!res.crossed || !Number.isFinite(res.yAtTarget)) return NaN;
 
@@ -724,7 +764,9 @@ function solveBestAngleForFixedRpm(p){
       wheelRpm: rpmWheel,
       wheelRadius: p.wheelRadius,
       efficiency: p.efficiency,
-      airK: p.airK
+      airK: p.airK,
+      backspinPercent: p.backspinPercent,
+      compressInches: p.compressInches
     });
 
     // Passing: hard reject on apex
@@ -777,7 +819,9 @@ function solveBestAngleForFixedRpm(p){
         wheelRpm,
         wheelRadius: p.wheelRadius,
         efficiency: p.efficiency,
-        airK: p.airK
+        airK: p.airK,
+        backspinPercent: p.backspinPercent,
+        compressInches: p.compressInches
       });
       if (!res.crossed || !Number.isFinite(res.yAtTarget)) return NaN;
 
@@ -808,7 +852,9 @@ function solveBestAngleForFixedRpm(p){
         wheelRpm: rpm,
         wheelRadius: p.wheelRadius,
         efficiency: p.efficiency,
-        airK: p.airK
+        airK: p.airK,
+        backspinPercent: p.backspinPercent,
+        compressInches: p.compressInches
       });
 
       if (mode === Mode.PASSING && Number.isFinite(test.apexY) && test.apexY > PASS_APEX_MAX) continue;
@@ -844,7 +890,9 @@ function solveBestAngleForFixedRpm(p){
       wheelRpm: rpm,
       wheelRadius: p.wheelRadius,
       efficiency: p.efficiency,
-      airK: p.airK
+      airK: p.airK,
+      backspinPercent: p.backspinPercent,
+      compressInches: p.compressInches
     });
 
     if (mode === Mode.PASSING && Number.isFinite(test.apexY) && test.apexY > PASS_APEX_MAX) continue;
@@ -864,7 +912,14 @@ function solveBestAngleForFixedRpm(p){
     // Keep enough headroom for goal + 1m and apex + 0.5m, cap for readability
     const apex = simCache?.apexY ?? 0;
     const base = Math.max(GOAL_Y + 1.0, apex + 0.5, 3.0);
-    return clamp(base, 2.5, 10.0);
+    const capped = clamp(base, 2.5, 10.0);
+    
+    // NEW: Enforce square aspect ratio (1:1 world units)
+    const [xMin, xMax] = getViewXRange();
+    const xRange = xMax - xMin;
+    
+    // Y range should match X range for square pixels
+    return Math.max(capped, xRange);
   }
 
   function worldToScreen(x,y,view){
@@ -921,7 +976,7 @@ function solveBestAngleForFixedRpm(p){
 
     // If any lock is AUTO, solve respecting locks (but prevent recursion loop)
     // We'll only auto-solve on "inputs that should trigger" - easiest: if either auto checked, call solver.
-    // NOTE: solver calls recomputeAndRender() itself, so we should only call solver here if we are not already solving.
+    // NOTE: solver calls recomputeAndRender() itself, so we should only call solve here if we are not already solving.
     if (rpmAuto.checked || angAuto.checked){
       // Don't call solveRespectLocks() if this recompute was triggered by solveRespectLocks itself:
       // We'll use a simple guard.
@@ -954,6 +1009,8 @@ function solveBestAngleForFixedRpm(p){
       wheelRadius: parseFloat(wheelR.value),
       efficiency: parseFloat(eff.value),
       airK: parseFloat(air.value),
+      backspinPercent: parseFloat(backspin.value),
+      compressInches: parseFloat(compression.value),
       maxT: 8
     });
 
@@ -973,29 +1030,11 @@ function solveBestAngleForFixedRpm(p){
     const compressInches = parseFloat(compression.value);
     const backspinPercent = parseFloat(backspin.value);
 
-    // Top shaft (slower for backspin)
-    const topMultiplier = 1.0 - (backspinPercent / 100.0);
-    const bottomMultiplier = 1.0;
+    const result = wheelRpmToSpeed(usedWheel, parseFloat(wheelR.value), parseFloat(eff.value), backspinPercent, compressInches);
+    const exitVel = result.vExit;
 
-    const topRpm = usedWheel * topMultiplier;
-    const bottomRpm = usedWheel * bottomMultiplier;
-
-    const topSpeed = wheelRpmToSpeed(topRpm, parseFloat(wheelR.value), parseFloat(eff.value));
-    const bottomSpeed = wheelRpmToSpeed(bottomRpm, parseFloat(wheelR.value), parseFloat(eff.value));
-
-    // Compression factor (more compression = higher effective velocity)
-    const compressFactor = 1.0 + (compressInches / 12.0) * 0.05; // ~5% boost per inch
-
-    const exitVel = ((topSpeed + bottomSpeed) / 2.0) * compressFactor;
     kExitVel.textContent = `${exitVel.toFixed(2)} m/s`;
-
-    // Overlay
-    ovMode.textContent = (mode === Mode.SCORING) ? "Scoring" : "Passing";
-    ovRobot.textContent = `x=${xR.toFixed(2)}m`;
-    ovD.textContent = `${d.toFixed(2)}m`;
-    ovAng.textContent = `${parseFloat(angle.value).toFixed(1)}°`;
-    ovWheel.textContent = `${Math.round(usedWheel)} rpm`;
-    ovH.textContent = `${y0.toFixed(3)}m`;
+    ovExitVel.textContent = `${exitVel.toFixed(2)} m/s`;
 
     // Animation bounds
     updateAnimTMax();
@@ -1040,7 +1079,7 @@ ctx.clearRect(0, 0, w, h);
   ctx.save();
   const p0 = worldToScreen(WALL_X, 0, view);
   const p1 = worldToScreen(WALL_X, WALL_H, view);
-  ctx.strokeStyle = "orange";
+  ctx.strokeStyle = "#666666"; // Grey wall
   ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.moveTo(p0.sx, p0.sy);
@@ -1216,8 +1255,8 @@ ctx.clearRect(0, 0, w, h);
     const p1 = worldToScreen(x + w/2, h, view);
 
     ctx.save();
-    ctx.fillStyle = "rgba(100,180,255,0.25)";
-    ctx.strokeStyle = "rgba(100,180,255,0.85)";
+    ctx.fillStyle = "rgba(128,128,128,0.25)"; // Grey fill
+    ctx.strokeStyle = "rgba(160,160,160,0.85)"; // Light grey outline
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.rect(p0.sx, p1.sy, p1.sx - p0.sx, p0.sy - p1.sy);
@@ -1254,18 +1293,23 @@ ctx.clearRect(0, 0, w, h);
 
 function drawBalls(view, pts, t){
   ctx.save();
-  ctx.fillStyle = "#dc1e28"; // Red ball
+  ctx.fillStyle = "yellow";
+  
+  // Draw last N balls (performance optimization)
+  for (let i = 0; i < anim.maxVisibleBalls; i++){
+    const shotTime = Math.floor(t / anim.spacing) * anim.spacing - (i * anim.spacing);
+    if (shotTime < 0) continue; // Shot hasn't happened yet
+    
+    const localT = t - shotTime; // Time since THIS ball was shot
+    if (localT >= anim.tMax || localT < 0) continue; // Ball finished trajectory
+    
+    // Find position in trajectory
+    let j = 0;
+    while (j < pts.length - 1 && pts[j+1].t < localT) j++;
+    if(j >= pts.length-1) continue;
 
-  for(const t0 of anim.shots){
-    const localT = t - t0;
-    if(localT < 0) continue;
-
-    let i = 0;
-    while (i < pts.length - 1 && pts[i+1].t < localT) i++;
-    if(i >= pts.length-1) continue;
-
-    const a = pts[i];
-    const b = pts[i+1];
+    const a = pts[j];
+    const b = pts[j+1];
     const u = (localT - a.t) / ((b.t - a.t) || 1e-9);
     const x = a.x + u * (b.x - a.x);
     const y = a.y + u * (b.y - a.y);
@@ -1521,16 +1565,8 @@ function applyMode(){
  playPause.addEventListener("click", () => {
   anim.playing = !anim.playing;
   playPause.textContent = anim.playing ? "Pause" : "Play";
-
-  if (anim.playing){
-    anim.t = 0;
-    anim.shots = [];
-    for (let i = 0; i < 20; i++){
-      anim.shots.push(i * anim.spacing); // 0, 0.125, 0.25, ...
-    }
-    updateAnimTMax(); // IMPORTANT: extend timeline for last shot
-  }
-
+  
+  // No longer reset t to 0 or generate shot array - just toggle playing state
   render();
 });
 
@@ -1538,28 +1574,12 @@ function applyMode(){
  resetAnim.addEventListener("click", () => {
   anim.t = 0;
   anim.playing = false;
-  anim.shots = [];
   playPause.textContent = "Play";
-  updateAnimTMax();
   render();
 });
 
-  // ------------------------------------------------------------
-  // Init
-  // ------------------------------------------------------------
-  // Defaults: scoring mode, locks are Locked by default (already checked in HTML)
-  whichTarget.value = getTargetDesc();
-  relHNum.value = parseFloat(relH.value).toFixed(4);
-
-  applyMode();
-  resizeCanvas();
-  recomputeAndRender();
-
-  // Make sure animation loop is running (if you moved it earlier, keep only one call)
-  // requestAnimationFrame(tick);
-
-  // -------------------- Animation loop --------------------
-  let lastTs = 0;
+let lastTs = 0;
+  // Update animation loop to allow t to grow unbounded (around line 1710)
   function tick(ts){
     if(!lastTs) lastTs = ts;
     const dt = (ts - lastTs) / 1000;
@@ -1567,15 +1587,21 @@ function applyMode(){
 
     if(anim.playing){
       anim.t += dt;
-      if(anim.t >= anim.tMax){
-        anim.t = anim.tMax;
-        anim.playing = false;
-        playPause.textContent = "Play";
-      }
+      // Remove tMax clamp - let time grow infinitely
+      // (drawBalls uses modulo to loop trajectory)
       render();
     }
     requestAnimationFrame(tick);
   }
+
+  // Remove shot array initialization from init section (around line 1695)
+  // Delete these lines:
+  // anim.shots = [];
+  // for (let i = 0; i < 20; i++){
+  //   anim.shots.push(i * anim.spacing);
+  // }
+  resizeCanvas();
+  recomputeAndRender();
   requestAnimationFrame(tick);
 
 
