@@ -6,9 +6,9 @@
   <title>FRC REBUILT – Shooter Sim (Scoring / Passing)</title>
   <style>
     :root{
-      --bg:#0b0f17; --panel:#121a27; --panel2:#0f1622; --text:#e7eefc; --muted:#9bb0d1;
-      --accent:#7cc3ff; --accent2:#7dffb0; --warn:#ffcc66; --bad:#ff6b6b; --grid:#22314a;
-      --line:#2a3a55;
+      --bg:#0a0a0a; --panel:#1a1a1a; --panel2:#141414; --text:#e0e0e0; --muted:#909090;
+      --accent:#dc1e28; --accent2:#ff4444; --warn:#ffaa00; --bad:#ff3333; --grid:#2a2a2a;
+      --line:#333333;
     }
     html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;}
     .wrap{display:grid; grid-template-columns: 410px 1fr; gap:14px; padding:14px; box-sizing:border-box; height:100vh;}
@@ -71,8 +71,21 @@
       <button id="btnPassing">Passing</button>
     </div>
 
-    <!-- Top controls order: Distance, RPM, Angle, Robot Height -->
+    <!-- Top controls order: Robot Placement, Distance, RPM, Angle, Robot Height -->
     <div class="topControls">
+      <!-- 1. Robot placement FIRST -->
+      <div class="row">
+        <div class="col">
+          <label id="lblRobotX">Robot X (m)</label>
+          <input id="robotX" type="range" min="0" max="3.9" step="0.01" value=".66" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="robotXNum" type="number" step="0.01" value=".66" />
+        </div>
+      </div>
+
+      <!-- 2. Distance (readonly) -->
       <div class="row readonly">
         <div class="col">
           <label>Distance d (m)</label>
@@ -84,6 +97,7 @@
         </div>
       </div>
 
+      <!-- 3. Wheel RPM -->
       <div class="row">
         <div class="col">
           <label>Wheel RPM</label>
@@ -104,6 +118,7 @@
         </div>
       </div>
 
+      <!-- 4. Angle -->
       <div class="row">
         <div class="col">
           <label>Angle (deg)</label>
@@ -124,32 +139,19 @@
         </div>
       </div>
 
+      <!-- 5. Robot height LAST -->
       <div class="row">
         <div class="col">
           <label>Robot height / release height</label>
           <select id="relH">
             <option value="0.5588" selected>22 in (0.5588 m)</option>
-            <option value="0.7620" >30 in (0.7620 m)</option>
+            <option value="0.7620">30 in (0.7620 m)</option>
           </select>
         </div>
         <div class="col readonly">
           <label>Release height (m)</label>
           <input id="relHNum" type="number" step="0.0001" value="0.5588" disabled />
         </div>
-      </div>
-    </div>
-
-    <div class="hr"></div>
-    <h2>Robot placement</h2>
-
-    <div class="row">
-      <div class="col">
-        <label id="lblRobotX">Robot X (m)</label>
-        <input id="robotX" type="range" min="0" max="3.9" step="0.01" value=".66" />
-      </div>
-      <div style="width:120px;">
-        <label>&nbsp;</label>
-        <input id="robotXNum" type="number" step="0.01" value=".66" />
       </div>
     </div>
 
@@ -224,6 +226,28 @@
           <input id="effNum" type="number" step="0.01" value="0.80" />
         </div>
       </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Ball compression (in)</label>
+          <input id="compression" type="range" min="0.5" max="2.0" step="0.1" value="1.0" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="compressionNum" type="number" step="0.1" value="1.0" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label>Backspin (0..10%)</label>
+          <input id="backspin" type="range" min="0" max="10" step="0.5" value="5.0" />
+        </div>
+        <div style="width:120px;">
+          <label>&nbsp;</label>
+          <input id="backspinNum" type="number" step="0.5" value="5.0" />
+        </div>
+      </div>
     </details>
 
     <div class="kpis">
@@ -234,6 +258,7 @@
       <span class="pill"><span>flight</span> <b id="kTflight">—</b></span>
       <span class="pill"><span>motor rpm</span> <b id="kMotorRpm">—</b></span>
       <span class="pill"><span>clamp</span> <b id="kClamp">—</b></span>
+      <span class="pill"><span>exit vel</span> <b id="kExitVel">—</b></span>
     </div>
 
     <div class="hr"></div>
@@ -341,6 +366,11 @@
   const eff = document.getElementById('eff');
   const effNum = document.getElementById('effNum');
 
+  const compression = document.getElementById('compression');
+  const compressionNum = document.getElementById('compressionNum');
+  const backspin = document.getElementById('backspin');
+  const backspinNum = document.getElementById('backspinNum');
+
   const findRpm = document.getElementById('findRpm');
   const presetScoring = document.getElementById('presetScoring');
   const presetPassing = document.getElementById('presetPassing');
@@ -355,6 +385,7 @@
   const kTflight = document.getElementById('kTflight');
   const kMotorRpm = document.getElementById('kMotorRpm');
   const kClamp = document.getElementById('kClamp');
+  const kExitVel = document.getElementById('kExitVel');
 
   // overlay pills
   const ovMode = document.getElementById('ovMode');
@@ -868,6 +899,8 @@ function solveBestAngleForFixedRpm(p){
     syncRangeAndNumber(air, airNum, 3);
     syncRangeAndNumber(wheelR, wheelRNum, 4);
     syncRangeAndNumber(eff, effNum, 2);
+    syncRangeAndNumber(compression, compressionNum, 1);
+    syncRangeAndNumber(backspin, backspinNum, 1);
 
     // Release height dropdown (already meters)
     const y0 = parseFloat(relH.value);
@@ -935,6 +968,26 @@ function solveBestAngleForFixedRpm(p){
       kTflight.textContent = "—";
     }
     kApex.textContent = `${fmt(simCache.apexY, 2)}m`;
+
+    // Calculate exit velocity with compression/backspin
+    const compressInches = parseFloat(compression.value);
+    const backspinPercent = parseFloat(backspin.value);
+
+    // Top shaft (slower for backspin)
+    const topMultiplier = 1.0 - (backspinPercent / 100.0);
+    const bottomMultiplier = 1.0;
+
+    const topRpm = usedWheel * topMultiplier;
+    const bottomRpm = usedWheel * bottomMultiplier;
+
+    const topSpeed = wheelRpmToSpeed(topRpm, parseFloat(wheelR.value), parseFloat(eff.value));
+    const bottomSpeed = wheelRpmToSpeed(bottomRpm, parseFloat(wheelR.value), parseFloat(eff.value));
+
+    // Compression factor (more compression = higher effective velocity)
+    const compressFactor = 1.0 + (compressInches / 12.0) * 0.05; // ~5% boost per inch
+
+    const exitVel = ((topSpeed + bottomSpeed) / 2.0) * compressFactor;
+    kExitVel.textContent = `${exitVel.toFixed(2)} m/s`;
 
     // Overlay
     ovMode.textContent = (mode === Mode.SCORING) ? "Scoring" : "Passing";
@@ -1109,7 +1162,7 @@ ctx.clearRect(0, 0, w, h);
     // opening band at y=1.8288, width 1.0414 centered at x=4.6
     const oL = worldToScreen(SCORE_OPEN_SPAN[0], GOAL_Y, view);
     const oR = worldToScreen(SCORE_OPEN_SPAN[1], GOAL_Y, view);
-    ctx.strokeStyle = "cyan";
+    ctx.strokeStyle = "#dc1e28"; // Red opening
     ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(oL.sx, oL.sy);
@@ -1123,7 +1176,7 @@ ctx.clearRect(0, 0, w, h);
     ctx.save();
     const pL = worldToScreen(PASS_SPAN[0], 0, view);
     const pR = worldToScreen(PASS_SPAN[1], 0, view);
-    ctx.strokeStyle = "lime";
+    ctx.strokeStyle = "#ff4444"; // Light red
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.moveTo(pL.sx, pL.sy);
@@ -1187,7 +1240,7 @@ ctx.clearRect(0, 0, w, h);
 
   function drawTrajectory(view, pts){
     ctx.save();
-    ctx.strokeStyle = "rgba(150,255,180,0.90)";
+    ctx.strokeStyle = "rgba(220,30,40,0.90)"; // Red team color
     ctx.lineWidth = 2.5;
     ctx.beginPath();
     for (let i=0;i<pts.length;i++){
@@ -1201,7 +1254,7 @@ ctx.clearRect(0, 0, w, h);
 
 function drawBalls(view, pts, t){
   ctx.save();
-  ctx.fillStyle = "yellow";   // restore yellow balls
+  ctx.fillStyle = "#dc1e28"; // Red ball
 
   for(const t0 of anim.shots){
     const localT = t - t0;
@@ -1246,7 +1299,7 @@ function drawBalls(view, pts, t){
     const rPix = Math.abs(pR.sx - p.sx);
 
     ctx.save();
-    ctx.fillStyle = "yellow";
+    ctx.fillStyle = "#dc1e28";
     ctx.beginPath();
     ctx.arc(p.sx, p.sy, rPix, 0, Math.PI*2);
     ctx.fill();
@@ -1404,6 +1457,12 @@ function applyMode(){
 
   eff.addEventListener("input", onInput);
   effNum.addEventListener("input", onInput);
+
+  // Compression and backspin controls
+  compression.addEventListener('input', onInput);
+  compressionNum.addEventListener('input', onInput);
+  backspin.addEventListener('input', onInput);
+  backspinNum.addEventListener('input', onInput);
 
   // Lock radios (Auto/Locked)
   rpmLocked.addEventListener("change", onInput);

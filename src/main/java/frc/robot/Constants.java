@@ -451,7 +451,7 @@ public final class Constants {
     // Flywheel hardware
     public static final int LEFT_FLYWHEEL_ID = 22;
     public static final int RIGHT_FLYWHEEL_ID = 23;
-    public static final double FLYWHEEL_GEAR_RATIO = 1.5; // 1.5:1 overdrive
+    public static final double FLYWHEEL_GEAR_RATIO = 1.0; 
     public static final double FLYWHEEL_DIAMETER_INCHES = 6.0;
     
     // Fixed shooter angle (measured from horizontal)
