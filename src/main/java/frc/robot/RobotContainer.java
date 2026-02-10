@@ -31,6 +31,8 @@ import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.util.LogCurrentPoseCommand;
 import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
+import frc.robot.subsystems.turret.TurretIOCTRE;
+import frc.robot.subsystems.turret.TurretSubsystem;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
 
@@ -84,9 +86,9 @@ public class RobotContainer {
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
     tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
     ledSubsystem = new LEDSubsystem(this.robotState, tagVisionSubsystem);
-  turretSubsystem = new TurretSubsystem(this.robotState);
-  intakeSubsystem = new IntakeSubsystem(this.robotState);
-  climberSubsystem = new ClimberSubsystem(this.robotState);
+    turretSubsystem = new TurretSubsystem(this.robotState, new TurretIOCTRE());
+    intakeSubsystem = new IntakeSubsystem(this.robotState);
+    climberSubsystem = new ClimberSubsystem(this.robotState);
 
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
     

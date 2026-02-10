@@ -7,14 +7,15 @@ import com.ctre.phoenix6.signals.*;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants.ClosedLoopOutputType;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants.SteerFeedbackType;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.units.measure.*;
 import com.therekrab.autopilot.APConstraints;
 import com.therekrab.autopilot.APProfile;
 import com.therekrab.autopilot.Autopilot;
-import static edu.wpi.first.units.Units.Meters;
 import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.Centimeters;
 
@@ -377,6 +378,66 @@ public final class Constants {
     public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
+  }
+
+  // Field constants used for fixed target mirroring
+  public static final class Field {
+    public static final double FIELD_LENGTH_METERS = 16.540;
+    public static final double FIELD_WIDTH_METERS = Units.inchesToMeters(316.64);
+    public static final double ALLIANCE_ZONE_LENGTH_METERS = Units.inchesToMeters(158.60);
+  }
+
+  // Hub centers for aiming
+  public static final class HubCenters {
+    public static final Pose2d BLUE_HUB_CENTER = new Pose2d(4.612, 4.022, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d RED_HUB_CENTER = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_HUB_CENTER.getX(),
+        BLUE_HUB_CENTER.getY(),
+        Rotation2d.fromDegrees(180.0));
+  }
+
+  // Hub opening geometry
+  public static final class HubOpening {
+    public static final double OPENING_HEIGHT_METERS = Units.inchesToMeters(72.0);
+    public static final double OPENING_WIDTH_METERS = Units.inchesToMeters(41.0);
+    public static final double OPENING_HALF_WIDTH_METERS = OPENING_WIDTH_METERS / 2.0;
+
+    public static final Pose3d BLUE_HUB_OPENING_CENTER = new Pose3d(
+        HubCenters.BLUE_HUB_CENTER.getX(),
+        HubCenters.BLUE_HUB_CENTER.getY(),
+        OPENING_HEIGHT_METERS,
+        new Rotation3d());
+
+    public static final Pose3d RED_HUB_OPENING_CENTER = new Pose3d(
+        HubCenters.RED_HUB_CENTER.getX(),
+        HubCenters.RED_HUB_CENTER.getY(),
+        OPENING_HEIGHT_METERS,
+        new Rotation3d());
+  }
+
+  // Pass targets for alliance-zone handoff
+  public static final class PassTargets {
+    public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(3.46, 2.21, Rotation2d.fromDegrees(0.0));
+
+    public static final Pose2d RED_PASS_TARGET_LEFT = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_LEFT.getX(),
+        BLUE_PASS_TARGET_LEFT.getY(),
+        Rotation2d.fromDegrees(180.0));
+    public static final Pose2d RED_PASS_TARGET_RIGHT = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_RIGHT.getX(),
+        BLUE_PASS_TARGET_RIGHT.getY(),
+        Rotation2d.fromDegrees(180.0));
+  }
+
+  // Fixed target poses for turret aiming (blue alliance, red mirrored later)
+  public static final class TurretTargets {
+    public static final Pose2d REEF_TAG_17 = StartingPositions.BLUE_REEF_TAG_17;
+    public static final Pose2d REEF_TAG_18 = StartingPositions.BLUE_REEF_TAG_18;
+    public static final Pose2d REEF_TAG_21 = StartingPositions.BLUE_REEF_TAG_21;
+    public static final Pose2d REEF_TAG_22 = StartingPositions.BLUE_REEF_TAG_22;
+    public static final Pose2d TAG_12 = StartingPositions.BLUE_TAG_12;
+    public static final Pose2d TAG_16 = StartingPositions.BLUE_TAG_16;
   }
 
   // AutoPilot precision navigation library (singleton instances)
