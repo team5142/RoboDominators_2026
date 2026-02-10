@@ -114,24 +114,24 @@ public final class Constants {
     // Motor configuration helpers (used by TunerConstants)
     public static TalonFXConfiguration createDriveMotorConfig() {
       TalonFXConfiguration config = new TalonFXConfiguration();
-      config.Slot0.kP = TunableCTREGains.DRIVE_KP.get();
-      config.Slot0.kI = TunableCTREGains.DRIVE_KI.get();
-      config.Slot0.kD = TunableCTREGains.DRIVE_KD.get();
-      config.Slot0.kS = TunableCTREGains.DRIVE_KS.get();
-      config.Slot0.kV = TunableCTREGains.DRIVE_KV.get();
-      config.Slot0.kA = TunableCTREGains.DRIVE_KA.get();
+      config.Slot0.kP = DriveGains.kP;
+      config.Slot0.kI = DriveGains.kI;
+      config.Slot0.kD = DriveGains.kD;
+      config.Slot0.kS = DriveGains.kS;
+      config.Slot0.kV = DriveGains.kV;
+      config.Slot0.kA = DriveGains.kA;
       config.ClosedLoopGeneral.ContinuousWrap = false;
       return config;
     }
 
     public static TalonFXConfiguration createSteerMotorConfig() {
       TalonFXConfiguration config = new TalonFXConfiguration();
-      config.Slot0.kP = TunableCTREGains.STEER_KP.get();
-      config.Slot0.kI = TunableCTREGains.STEER_KI.get();
-      config.Slot0.kD = TunableCTREGains.STEER_KD.get();
-      config.Slot0.kS = TunableCTREGains.STEER_KS.get();
-      config.Slot0.kV = TunableCTREGains.STEER_KV.get();
-      config.Slot0.kA = TunableCTREGains.STEER_KA.get();
+      config.Slot0.kP = SteerGains.kP;
+      config.Slot0.kI = SteerGains.kI;
+      config.Slot0.kD = SteerGains.kD;
+      config.Slot0.kS = SteerGains.kS;
+      config.Slot0.kV = SteerGains.kV;
+      config.Slot0.kA = SteerGains.kA;
       config.Slot0.StaticFeedforwardSign = StaticFeedforwardSignValue.UseClosedLoopSign;
       config.ClosedLoopRamps.VoltageClosedLoopRampPeriod = 0.02;
       config.ClosedLoopGeneral.ContinuousWrap = true;

@@ -10,7 +10,6 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
-import frc.robot.TunableCTREGains;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -95,13 +94,6 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     Logger.recordOutput("Drive/ModulePositions/FrontRight", modulePositions[1].distanceMeters);
     Logger.recordOutput("Drive/ModulePositions/BackLeft", modulePositions[2].distanceMeters);
     Logger.recordOutput("Drive/ModulePositions/BackRight", modulePositions[3].distanceMeters);
-
-    // Live-update CTRE gains
-    if (TunableCTREGains.hasChanged()) {
-      System.out.println("CTRE gains updated from AdvantageScope:");
-      System.out.println("  Steer: kP=" + TunableCTREGains.STEER_KP.get() + " kD=" + TunableCTREGains.STEER_KD.get());
-      System.out.println("  Drive: kP=" + TunableCTREGains.DRIVE_KP.get() + " kV=" + TunableCTREGains.DRIVE_KV.get());
-    }
 
     logCounter++;
   }

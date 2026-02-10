@@ -118,13 +118,13 @@ public class RobotContainer {
           (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds),
           new PPHolonomicDriveController(
               new PIDConstants(
-                  TunablePathPlannerPID.TRANSLATION_KP.get(), 
-                  TunablePathPlannerPID.TRANSLATION_KI.get(), 
-                  TunablePathPlannerPID.TRANSLATION_KD.get()),
+          TRANSLATION_KP,
+          TRANSLATION_KI,
+          TRANSLATION_KD),
               new PIDConstants(
-                  TunablePathPlannerPID.ROTATION_KP.get(), 
-                  TunablePathPlannerPID.ROTATION_KI.get(), 
-                  TunablePathPlannerPID.ROTATION_KD.get())),
+          ROTATION_KP,
+          ROTATION_KI,
+          ROTATION_KD)),
           config,
           this::shouldFlipPath,
           driveSubsystem);
@@ -313,36 +313,6 @@ public class RobotContainer {
       applyPendingAutoPreviewPose();
     }
 
-    // Re-apply PathPlanner PID if changed in AdvantageScope
-    if (TunablePathPlannerPID.hasChanged()) {
-      try {
-        RobotConfig config = RobotConfig.fromGUISettings();
-        
-        AutoBuilder.configure(
-            poseEstimator::getEstimatedPose,
-            this::resetPose,
-            driveSubsystem::getRobotRelativeSpeeds,
-            (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds),
-            new PPHolonomicDriveController(
-                new PIDConstants(
-                    TunablePathPlannerPID.TRANSLATION_KP.get(), 
-                    TunablePathPlannerPID.TRANSLATION_KI.get(), 
-                    TunablePathPlannerPID.TRANSLATION_KD.get()),
-                new PIDConstants(
-                    TunablePathPlannerPID.ROTATION_KP.get(), 
-                    TunablePathPlannerPID.ROTATION_KI.get(), 
-                    TunablePathPlannerPID.ROTATION_KD.get())),
-            config,
-            this::shouldFlipPath,
-            driveSubsystem);
-        
-        SmartLogger.logConsole("Translation kP=" + TunablePathPlannerPID.TRANSLATION_KP.get() + 
-                              " | Rotation kP=" + TunablePathPlannerPID.ROTATION_KP.get() + 
-                              " | Restart path (X) to apply", "PID Updated");
-      } catch (Exception e) {
-        SmartLogger.logConsoleError("Failed to reconfigure PID: " + e.getMessage());
-      }
-    }
   }
 
   private void applyPendingAutoPreviewPose() {
