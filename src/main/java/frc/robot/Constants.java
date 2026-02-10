@@ -295,6 +295,35 @@ public final class Constants {
     public static final int SHOP_STABILITY_REQUIRED_CYCLES = 5; // 5 cycles of stability (100ms)
   }
 
+  // Turret mechanism hardware IDs
+  public static final class Turret {
+    public static final int FLYWHEEL_FRONT_MOTOR_ID = 20;
+    public static final int FLYWHEEL_BACK_MOTOR_ID = 21;
+    public static final int HOOD_MOTOR_ID = 22;
+    public static final int TURRET_MOTOR_ID = 23;
+    public static final int SINGULATOR_MOTOR_ID = 24;
+
+    public static final int HOOD_CANCODER_ID = 25;
+    public static final int TURRET_CANCODER_ID = 26;
+
+    public static final int SINGULATOR_BEAM_BREAK_DIO = 27;
+    public static final int HOOD_BEAM_BREAK_DIO = 28;
+    public static final int HALL_SENSOR_RIGHT_DIO = 29;
+    public static final int HALL_SENSOR_LEFT_DIO = 30;
+  }
+
+  // Intake mechanism hardware IDs
+  public static final class Intake {
+    public static final int INTAKE_MOTOR_ID = 40;
+    public static final int INTAKE_EXTENSION_MOTOR_ID = 41;
+  }
+
+  // Climber mechanism hardware IDs
+  public static final class Climber {
+    public static final int PULL_MOTOR_ID = 50;
+    public static final int ROTATION_MOTOR_ID = 51;
+  }
+
   // Autonomous path following (PathPlanner PID tuning)
   public static final class Auto {
     // Translation PID (trust your SysId drive gains!)

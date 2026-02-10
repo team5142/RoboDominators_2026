@@ -22,14 +22,17 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
-import frc.robot.commands.drive.SmartDriveToPosition;
+import frc.robot.commands.drive.AllianceZoneIntakeSweepCommand;
 import frc.robot.commands.drive.DriveWithJoysticks;
+import frc.robot.commands.drive.DynamicBumpTraversalCommand;
+import frc.robot.commands.drive.NeutralZoneIntakeSweepCommand;
+import frc.robot.commands.drive.OpposingAllianceIntakeSweepCommand;
+import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.util.LogCurrentPoseCommand;
 import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
-import frc.robot.util.LimelightHelpers;
 
 // Wires up robot hardware, controllers, and commands
 public class RobotContainer {
@@ -53,6 +56,9 @@ public class RobotContainer {
   final PoseEstimatorSubsystem poseEstimator;
   final TagVisionSubsystem tagVisionSubsystem;
   public final LEDSubsystem ledSubsystem;
+  final TurretSubsystem turretSubsystem;
+  final IntakeSubsystem intakeSubsystem;
+  final ClimberSubsystem climberSubsystem;
 
   // Autonomous
   private final SendableChooser<Command> autoChooser;
@@ -78,6 +84,9 @@ public class RobotContainer {
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
     tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
     ledSubsystem = new LEDSubsystem(this.robotState, tagVisionSubsystem);
+  turretSubsystem = new TurretSubsystem(this.robotState);
+  intakeSubsystem = new IntakeSubsystem(this.robotState);
+  climberSubsystem = new ClimberSubsystem(this.robotState);
 
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
     
@@ -145,7 +154,7 @@ public class RobotContainer {
             () -> -driverController.getLeftX(),
             () -> -driverController.getRightX(),
             () -> true,
-            () -> driverController.getLeftBumper()));
+      () -> false)); // Left bumper reserved for bump traversal.
   }
 
   // Map controller buttons to commands
@@ -185,31 +194,41 @@ public class RobotContainer {
     //       }
     //     }));
 
-    // Y/B/A/X/Stick: SmartDrive to tags
+  // Y/B/A/X/Stick: SmartDrive to tags
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_21, PRECISE_21_POSE));
     new JoystickButton(driverController, XboxController.Button.kB.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_22, PRECISE_22_POSE));
-    new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
+  // new JoystickButton(driverController, XboxController.Button.kA.value)
+  //     .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_18, PRECISE_18_POSE));
     new JoystickButton(driverController, XboxController.Button.kRightStick.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_AUTO_START_POS_FAR_RIGHT, PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT));
     // RIGHT BUMPER - PROCESSOR
-    new Trigger(() -> driverController.getRightBumper())
-        .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
+  // new Trigger(() -> driverController.getRightBumper())
+  //     .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
     // RIGHT TRIGGER - CORAL STATION
     new Trigger(() -> driverController.getRightTriggerAxis() > 0.9)
         .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
 
     // Driver interrupt for operator-triggered SmartDrive
-    new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
-        .onTrue(Commands.runOnce(() -> {
-          if (touchscreen != null) {
-            touchscreen.cancelActiveOperatorDrive();
-          }
-        }));
+    // new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
+    //     .onTrue(Commands.runOnce(() -> {
+    //       if (touchscreen != null) {
+    //         touchscreen.cancelActiveOperatorDrive();
+    //       }
+    //     }));
+
+    // A BUTTON: Smart sweep based on current zone
+    new JoystickButton(driverController, XboxController.Button.kA.value)
+        .whileTrue(Commands.deferredProxy(this::createSmartSweepCommand));
+
+    // LEFT/RIGHT BUMPER: Dynamic bump traversal
+    new Trigger(() -> driverController.getLeftBumper())
+        .onTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
+    new Trigger(() -> driverController.getRightBumper())
+        .onTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
 
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
     // new Trigger(() ->
@@ -363,6 +382,42 @@ public class RobotContainer {
     SmartLogger.logReplay("Auto/QuestRotErrDeg", rotErr);
 
     return posErr > AUTO_SEED_POS_TOL_METERS || rotErr > AUTO_SEED_ROT_TOL_DEG;
+  }
+
+  private Command createSmartSweepCommand() {
+    Pose2d pose = poseEstimator.getEstimatedPose();
+    var neutralConfig = NeutralZoneIntakeSweepCommand.createPrototypeConfig();
+    var allianceConfig = AllianceZoneIntakeSweepCommand.createPrototypeConfig();
+    double fieldLength = neutralConfig.fieldLengthMeters;
+    double allianceZoneLength = allianceConfig.allianceZoneLengthMeters;
+    double neutralMinX = allianceZoneLength;
+    double neutralMaxX = fieldLength - allianceZoneLength;
+
+    if (pose.getX() < neutralMinX) {
+      return new AllianceZoneIntakeSweepCommand(poseEstimator, driveSubsystem, allianceConfig);
+    }
+
+    if (pose.getX() > neutralMaxX) {
+      return new OpposingAllianceIntakeSweepCommand(
+          poseEstimator,
+          driveSubsystem,
+          OpposingAllianceIntakeSweepCommand.createPrototypeConfig());
+    }
+
+    return new NeutralZoneIntakeSweepCommand(
+        poseEstimator,
+        driveSubsystem,
+        neutralConfig);
+  }
+
+  private Command createBumpTraversalCommand(DynamicBumpTraversalCommand.Side side) {
+    boolean modifier = driverController.getPOV() == 0; // D-pad up
+    return new DynamicBumpTraversalCommand(
+        poseEstimator,
+        driveSubsystem,
+        side,
+        modifier,
+        DynamicBumpTraversalCommand.createPrototypeConfig());
   }
 
   // Register SmartDrive as PathPlanner events

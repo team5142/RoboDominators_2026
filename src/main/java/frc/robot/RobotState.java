@@ -38,6 +38,43 @@ public class RobotState {
     LOCKED          // Navigation complete, wheels locked
   }
   private NavigationPhase navigationPhase = NavigationPhase.NONE;
+
+  // Mechanism states
+  public enum TurretState {
+    IDLE,
+    ACTIVE
+  }
+
+  public enum IntakeState {
+    IDLE,
+    ACTIVE
+  }
+
+  public enum ClimberState {
+    IDLE,
+    ACTIVE
+  }
+
+  private TurretState turretState = TurretState.IDLE;
+  private IntakeState intakeState = IntakeState.IDLE;
+  private ClimberState climberState = ClimberState.IDLE;
+
+  private boolean turretSingulatorBeamBreakRaw = false;
+  private boolean turretHoodBeamBreakRaw = false;
+  private boolean turretHallLeftRaw = false;
+  private boolean turretHallRightRaw = false;
+
+  private double turretHoodAbsolutePositionRotations = 0.0;
+  private double turretRotationAbsolutePositionRotations = 0.0;
+
+  private double turretFlywheelPercent = 0.0;
+  private double turretHoodPercent = 0.0;
+  private double turretRotationPercent = 0.0;
+  private double turretSingulatorPercent = 0.0;
+  private double intakePercent = 0.0;
+  private double intakeExtensionPercent = 0.0;
+  private double climberPullPercent = 0.0;
+  private double climberRotationPercent = 0.0;
   
   // Field position
   private Pose2d robotPose = new Pose2d();
@@ -95,4 +132,144 @@ public class RobotState {
     this.operatorDriveLockout = operatorDriveLockout;
     SmartLogger.logReplay("RobotState/OperatorDriveLockout", operatorDriveLockout);
   }
+
+  public void setTurretState(TurretState turretState) {
+    if (this.turretState == turretState) {
+      return;
+    }
+    this.turretState = turretState;
+    SmartLogger.logReplay("RobotState/TurretState", turretState.toString());
+  }
+
+  public TurretState getTurretState() { return turretState; }
+
+  public void setIntakeState(IntakeState intakeState) {
+    if (this.intakeState == intakeState) {
+      return;
+    }
+    this.intakeState = intakeState;
+    SmartLogger.logReplay("RobotState/IntakeState", intakeState.toString());
+  }
+
+  public IntakeState getIntakeState() { return intakeState; }
+
+  public void setClimberState(ClimberState climberState) {
+    if (this.climberState == climberState) {
+      return;
+    }
+    this.climberState = climberState;
+    SmartLogger.logReplay("RobotState/ClimberState", climberState.toString());
+  }
+
+  public ClimberState getClimberState() { return climberState; }
+
+  public void setTurretSingulatorBeamBreakRaw(boolean beamBreakRaw) {
+    if (turretSingulatorBeamBreakRaw == beamBreakRaw) {
+      return;
+    }
+    turretSingulatorBeamBreakRaw = beamBreakRaw;
+    SmartLogger.logReplay("RobotState/Turret/SingulatorBeamBreakRaw", beamBreakRaw);
+  }
+
+  public boolean getTurretSingulatorBeamBreakRaw() { return turretSingulatorBeamBreakRaw; }
+
+  public void setTurretHoodBeamBreakRaw(boolean beamBreakRaw) {
+    if (turretHoodBeamBreakRaw == beamBreakRaw) {
+      return;
+    }
+    turretHoodBeamBreakRaw = beamBreakRaw;
+    SmartLogger.logReplay("RobotState/Turret/HoodBeamBreakRaw", beamBreakRaw);
+  }
+
+  public boolean getTurretHoodBeamBreakRaw() { return turretHoodBeamBreakRaw; }
+
+  public void setTurretHallLeftRaw(boolean hallRaw) {
+    if (turretHallLeftRaw == hallRaw) {
+      return;
+    }
+    turretHallLeftRaw = hallRaw;
+    SmartLogger.logReplay("RobotState/Turret/HallLeftRaw", hallRaw);
+  }
+
+  public boolean getTurretHallLeftRaw() { return turretHallLeftRaw; }
+
+  public void setTurretHallRightRaw(boolean hallRaw) {
+    if (turretHallRightRaw == hallRaw) {
+      return;
+    }
+    turretHallRightRaw = hallRaw;
+    SmartLogger.logReplay("RobotState/Turret/HallRightRaw", hallRaw);
+  }
+
+  public boolean getTurretHallRightRaw() { return turretHallRightRaw; }
+
+  public void setTurretHoodAbsolutePositionRotations(double rotations) {
+    turretHoodAbsolutePositionRotations = rotations;
+    SmartLogger.logReplay("RobotState/Turret/HoodAbsRot", rotations);
+  }
+
+  public double getTurretHoodAbsolutePositionRotations() { return turretHoodAbsolutePositionRotations; }
+
+  public void setTurretRotationAbsolutePositionRotations(double rotations) {
+    turretRotationAbsolutePositionRotations = rotations;
+    SmartLogger.logReplay("RobotState/Turret/RotationAbsRot", rotations);
+  }
+
+  public double getTurretRotationAbsolutePositionRotations() { return turretRotationAbsolutePositionRotations; }
+
+  public void setTurretFlywheelPercent(double percent) {
+    turretFlywheelPercent = percent;
+    SmartLogger.logReplay("RobotState/Turret/FlywheelPercent", percent);
+  }
+
+  public double getTurretFlywheelPercent() { return turretFlywheelPercent; }
+
+  public void setTurretHoodPercent(double percent) {
+    turretHoodPercent = percent;
+    SmartLogger.logReplay("RobotState/Turret/HoodPercent", percent);
+  }
+
+  public double getTurretHoodPercent() { return turretHoodPercent; }
+
+  public void setTurretRotationPercent(double percent) {
+    turretRotationPercent = percent;
+    SmartLogger.logReplay("RobotState/Turret/RotationPercent", percent);
+  }
+
+  public double getTurretRotationPercent() { return turretRotationPercent; }
+
+  public void setTurretSingulatorPercent(double percent) {
+    turretSingulatorPercent = percent;
+    SmartLogger.logReplay("RobotState/Turret/SingulatorPercent", percent);
+  }
+
+  public double getTurretSingulatorPercent() { return turretSingulatorPercent; }
+
+  public void setIntakePercent(double percent) {
+    intakePercent = percent;
+    SmartLogger.logReplay("RobotState/Intake/Percent", percent);
+  }
+
+  public double getIntakePercent() { return intakePercent; }
+
+  public void setIntakeExtensionPercent(double percent) {
+    intakeExtensionPercent = percent;
+    SmartLogger.logReplay("RobotState/Intake/ExtensionPercent", percent);
+  }
+
+  public double getIntakeExtensionPercent() { return intakeExtensionPercent; }
+
+  public void setClimberPullPercent(double percent) {
+    climberPullPercent = percent;
+    SmartLogger.logReplay("RobotState/Climber/PullPercent", percent);
+  }
+
+  public double getClimberPullPercent() { return climberPullPercent; }
+
+  public void setClimberRotationPercent(double percent) {
+    climberRotationPercent = percent;
+    SmartLogger.logReplay("RobotState/Climber/RotationPercent", percent);
+  }
+
+  public double getClimberRotationPercent() { return climberRotationPercent; }
 }
