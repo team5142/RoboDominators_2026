@@ -269,7 +269,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     if (robotState.getMode() == RobotState.Mode.DISABLED) {
       initializer.updateReadiness();
-      // validator.periodicValidation(getEstimatedPose()); // ← COMMENT OUT (saves 50-100ms)
+      // validator.periodicValidation(getEstimatedPose()); // Comment out (saves 50-100ms)
     }
     
     if (!initializer.isInitialized()) {
