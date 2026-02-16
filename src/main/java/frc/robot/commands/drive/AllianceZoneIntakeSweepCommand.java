@@ -24,6 +24,7 @@ public class AllianceZoneIntakeSweepCommand extends Command {
     public final double allianceZoneLengthMeters;
     public final double edgeMarginMeters;
     public final double laneOffsetMeters;
+    public final double robotHalfWidthMeters;
     public final PathConstraints pathConstraints;
 
     public SweepConfig(
@@ -32,12 +33,14 @@ public class AllianceZoneIntakeSweepCommand extends Command {
         double allianceZoneLengthMeters,
         double edgeMarginMeters,
         double laneOffsetMeters,
+        double robotHalfWidthMeters,
         PathConstraints pathConstraints) {
       this.fieldLengthMeters = fieldLengthMeters;
       this.fieldWidthMeters = fieldWidthMeters;
       this.allianceZoneLengthMeters = allianceZoneLengthMeters;
       this.edgeMarginMeters = edgeMarginMeters;
       this.laneOffsetMeters = laneOffsetMeters;
+      this.robotHalfWidthMeters = robotHalfWidthMeters;
       this.pathConstraints = pathConstraints;
     }
   }
@@ -115,13 +118,16 @@ public class AllianceZoneIntakeSweepCommand extends Command {
   }
 
   private static List<Pose2d> buildSweepLoop(SweepConfig config) {
-    double minX = config.edgeMarginMeters;
-    double maxX = config.allianceZoneLengthMeters - config.edgeMarginMeters;
+    double zoneMargin = config.edgeMarginMeters + config.robotHalfWidthMeters;
+    double laneMargin = config.laneOffsetMeters + config.robotHalfWidthMeters;
 
-  double laneLow = config.laneOffsetMeters; // Low wall lane.
+    double minX = zoneMargin;
+    double maxX = config.allianceZoneLengthMeters - zoneMargin;
+
+  double laneLow = laneMargin; // Low wall lane.
   double laneMidLow = Units.inchesToMeters(118.0); // Below tower band.
   double laneMidHigh = Units.inchesToMeters(177.0); // Above tower band.
-  double laneHigh = config.fieldWidthMeters - config.laneOffsetMeters; // High wall lane.
+  double laneHigh = config.fieldWidthMeters - laneMargin; // High wall lane.
 
     List<Pose2d> loop = new ArrayList<>();
 
@@ -160,12 +166,13 @@ public class AllianceZoneIntakeSweepCommand extends Command {
     double fieldLengthMeters = 17.55;
     double fieldWidthMeters = 8.043;
     double allianceZoneLengthMeters = Units.inchesToMeters(158.60);
-  double edgeMarginMeters = Units.inchesToMeters(3.0); // Small buffer from walls.
+  double edgeMarginMeters = Units.inchesToMeters(3.0); // Buffer from the zone edge.
   double laneOffsetMeters = Units.inchesToMeters(16.0); // Lane spacing from edges.
+  double robotHalfWidthMeters = Units.inchesToMeters(16.5); // Half robot width with bumpers.
 
     PathConstraints constraints = new PathConstraints(
-        3.0,
-        3.0,
+  2.0,
+  2.0,
         Math.toRadians(360.0),
         Math.toRadians(540.0));
 
@@ -175,6 +182,7 @@ public class AllianceZoneIntakeSweepCommand extends Command {
         allianceZoneLengthMeters,
         edgeMarginMeters,
         laneOffsetMeters,
+        robotHalfWidthMeters,
         constraints);
   }
 }

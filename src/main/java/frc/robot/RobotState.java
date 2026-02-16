@@ -20,6 +20,7 @@ public class RobotState {
   private boolean enabled = false;
   private boolean sysIdMode = false;
   private boolean operatorDriveLockout = false;
+  private edu.wpi.first.wpilibj.DriverStation.Alliance alliance = edu.wpi.first.wpilibj.DriverStation.Alliance.Blue;
   
   // Robot intent (high-level actions)
   public enum RobotIntent {
@@ -28,6 +29,7 @@ public class RobotState {
     // TODO 2026: Add INTAKE_FLOOR, SCORE_HIGH, CLIMB, etc.
   }
   private RobotIntent currentIntent = RobotIntent.IDLE;
+  @SuppressWarnings("unused")
   private final Queue<RobotIntent> intentQueue = new LinkedList<>();
   
   // Navigation state (active - used by SmartDrive)
@@ -104,6 +106,16 @@ public class RobotState {
   }
   
   public Mode getMode() { return mode; }
+
+  public void setAlliance(edu.wpi.first.wpilibj.DriverStation.Alliance alliance) {
+    if (this.alliance == alliance) {
+      return;
+    }
+    this.alliance = alliance;
+    SmartLogger.logReplay("RobotState/Alliance", alliance.toString());
+  }
+
+  public edu.wpi.first.wpilibj.DriverStation.Alliance getAlliance() { return alliance; }
   
   public void setEnabled(boolean enabled) {
     this.enabled = enabled;

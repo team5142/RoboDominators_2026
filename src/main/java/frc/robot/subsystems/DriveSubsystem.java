@@ -151,6 +151,14 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     return gyro.getRotation();
   }
 
+  public double getGyroPitchDegrees() {
+    return gyro.getPitchDegrees();
+  }
+
+  public double getGyroRollDegrees() {
+    return gyro.getRollDegrees();
+  }
+
   public void zeroHeading() {
     gyro.resetHeading();
   }

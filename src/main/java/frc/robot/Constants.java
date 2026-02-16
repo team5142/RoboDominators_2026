@@ -16,8 +16,6 @@ import edu.wpi.first.units.measure.*;
 import com.therekrab.autopilot.APConstraints;
 import com.therekrab.autopilot.APProfile;
 import com.therekrab.autopilot.Autopilot;
-import static edu.wpi.first.units.Units.Degrees;
-import static edu.wpi.first.units.Units.Centimeters;
 
 public final class Constants {
   private Constants() {}
@@ -29,8 +27,8 @@ public final class Constants {
   // Swerve drivetrain hardware config and PID tuning
   public static final class Swerve {
     // Robot dimensions (from Tuner X)
-    public static final double TRACK_WIDTH_METERS = Units.inchesToMeters(24.75);
-    public static final double WHEEL_BASE_METERS = Units.inchesToMeters(24.75);
+    public static final double TRACK_WIDTH_METERS = Units.inchesToMeters(19.5);
+    public static final double WHEEL_BASE_METERS = Units.inchesToMeters(19.5);
     public static final double WHEEL_RADIUS_METERS = Units.inchesToMeters(2.0);
 
     // Max speeds
@@ -56,22 +54,22 @@ public final class Constants {
     public static final int FRONT_LEFT_DRIVE_ID = 2;
     public static final int FRONT_LEFT_STEER_ID = 1;
     public static final int FRONT_LEFT_CANCODER_ID = 9;
-    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.48779296875;
+    public static final double FRONT_LEFT_OFFSET_ROTATIONS = 0.488037109375;
 
     public static final int FRONT_RIGHT_DRIVE_ID = 4;
     public static final int FRONT_RIGHT_STEER_ID = 3;
     public static final int FRONT_RIGHT_CANCODER_ID = 10;
-    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.209228515625;
+    public static final double FRONT_RIGHT_OFFSET_ROTATIONS = 0.209716796875;
 
     public static final int BACK_LEFT_DRIVE_ID = 8;
     public static final int BACK_LEFT_STEER_ID = 7;
     public static final int BACK_LEFT_CANCODER_ID = 12;
-    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.296142578125;
+    public static final double BACK_LEFT_OFFSET_ROTATIONS = -0.3017578125;
 
     public static final int BACK_RIGHT_DRIVE_ID = 6;
     public static final int BACK_RIGHT_STEER_ID = 5;
     public static final int BACK_RIGHT_CANCODER_ID = 11;
-    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.3994140625;
+    public static final double BACK_RIGHT_OFFSET_ROTATIONS = 0.395263671875;
 
     // Motor inversions (set by Tuner X based on motor mounting)
     public static final boolean FRONT_LEFT_DRIVE_INVERTED = false;
@@ -91,21 +89,21 @@ public final class Constants {
 
     // PID gains (tuned via SysId characterization tool)
     public static final class SteerGains {
-      public static final double kP = 48.633;
+      public static final double kP = 100;//48.633;
       public static final double kI = 0.0;
-      public static final double kD = 3.2691;
-      public static final double kS = 0.0782;
-      public static final double kV = 2.6267;
-      public static final double kA = 0.11226;
+      public static final double kD = 0.5;////3.2691;
+      public static final double kS = 0.1;//0.0782;
+      public static final double kV = 2.66;//2.6267;
+      public static final double kA = 0;//0.11226;
     }
 
     public static final class DriveGains {
-      public static final double kP = 0.16077;
+      public static final double kP = 0.1;//0.16077;
       public static final double kI = 0.0;
       public static final double kD = 0.0;
-      public static final double kS = 0.17399;
-      public static final double kV = 0.11894;
-      public static final double kA = 0.003069;
+      public static final double kS = 0;//0.17399;
+      public static final double kV = 0.124;//0.11894;
+      public static final double kA = 0;//0.003069;
     }
 
     public static final ClosedLoopOutputType STEER_CLOSED_LOOP_OUTPUT = ClosedLoopOutputType.Voltage;
@@ -213,11 +211,10 @@ public final class Constants {
 
   // QuestNav SLAM sensor (USB/Ethernet connected IMU with visual odometry)
   public static final class QuestNav {
-    // Mounting position (forward 14 inches, slightly left)
-    public static final double QUEST_X_METERS = Units.inchesToMeters(14.0);
-    public static final double QUEST_Y_METERS = Units.inchesToMeters(0.5);
-    public static final double QUEST_Z_METERS = Units.inchesToMeters(0.0);
-    public static final double QUEST_YAW_DEG = 0.0;
+    public static final double QUEST_X_METERS = Units.inchesToMeters(-11.38);
+    public static final double QUEST_Y_METERS = Units.inchesToMeters(1.56);
+    public static final double QUEST_Z_METERS = Units.inchesToMeters(13.75);
+    public static final double QUEST_YAW_DEG = 180.0;
 
     // Failover timing (switch to Pigeon if QuestNav disconnects)
     public static final double MAX_QUESTNAV_DISCONNECT_TIME_SECONDS = 0.5;
@@ -261,6 +258,12 @@ public final class Constants {
     // Teleport rejection (absolute backstops)
     public static final double TELEPORT_TRANSLATION_METERS = 0.6; // 60cm jump in one frame
     public static final double TELEPORT_ROTATION_RADIANS = 0.9; // ~50° jump in one frame
+
+  // Teleport gate option: only enforce when robot is moving fast
+  public static final boolean TELEPORT_GATE_ONLY_WHEN_MOVING = true;
+
+  // Teleport gate option: skip when robot is tilted on the ramp
+  public static final double TELEPORT_GATE_MAX_TILT_DEGREES = 8.0;
     
     // Divergence detection (Quest vs Odom comparison)
     public static final double DIVERGENCE_THRESHOLD_METERS = 0.20; // 20cm disagreement per cycle
@@ -349,8 +352,51 @@ public final class Constants {
     public static final double POST_PATH_CORRECTION_TIMEOUT_S = 3.0;
   }
 
+// Bump traversal staging poses (blue alliance frame, red mirrored automatically)
+  public static final class BumpPoses {
+    // Left bump staging poses (Y = 5.528 m, bump centerline 217.64 in from wall)
+    public static final Pose2d BLUE_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 5.528, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 5.528, Rotation2d.fromDegrees(45.0));
+    
+    // Right bump staging poses (Y = 2.508 m, bump centerline 98.76 in from wall)
+    public static final Pose2d BLUE_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 2.65, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 2.65, Rotation2d.fromDegrees(45.0));
+
+    // Far-side (opponent zone) staging poses (X pushed into opponent zone past neutral exit)
+    public static final Pose2d BLUE_LEFTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 5.528, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 2.65, Rotation2d.fromDegrees(45.0));
+
+    // Red alliance mirrored poses (X_red = FIELD_LENGTH - X_blue, rotation + 180 deg)
+    public static final Pose2d RED_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_ALLIANCE_STAGING.getX(),
+        BLUE_LEFTBUMP_ALLIANCE_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+    public static final Pose2d RED_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_NEUTRAL_STAGING.getX(),
+        BLUE_LEFTBUMP_NEUTRAL_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+    public static final Pose2d RED_LEFTBUMP_OPPONENT_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_OPPONENT_STAGING.getX(),
+        BLUE_LEFTBUMP_OPPONENT_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+
+    public static final Pose2d RED_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_ALLIANCE_STAGING.getX(),
+        BLUE_RIGHTBUMP_ALLIANCE_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+    public static final Pose2d RED_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_NEUTRAL_STAGING.getX(),
+        BLUE_RIGHTBUMP_NEUTRAL_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+    public static final Pose2d RED_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_OPPONENT_STAGING.getX(),
+        BLUE_RIGHTBUMP_OPPONENT_STAGING.getY(),
+        Rotation2d.fromDegrees(225.0));
+  }
+
   // Field positions (all blue alliance - red is mirrored automatically)
   public static final class StartingPositions {
+    
     
     // TUNING POSITION
     public static final Pose2d PID_TUNING_POSITION = new Pose2d(1.270, 2.230, Rotation2d.fromDegrees(0.0));
@@ -358,6 +404,17 @@ public final class Constants {
     public static final Pose2d LED_TEST_POSITION = new Pose2d(1.2748, 2.3987, Rotation2d.fromDegrees(-6.56));
     
     // Staging poses (Phase 1: PathPlanner pathfind targets)
+    public static final Pose2d BLUE_REBUILT_RIGHT_CORNER = new Pose2d(0.4826, 0.4191, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d RED_REBUILT_RIGHT_CORNER = new Pose2d(16.4592, 7.5819, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d BLUE_ALLIANCE_LEFTBUMP = new Pose2d(3.512, 5.489, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d PRECISE_BLUE_ALLIANCE_LEFTBUMP = new Pose2d(3.712, 5.489, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d BLUE_ALLIANCE_RIGHTBUMP = new Pose2d(3.512, 2.393, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d PRECISE_BLUE_ALLIANCE_RIGHTBUMP = new Pose2d(3.712, 2.393, Rotation2d.fromDegrees(0.0)); 
+    public static final Pose2d BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.755, 3.29, Rotation2d.fromDegrees(.0)); 
+    public static final Pose2d PRECISE_BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.555, 3.29, Rotation2d.fromDegrees(.0)); 
+    
+    
+    //OLD REEFSCAPE POSES - REMOVE USE BEFORE DELETING
     public static final Pose2d BLUE_TAG_12 = new Pose2d(1.72, 1.51, Rotation2d.fromDegrees(-130.0));
     public static final Pose2d BLUE_TAG_16 = new Pose2d(6.09, 1.2, Rotation2d.fromDegrees(-90.0));
     public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.65, 2.37, Rotation2d.fromDegrees(60.0));

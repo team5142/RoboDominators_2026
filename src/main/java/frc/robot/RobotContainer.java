@@ -46,6 +46,8 @@ public class RobotContainer {
   private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
   private static final double AUTO_SEED_POS_TOL_METERS = 0.20;
   private static final double AUTO_SEED_ROT_TOL_DEG = 10.0;
+
+  private static Alliance cachedAlliance = Alliance.Blue;
   
   // Hardware
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
@@ -91,6 +93,9 @@ public class RobotContainer {
     climberSubsystem = new ClimberSubsystem(this.robotState);
 
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
+
+    updateAllianceFromDriverStation();
+    this.robotState.setAlliance(cachedAlliance);
     
     if (COMPETITION_MODE) {
       SmartLogger.logReplay("Robot/CompetitionMode", true);
@@ -167,7 +172,7 @@ public class RobotContainer {
 
     // START: Save current position
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-        .onTrue(new SetStartingPoseCommand(PID_TUNING_POSITION, "PID TUNER", gyro, questNav, driveSubsystem, poseEstimator));
+    .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
 
     // LEFT TRIGGER: Random LED color (only works when enabled)
     new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
@@ -196,23 +201,22 @@ public class RobotContainer {
     //       }
     //     }));
 
+    // I AM HERE
   // Y/B/A/X/Stick: SmartDrive to tags
-    new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_21, PRECISE_21_POSE));
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_LEFTBUMP, PRECISE_BLUE_ALLIANCE_LEFTBUMP));
     new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_22, PRECISE_22_POSE));
+        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTBUMP, PRECISE_BLUE_ALLIANCE_RIGHTBUMP));
   // new JoystickButton(driverController, XboxController.Button.kA.value)
   //     .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_18, PRECISE_18_POSE));
-    new JoystickButton(driverController, XboxController.Button.kRightStick.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_AUTO_START_POS_FAR_RIGHT, PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT));
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTOWER, PRECISE_BLUE_ALLIANCE_RIGHTOWER));
     // RIGHT BUMPER - PROCESSOR
   // new Trigger(() -> driverController.getRightBumper())
   //     .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
     // RIGHT TRIGGER - CORAL STATION
-    new Trigger(() -> driverController.getRightTriggerAxis() > 0.9)
-        .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
+    //new Trigger(() -> driverController.getRightTriggerAxis() > 0.9)
+      //  .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
 
     // Driver interrupt for operator-triggered SmartDrive
     // new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
@@ -226,11 +230,11 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kA.value)
         .whileTrue(Commands.deferredProxy(this::createSmartSweepCommand));
 
-    // LEFT/RIGHT BUMPER: Dynamic bump traversal
-    new Trigger(() -> driverController.getLeftBumper())
-        .onTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
-    new Trigger(() -> driverController.getRightBumper())
-        .onTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
+  // LEFT/RIGHT BUMPER: Dynamic bump traversal
+  new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
+    .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
+  new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
+    .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
 
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
     // new Trigger(() ->
@@ -287,8 +291,8 @@ public class RobotContainer {
 
   // Mirror red alliance paths
   private boolean shouldFlipPath() {
-    var alliance = DriverStation.getAlliance();
-    boolean isRed = alliance.map(a -> a == Alliance.Red).orElse(false);
+    Alliance alliance = getAlliance();
+    boolean isRed = isRedAlliance();
     SmartLogger.logConsole("Alliance: " + alliance + " | Flipping: " + isRed, "Path Flip");
     return isRed;
   }
@@ -330,10 +334,24 @@ public class RobotContainer {
   }
 
   public void periodic() {
+    updateAllianceFromDriverStation();
+    robotState.setAlliance(cachedAlliance);
     if (DriverStation.isDisabled()) {
       applyPendingAutoPreviewPose();
     }
 
+  }
+
+  public static Alliance getAlliance() {
+    return cachedAlliance;
+  }
+
+  public static boolean isRedAlliance() {
+    return cachedAlliance == Alliance.Red;
+  }
+
+  private static void updateAllianceFromDriverStation() {
+    cachedAlliance = DriverStation.getAlliance().orElse(Alliance.Blue);
   }
 
   private void applyPendingAutoPreviewPose() {
@@ -420,6 +438,10 @@ public class RobotContainer {
         side,
         modifier,
         DynamicBumpTraversalCommand.createPrototypeConfig());
+  }
+
+  private Pose2d getRebuiltRightCornerPose() {
+    return isRedAlliance() ? RED_REBUILT_RIGHT_CORNER : BLUE_REBUILT_RIGHT_CORNER;
   }
 
   // Register SmartDrive as PathPlanner events

@@ -1,14 +1,21 @@
 package frc.robot.commands.drive;
 
+import static frc.robot.Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC;
+
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
+import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.controller.ProfiledPIDController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
+import frc.robot.RobotContainer;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.util.SmartLogger;
@@ -25,6 +32,13 @@ public class NeutralZoneIntakeSweepCommand extends Command {
     public final double edgeMarginMeters;
     public final double centerLaneOffsetMeters;
     public final double edgeLaneOffsetMeters;
+    public final double robotHalfWidthMeters;
+    public final boolean useMeasuredFieldLines;
+    public final double measuredNearX;
+    public final double measuredFarX;
+    public final double measuredLeftY;
+    public final double measuredCenterY;
+    public final double measuredRightY;
     public final PathConstraints pathConstraints;
 
     public SweepConfig(
@@ -34,6 +48,13 @@ public class NeutralZoneIntakeSweepCommand extends Command {
         double edgeMarginMeters,
         double centerLaneOffsetMeters,
         double edgeLaneOffsetMeters,
+        double robotHalfWidthMeters,
+        boolean useMeasuredFieldLines,
+        double measuredNearX,
+        double measuredFarX,
+        double measuredLeftY,
+        double measuredCenterY,
+        double measuredRightY,
         PathConstraints pathConstraints) {
       this.fieldLengthMeters = fieldLengthMeters;
       this.fieldWidthMeters = fieldWidthMeters;
@@ -41,6 +62,13 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       this.edgeMarginMeters = edgeMarginMeters;
       this.centerLaneOffsetMeters = centerLaneOffsetMeters;
       this.edgeLaneOffsetMeters = edgeLaneOffsetMeters;
+      this.robotHalfWidthMeters = robotHalfWidthMeters;
+      this.useMeasuredFieldLines = useMeasuredFieldLines;
+      this.measuredNearX = measuredNearX;
+      this.measuredFarX = measuredFarX;
+      this.measuredLeftY = measuredLeftY;
+      this.measuredCenterY = measuredCenterY;
+      this.measuredRightY = measuredRightY;
       this.pathConstraints = pathConstraints;
     }
   }
@@ -49,7 +77,7 @@ public class NeutralZoneIntakeSweepCommand extends Command {
   private final DriveSubsystem driveSubsystem;
   private final SweepConfig config;
 
-  private List<Pose2d> sweepLoop = new ArrayList<>();
+  private List<SweepTarget> sweepLoop = new ArrayList<>();
   private int currentIndex = 0;
   private Command activeCommand = null;
 
@@ -65,7 +93,8 @@ public class NeutralZoneIntakeSweepCommand extends Command {
   @Override
   public void initialize() {
     sweepLoop = buildSweepLoop(config); // Build the loop of sweep targets.
-    currentIndex = findNearestIndex(poseEstimator.getEstimatedPose(), sweepLoop); // Start closest to current pose.
+    Pose2d currentPose = poseEstimator.getEstimatedPose();
+    currentIndex = findNearestIndex(currentPose, sweepLoop); // Start closest to current pose.
     startNextSegment(); // Begin the first segment.
   }
 
@@ -96,18 +125,37 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       return; // No targets to follow.
     }
 
-    Pose2d targetPose = sweepLoop.get(currentIndex); // Current sweep target.
-    activeCommand = AutoBuilder.pathfindToPose(targetPose, config.pathConstraints); // Let PathPlanner handle routing.
+    SweepTarget target = sweepLoop.get(currentIndex); // Current sweep target.
+    if (target.spinInPlace) {
+      activeCommand = new SpinToHeadingCommand(driveSubsystem, target.pose.getRotation());
+    } else {
+      Pose2d currentPose = poseEstimator.getEstimatedPose();
+      Rotation2d moveHeading = headingFromDelta(
+          target.pose.getX() - currentPose.getX(),
+          target.pose.getY() - currentPose.getY());
+      Pose2d movePose = new Pose2d(target.pose.getTranslation(), moveHeading);
+      Command moveCommand = AutoBuilder.pathfindToPose(movePose, config.pathConstraints); // Let PathPlanner handle routing.
+      double headingErrorDeg = Math.abs(driveSubsystem.getGyroRotation().minus(moveHeading).getDegrees());
+      Command alignedMove = moveCommand;
+      if (headingErrorDeg > 2.0) {
+        alignedMove = new SequentialCommandGroup(
+            new SpinToHeadingCommand(driveSubsystem, moveHeading),
+            moveCommand);
+      }
+      activeCommand = alignedMove;
+    }
     CommandScheduler.getInstance().schedule(activeCommand);
-    SmartLogger.logReplay("Sweep/TargetPose", targetPose);
+    SmartLogger.logReplay("Sweep/TargetPose", target.pose);
+    SmartLogger.logReplay("Sweep/SpinInPlace", target.spinInPlace);
   }
 
-  private static int findNearestIndex(Pose2d currentPose, List<Pose2d> loop) {
+  private static int findNearestIndex(Pose2d currentPose, List<SweepTarget> loop) {
     int bestIndex = 0;
     double bestDistance = Double.POSITIVE_INFINITY;
 
     for (int i = 0; i < loop.size(); i++) {
-  double distance = currentPose.getTranslation().getDistance(loop.get(i).getTranslation()); // Compare to each target.
+      Pose2d targetPose = loop.get(i).pose;
+  double distance = currentPose.getTranslation().getDistance(targetPose.getTranslation()); // Compare to each target.
       if (distance < bestDistance) {
         bestDistance = distance;
         bestIndex = i;
@@ -117,40 +165,71 @@ public class NeutralZoneIntakeSweepCommand extends Command {
     return bestIndex;
   }
 
-  private static List<Pose2d> buildSweepLoop(SweepConfig config) {
-    double centerX = config.fieldLengthMeters / 2.0;
-    double neutralHalfLength = config.neutralZoneLengthMeters / 2.0;
+  private static List<SweepTarget> buildSweepLoop(SweepConfig config) {
+    double neutralMinX;
+    double neutralMaxX;
+    double leftLaneY;
+    double rightLaneY;
+    double centerLaneY;
 
-    double neutralMinX = centerX - neutralHalfLength + config.edgeMarginMeters;
-    double neutralMaxX = centerX + neutralHalfLength - config.edgeMarginMeters;
+    if (config.useMeasuredFieldLines) {
+      neutralMinX = config.measuredNearX;
+      neutralMaxX = config.measuredFarX;
+      leftLaneY = config.measuredLeftY;
+      rightLaneY = config.measuredRightY;
+      centerLaneY = config.measuredCenterY;
+    } else {
+      double centerX = config.fieldLengthMeters / 2.0;
+      double neutralHalfLength = config.neutralZoneLengthMeters / 2.0;
 
-  double leftLaneY = config.edgeLaneOffsetMeters; // Near the left wall.
-  double rightLaneY = config.fieldWidthMeters - config.edgeLaneOffsetMeters; // Near the right wall.
-  double centerLaneY = (config.fieldWidthMeters / 2.0) + config.centerLaneOffsetMeters; // Slightly off center.
+      double zoneMargin = config.edgeMarginMeters + config.robotHalfWidthMeters;
+      double edgeLaneMargin = config.edgeLaneOffsetMeters + config.robotHalfWidthMeters;
+      double centerLaneMargin = config.centerLaneOffsetMeters + config.robotHalfWidthMeters;
 
-    List<Pose2d> loop = new ArrayList<>();
+      neutralMinX = centerX - neutralHalfLength + zoneMargin;
+      neutralMaxX = centerX + neutralHalfLength - zoneMargin;
 
-    loop.add(new Pose2d(neutralMinX, leftLaneY, Rotation2d.fromDegrees(0.0)));
-    loop.add(new Pose2d(neutralMaxX, leftLaneY, Rotation2d.fromDegrees(0.0)));
-    loop.add(new Pose2d(neutralMaxX, centerLaneY, Rotation2d.fromDegrees(180.0)));
-    loop.add(new Pose2d(neutralMinX, centerLaneY, Rotation2d.fromDegrees(180.0)));
-    loop.add(new Pose2d(neutralMinX, rightLaneY, Rotation2d.fromDegrees(0.0)));
-    loop.add(new Pose2d(neutralMaxX, rightLaneY, Rotation2d.fromDegrees(0.0)));
-    loop.add(new Pose2d(neutralMaxX, centerLaneY, Rotation2d.fromDegrees(180.0)));
-    loop.add(new Pose2d(neutralMinX, centerLaneY, Rotation2d.fromDegrees(180.0)));
+      leftLaneY = edgeLaneMargin; // Near the left wall.
+      rightLaneY = config.fieldWidthMeters - edgeLaneMargin; // Near the right wall.
+      centerLaneY = (config.fieldWidthMeters / 2.0) + centerLaneMargin; // Slightly off center.
+    }
+
+  List<SweepTarget> loop = new ArrayList<>();
+    List<double[]> points = new ArrayList<>();
+
+    points.add(new double[] {neutralMinX, leftLaneY});
+    points.add(new double[] {neutralMaxX, leftLaneY});
+    points.add(new double[] {neutralMaxX, centerLaneY});
+    points.add(new double[] {neutralMinX, centerLaneY});
+    points.add(new double[] {neutralMinX, rightLaneY});
+    points.add(new double[] {neutralMaxX, rightLaneY});
+    points.add(new double[] {neutralMaxX, centerLaneY});
+    points.add(new double[] {neutralMinX, centerLaneY});
+
+    for (int i = 0; i < points.size(); i++) {
+      double[] prev = points.get((i - 1 + points.size()) % points.size());
+      double[] current = points.get(i);
+      double[] next = points.get((i + 1) % points.size());
+      Rotation2d incomingHeading = headingFromDelta(current[0] - prev[0], current[1] - prev[1]);
+      Rotation2d outgoingHeading = headingFromDelta(next[0] - current[0], next[1] - current[1]);
+      loop.add(new SweepTarget(new Pose2d(current[0], current[1], incomingHeading), false));
+      if (Math.abs(incomingHeading.getDegrees() - outgoingHeading.getDegrees()) > 1e-3) {
+        loop.add(new SweepTarget(new Pose2d(current[0], current[1], outgoingHeading), true));
+      }
+    }
 
     return applyAllianceMirroring(loop, config.fieldLengthMeters); // Flip for red alliance if needed.
   }
 
-  private static List<Pose2d> applyAllianceMirroring(List<Pose2d> loop, double fieldLengthMeters) {
+  private static List<SweepTarget> applyAllianceMirroring(List<SweepTarget> loop, double fieldLengthMeters) {
     var alliance = DriverStation.getAlliance();
     if (alliance.isEmpty() || alliance.get() == DriverStation.Alliance.Blue) {
       return loop; // Blue is the default field frame.
     }
 
-    List<Pose2d> mirrored = new ArrayList<>();
-    for (Pose2d pose : loop) {
-      mirrored.add(mirrorPoseForRed(pose, fieldLengthMeters));
+    List<SweepTarget> mirrored = new ArrayList<>();
+    for (SweepTarget target : loop) {
+      mirrored.add(new SweepTarget(mirrorPoseForRed(target.pose, fieldLengthMeters), target.spinInPlace));
     }
     return mirrored;
   }
@@ -161,17 +240,93 @@ public class NeutralZoneIntakeSweepCommand extends Command {
     return new Pose2d(mirroredX, bluePose.getY(), mirroredRotation);
   }
 
+  private static Rotation2d headingFromDelta(double dx, double dy) {
+    return Rotation2d.fromRadians(Math.atan2(dy, dx));
+  }
+
+
+  private static class SweepTarget {
+    private final Pose2d pose;
+    private final boolean spinInPlace;
+
+    private SweepTarget(Pose2d pose, boolean spinInPlace) {
+      this.pose = pose;
+      this.spinInPlace = spinInPlace;
+    }
+  }
+
+  private static class SpinToHeadingCommand extends Command {
+    private final DriveSubsystem driveSubsystem;
+    private final Rotation2d targetHeading;
+    private final ProfiledPIDController headingController;
+
+    private SpinToHeadingCommand(DriveSubsystem driveSubsystem, Rotation2d targetHeading) {
+      this.driveSubsystem = driveSubsystem;
+      this.targetHeading = targetHeading;
+      this.headingController = new ProfiledPIDController(
+          5.0,
+          0.0,
+          0.1,
+          new TrapezoidProfile.Constraints(
+              MAX_ANGULAR_SPEED_RAD_PER_SEC,
+              MAX_ANGULAR_SPEED_RAD_PER_SEC * 2.0));
+      this.headingController.enableContinuousInput(-Math.PI, Math.PI);
+      this.headingController.setTolerance(Math.toRadians(2.0));
+
+      addRequirements(driveSubsystem);
+    }
+
+    @Override
+    public void initialize() {
+      headingController.reset(driveSubsystem.getGyroRotation().getRadians());
+      headingController.setGoal(targetHeading.getRadians());
+    }
+
+    @Override
+    public void execute() {
+      double currentHeadingRad = driveSubsystem.getGyroRotation().getRadians();
+      double omegaRadPerSec = headingController.calculate(currentHeadingRad);
+      omegaRadPerSec = MathUtil.clamp(
+          omegaRadPerSec,
+          -MAX_ANGULAR_SPEED_RAD_PER_SEC,
+          MAX_ANGULAR_SPEED_RAD_PER_SEC);
+      driveSubsystem.drive(0.0, 0.0, omegaRadPerSec, true);
+    }
+
+    @Override
+    public void end(boolean interrupted) {
+      driveSubsystem.drive(0.0, 0.0, 0.0, true);
+    }
+
+    @Override
+    public boolean isFinished() {
+      return headingController.atGoal();
+    }
+  }
+
   public static SweepConfig createPrototypeConfig() {
-    double fieldLengthMeters = 17.55;
+    double fullFieldLengthMeters = 17.55;
+    double practiceFieldLengthMeters = (fullFieldLengthMeters / 2.0) + Units.inchesToMeters(58.0);
+    double fieldLengthMeters = RobotContainer.COMPETITION_MODE
+        ? fullFieldLengthMeters
+        : practiceFieldLengthMeters;
     double fieldWidthMeters = 8.05;
     double neutralZoneLengthMeters = Units.inchesToMeters(240.0);
-    double edgeMarginMeters = Units.inchesToMeters(3.0); // Small buffer from obstacles.
+    double edgeMarginMeters = Units.inchesToMeters(3.0); // Buffer from the zone edge.
     double centerLaneOffsetMeters = Units.inchesToMeters(18.0); // Center lane spacing.
     double edgeLaneOffsetMeters = Units.inchesToMeters(18.0); // Wall lane spacing.
+    double robotHalfWidthMeters = Units.inchesToMeters(16.5); // Half robot width with bumpers.
+    boolean useMeasuredFieldLines = !RobotContainer.COMPETITION_MODE;
+    double wallOffsetMeters = Units.inchesToMeters(3.0);
+    double measuredNearX = 5.9 + wallOffsetMeters;
+    double measuredFarX = 9.1 - wallOffsetMeters;
+    double measuredLeftY = 7.4 - wallOffsetMeters;
+    double measuredCenterY = 4.077;
+    double measuredRightY = 0.700 + wallOffsetMeters;
 
     PathConstraints constraints = new PathConstraints(
-        3.0,
-        3.0,
+  2.0,
+  2.0,
         Math.toRadians(360.0),
         Math.toRadians(540.0));
 
@@ -182,6 +337,13 @@ public class NeutralZoneIntakeSweepCommand extends Command {
         edgeMarginMeters,
         centerLaneOffsetMeters,
         edgeLaneOffsetMeters,
+        robotHalfWidthMeters,
+        useMeasuredFieldLines,
+        measuredNearX,
+        measuredFarX,
+        measuredLeftY,
+        measuredCenterY,
+        measuredRightY,
         constraints);
   }
 }

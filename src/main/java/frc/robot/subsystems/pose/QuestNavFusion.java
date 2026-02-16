@@ -232,6 +232,16 @@ public class QuestNavFusion {
   }
 
   private boolean teleportGatePass(Pose2d questPose, double dt) {
+    if (isTilted()) {
+      Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "SKIPPED (tilted)");
+      return true;
+    }
+
+    if (Constants.QuestNav.TELEPORT_GATE_ONLY_WHEN_MOVING && !isMovingFast()) {
+      Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "SKIPPED (not moving fast)");
+      return true;
+    }
+
     Pose2d estimatedPose = poseEstimatorSubsystem.getEstimatedPose();
     
     double translationError = questPose.getTranslation().getDistance(estimatedPose.getTranslation());
@@ -294,6 +304,22 @@ public class QuestNavFusion {
     consecutiveTeleports = 0;
     Logger.recordOutput("PoseEstimator/QuestNav/TeleportCheck", "PASSED");
     return true;
+  }
+
+  private boolean isMovingFast() {
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
+    double linearSpeed = Math.hypot(speeds.vxMetersPerSecond, speeds.vyMetersPerSecond);
+    double angularSpeed = Math.abs(speeds.omegaRadiansPerSecond);
+
+    return linearSpeed > MAX_LINEAR_SPEED_FOR_FUSION_MPS
+        || angularSpeed > MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC;
+  }
+
+  private boolean isTilted() {
+    double pitch = Math.abs(driveSubsystem.getGyroPitchDegrees());
+    double roll = Math.abs(driveSubsystem.getGyroRollDegrees());
+    return pitch > TELEPORT_GATE_MAX_TILT_DEGREES
+        || roll > TELEPORT_GATE_MAX_TILT_DEGREES;
   }
 
   private void updateHealthState(Pose2d questPose, double dt) {

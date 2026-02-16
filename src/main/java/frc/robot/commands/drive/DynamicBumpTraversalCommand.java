@@ -6,13 +6,15 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
-import edu.wpi.first.wpilibj.DriverStation;
+import frc.robot.RobotContainer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.util.SmartLogger;
+import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.WaitUntilCommand;
 
 // Prototype command for dynamic bump traversal.
 // Uses PathPlanner to reach a staging pose, cross the bump, and exit downfield.
@@ -33,6 +35,8 @@ public class DynamicBumpTraversalCommand extends Command {
     public final double robotHalfLengthMeters;
     public final double intakeExtensionMeters;
     public final PathConstraints pathConstraints;
+    public final PathConstraints downhillConstraints;
+    public final double downhillPitchThresholdDeg;
 
     public BumpConfig(
         double fieldLengthMeters,
@@ -44,7 +48,9 @@ public class DynamicBumpTraversalCommand extends Command {
         double stagingClearanceMeters,
         double robotHalfLengthMeters,
         double intakeExtensionMeters,
-        PathConstraints pathConstraints) {
+        PathConstraints pathConstraints,
+        PathConstraints downhillConstraints,
+        double downhillPitchThresholdDeg) {
       this.fieldLengthMeters = fieldLengthMeters;
       this.fieldWidthMeters = fieldWidthMeters;
       this.allianceZoneLengthMeters = allianceZoneLengthMeters;
@@ -55,6 +61,8 @@ public class DynamicBumpTraversalCommand extends Command {
       this.robotHalfLengthMeters = robotHalfLengthMeters;
       this.intakeExtensionMeters = intakeExtensionMeters;
       this.pathConstraints = pathConstraints;
+      this.downhillConstraints = downhillConstraints;
+      this.downhillPitchThresholdDeg = downhillPitchThresholdDeg;
     }
   }
 
@@ -63,6 +71,9 @@ public class DynamicBumpTraversalCommand extends Command {
   private final Side side;
   private final boolean modifierRequested;
   private final BumpConfig config;
+
+  private boolean uphillSignCaptured = false;
+  private double uphillPitchSign = 1.0;
 
   private Command activeCommand;
 
@@ -84,11 +95,25 @@ public class DynamicBumpTraversalCommand extends Command {
     Pose2d currentPose = poseEstimator.getEstimatedPose(); // Start from current robot pose.
     TraversalPlan plan = buildTraversalPlan(currentPose, side, modifierRequested, config); // Compute staging and exit.
 
-  Command toStaging = AutoBuilder.pathfindToPose(plan.stagingPose, config.pathConstraints); // Drive to entry pose.
-  Command toMid = AutoBuilder.pathfindToPose(plan.midPose, config.pathConstraints); // Cross the bump midpoint.
-  Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.pathConstraints); // Leave the bump safely.
+  uphillSignCaptured = false;
+  uphillPitchSign = 1.0;
 
-    activeCommand = new SequentialCommandGroup(toStaging, toMid, toExit);
+    double passThroughVelocity = 1.5;
+    Command toStaging = AutoBuilder.pathfindToPose(
+        plan.stagingPose,
+        config.pathConstraints,
+        passThroughVelocity); // Drive to entry pose without stopping.
+    Command toMid = AutoBuilder.pathfindToPose(
+        plan.midPose,
+        config.pathConstraints,
+        passThroughVelocity); // Cross the bump midpoint while moving.
+  Command waitForDownhill = new WaitUntilCommand(this::hasPitchFlipped);
+  Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.downhillConstraints); // Leave the bump safely.
+
+  activeCommand = new SequentialCommandGroup(
+    toStaging,
+    Commands.race(toMid, waitForDownhill),
+    toExit);
     CommandScheduler.getInstance().schedule(activeCommand);
 
     SmartLogger.logReplay("BumpTraversal/Side", side.toString());
@@ -194,8 +219,7 @@ public class DynamicBumpTraversalCommand extends Command {
   }
 
   private static TraversalPlan applyAllianceMirroring(TraversalPlan plan, double fieldLengthMeters) {
-    var alliance = DriverStation.getAlliance();
-    if (alliance.isEmpty() || alliance.get() == DriverStation.Alliance.Blue) {
+    if (!RobotContainer.isRedAlliance()) {
       return plan; // Blue frame is the default.
     }
 
@@ -211,6 +235,21 @@ public class DynamicBumpTraversalCommand extends Command {
     return new Pose2d(mirroredX, bluePose.getY(), mirroredRotation);
   }
 
+  private boolean hasPitchFlipped() {
+    double pitchDegrees = driveSubsystem.getGyroPitchDegrees();
+    double threshold = config.downhillPitchThresholdDeg;
+
+    if (!uphillSignCaptured) {
+      if (Math.abs(pitchDegrees) >= threshold) {
+        uphillSignCaptured = true;
+        uphillPitchSign = Math.signum(pitchDegrees);
+      }
+      return false;
+    }
+
+    return pitchDegrees * uphillPitchSign <= -threshold;
+  }
+
   public static BumpConfig createPrototypeConfig() {
   double fieldLengthMeters = 17.55; // Field length in meters.
   double fieldWidthMeters = Units.inchesToMeters(316.64); // Field width in meters.
@@ -219,14 +258,22 @@ public class DynamicBumpTraversalCommand extends Command {
   double bumpDepthMeters = Units.inchesToMeters(44.4); // Bump depth across X.
   double bumpCenterOffsetMeters = Units.inchesToMeters(99.0); // Center from side wall.
   double stagingClearanceMeters = Units.inchesToMeters(12.0); // Desired bumper clearance.
-  double robotHalfLengthMeters = Units.inchesToMeters(12.5); // Half of robot length.
+  double robotHalfLengthMeters = Units.inchesToMeters(17.0); // Half of robot length with bumpers.
   double intakeExtensionMeters = Units.inchesToMeters(12.0); // Intake extension used for clearance.
 
   PathConstraints constraints = new PathConstraints(
-    2.0,
-    2.0,
+    3.75,
+    3.75,
     Math.toRadians(270.0),
     Math.toRadians(360.0)); // Conservative speeds for early testing.
+
+  PathConstraints downhillConstraints = new PathConstraints(
+    3.75,
+    2.5,
+    Math.toRadians(270.0),
+    Math.toRadians(360.0)); // Softer acceleration on descent.
+
+  double downhillPitchThresholdDeg = 5.0;
 
     return new BumpConfig(
         fieldLengthMeters,
@@ -238,6 +285,8 @@ public class DynamicBumpTraversalCommand extends Command {
         stagingClearanceMeters,
         robotHalfLengthMeters,
         intakeExtensionMeters,
-        constraints);
+        constraints,
+        downhillConstraints,
+        downhillPitchThresholdDeg);
   }
 }

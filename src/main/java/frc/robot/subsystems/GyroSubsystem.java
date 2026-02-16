@@ -39,6 +39,8 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/RotationDegrees", rotation.getDegrees());
     Logger.recordOutput("Gyro/RotationRadians", rotation.getRadians());
     Logger.recordOutput("Gyro/PigeonYawDegrees", pigeon.getYaw().getValueAsDouble());
+    Logger.recordOutput("Gyro/PigeonPitchDegrees", getPitchDegrees());
+    Logger.recordOutput("Gyro/PigeonRollDegrees", getRollDegrees());
   }
 
   /**
@@ -46,6 +48,14 @@ public class GyroSubsystem extends SubsystemBase {
    */
   public Rotation2d getRotation() {
     return Rotation2d.fromDegrees(pigeon.getYaw().getValueAsDouble());
+  }
+
+  public double getPitchDegrees() {
+    return pigeon.getPitch().getValueAsDouble();
+  }
+
+  public double getRollDegrees() {
+    return pigeon.getRoll().getValueAsDouble();
   }
 
   /**
