@@ -22,11 +22,9 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
-import frc.robot.commands.drive.AllianceZoneIntakeSweepCommand;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
-import frc.robot.commands.drive.NeutralZoneIntakeSweepCommand;
-import frc.robot.commands.drive.OpposingAllianceIntakeSweepCommand;
+import frc.robot.commands.drive.NeutralZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.util.LogCurrentPoseCommand;
 import frc.robot.commands.util.SetStartingPoseCommand;
@@ -44,6 +42,9 @@ public class RobotContainer {
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true;
   private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
+  private static final boolean ENABLE_TURRET = false;
+  private static final boolean ENABLE_INTAKE = false;
+  private static final boolean ENABLE_CLIMBER = false;
   private static final double AUTO_SEED_POS_TOL_METERS = 0.20;
   private static final double AUTO_SEED_ROT_TOL_DEG = 10.0;
 
@@ -60,9 +61,9 @@ public class RobotContainer {
   final PoseEstimatorSubsystem poseEstimator;
   final TagVisionSubsystem tagVisionSubsystem;
   public final LEDSubsystem ledSubsystem;
-  final TurretSubsystem turretSubsystem;
-  final IntakeSubsystem intakeSubsystem;
-  final ClimberSubsystem climberSubsystem;
+  TurretSubsystem turretSubsystem;
+  IntakeSubsystem intakeSubsystem;
+  ClimberSubsystem climberSubsystem;
 
   // Autonomous
   private final SendableChooser<Command> autoChooser;
@@ -88,9 +89,19 @@ public class RobotContainer {
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
     tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
     ledSubsystem = new LEDSubsystem(this.robotState, tagVisionSubsystem);
-    turretSubsystem = new TurretSubsystem(this.robotState, new TurretIOCTRE());
-    intakeSubsystem = new IntakeSubsystem(this.robotState);
-    climberSubsystem = new ClimberSubsystem(this.robotState);
+    turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
+    intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
+    climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
+
+    if (!ENABLE_TURRET) {
+      SmartLogger.logConsole("Turret disabled until hardware is ready", "Startup");
+    }
+    if (!ENABLE_INTAKE) {
+      SmartLogger.logConsole("Intake disabled until hardware is ready", "Startup");
+    }
+    if (!ENABLE_CLIMBER) {
+      SmartLogger.logConsole("Climber disabled until hardware is ready", "Startup");
+    }
 
     SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
 
@@ -166,75 +177,79 @@ public class RobotContainer {
 
   // Map controller buttons to commands
   private void configureButtonBindings() {
+    
+    // ========== UTILITY BUTTONS (ALWAYS ACTIVE) ==========
+    
     // BACK: Reset field orientation
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
 
     // START: Save current position
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-    .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
+        .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
 
-    // LEFT TRIGGER: Random LED color (only works when enabled)
-    new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
-        .onTrue(Commands.runOnce(() -> ledSubsystem.setRandomColor(), ledSubsystem));
-
-    // BOTH TRIGGERS: Log robot pose (hold fully)
-    new Trigger(() -> driverController.getLeftTriggerAxis() > 0.9 && 
-                      driverController.getRightTriggerAxis() > 0.9)
-        .onTrue(new LogCurrentPoseCommand(poseEstimator, "LOGGED_POSITION"));
-
-    // BOTH BUMPERS: Log Limelight pose
-    // Disabled for now. Both bumpers is used as operator SmartDrive interrupt.
-    // new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
-    //     .onTrue(Commands.runOnce(() -> {
-    //       Pose2d limelightPose = tagVisionSubsystem.getLatestPose();
-    //       if (limelightPose != null) {
-    //         SmartLogger.logConsole("========== LIMELIGHT POSE ==========", "Limelight");
-    //         SmartLogger.logConsole("Pose: " + SmartLogger.formatPose(limelightPose), "Limelight");
-    //         SmartLogger.logConsole("X: " + String.format("%.4f", limelightPose.getX()) + " meters", "Limelight");
-    //         SmartLogger.logConsole("Y: " + String.format("%.4f", limelightPose.getY()) + " meters", "Limelight");
-    //         SmartLogger.logConsole("Rotation: " + String.format("%.2f", limelightPose.getRotation().getDegrees()) + " degrees", "Limelight");
-    //         SmartLogger.logConsole("===================================", "Limelight");
-    //         SmartLogger.logReplay("Limelight/CapturedPose", limelightPose);
-    //       } else {
-    //         SmartLogger.logConsoleError("No Limelight pose available - check camera connection");
-    //       }
-    //     }));
-
-    // I AM HERE
-  // Y/B/A/X/Stick: SmartDrive to tags
+    // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
+    /*
+    // Y/B/X: SmartDrive to tags
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_LEFTBUMP, PRECISE_BLUE_ALLIANCE_LEFTBUMP));
     new JoystickButton(driverController, XboxController.Button.kB.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTBUMP, PRECISE_BLUE_ALLIANCE_RIGHTBUMP));
-  // new JoystickButton(driverController, XboxController.Button.kA.value)
-  //     .whileTrue(SmartDriveToPosition.create(BLUE_REEF_TAG_17, PRECISE_17_POSE));
     new JoystickButton(driverController, XboxController.Button.kY.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTOWER, PRECISE_BLUE_ALLIANCE_RIGHTOWER));
-    // RIGHT BUMPER - PROCESSOR
-  // new Trigger(() -> driverController.getRightBumper())
-  //     .whileTrue(SmartDriveToPosition.create(BLUE_TAG_16, PRECISE_16_POSE));
-    // RIGHT TRIGGER - CORAL STATION
-    //new Trigger(() -> driverController.getRightTriggerAxis() > 0.9)
-      //  .whileTrue(SmartDriveToPosition.create(BLUE_TAG_12, PRECISE_12_POSE));
-
-    // Driver interrupt for operator-triggered SmartDrive
-    // new Trigger(() -> driverController.getLeftBumper() && driverController.getRightBumper())
-    //     .onTrue(Commands.runOnce(() -> {
-    //       if (touchscreen != null) {
-    //         touchscreen.cancelActiveOperatorDrive();
-    //       }
-    //     }));
 
     // A BUTTON: Smart sweep based on current zone
     new JoystickButton(driverController, XboxController.Button.kA.value)
         .whileTrue(Commands.deferredProxy(this::createSmartSweepCommand));
 
-  // LEFT/RIGHT BUMPER: Dynamic bump traversal
-  new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
-    .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
-  new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
-    .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
+    // LEFT/RIGHT BUMPER: Dynamic bump traversal
+    new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
+        .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
+    new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
+        .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
+    */
+    // ========== END NORMAL OPERATION BUTTONS ==========
+
+    // ========== SYSID CHARACTERIZATION BUTTONS (COMMENT OUT FOR NORMAL OPERATION) ==========
+    
+    // IMPORTANT: Before running SysId tests:
+    // 1. Comment out normal operation buttons above
+    // 2. For STEER tests: call driveSubsystem.disableCANcoderFusion() before test
+    // 3. For STEER tests: call driveSubsystem.enableCANcoderFusion() after test
+    // 4. Start SignalLogger with left bumper, stop with right bumper
+    // 5. Run all 4 tests in one session: quasistatic fwd/rev, dynamic fwd/rev
+    
+    // SIGNAL LOGGER CONTROL
+    new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
+        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.start()));
+    new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
+        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.stop()));
+
+    // TRANSLATION TESTS (drive motors)
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new JoystickButton(driverController, XboxController.Button.kA.value)
+        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    new JoystickButton(driverController, XboxController.Button.kB.value)
+        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    
+    // STEER TESTS (module steering motors) - REMEMBER TO DISABLE CANCODER FUSION FIRST!
+    // POV UP: Quasistatic Forward
+    new Trigger(() -> driverController.getPOV() == 0)
+        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    // POV DOWN: Quasistatic Reverse
+    new Trigger(() -> driverController.getPOV() == 180)
+        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    // POV RIGHT: Dynamic Forward
+    new Trigger(() -> driverController.getPOV() == 90)
+        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    // POV LEFT: Dynamic Reverse
+    new Trigger(() -> driverController.getPOV() == 270)
+        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    
+    // ========== END SYSID BUTTONS ==========
 
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
     // new Trigger(() ->
@@ -405,29 +420,7 @@ public class RobotContainer {
   }
 
   private Command createSmartSweepCommand() {
-    Pose2d pose = poseEstimator.getEstimatedPose();
-    var neutralConfig = NeutralZoneIntakeSweepCommand.createPrototypeConfig();
-    var allianceConfig = AllianceZoneIntakeSweepCommand.createPrototypeConfig();
-    double fieldLength = neutralConfig.fieldLengthMeters;
-    double allianceZoneLength = allianceConfig.allianceZoneLengthMeters;
-    double neutralMinX = allianceZoneLength;
-    double neutralMaxX = fieldLength - allianceZoneLength;
-
-    if (pose.getX() < neutralMinX) {
-      return new AllianceZoneIntakeSweepCommand(poseEstimator, driveSubsystem, allianceConfig);
-    }
-
-    if (pose.getX() > neutralMaxX) {
-      return new OpposingAllianceIntakeSweepCommand(
-          poseEstimator,
-          driveSubsystem,
-          OpposingAllianceIntakeSweepCommand.createPrototypeConfig());
-    }
-
-    return new NeutralZoneIntakeSweepCommand(
-        poseEstimator,
-        driveSubsystem,
-        neutralConfig);
+    return new NeutralZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
   }
 
   private Command createBumpTraversalCommand(DynamicBumpTraversalCommand.Side side) {
@@ -446,20 +439,8 @@ public class RobotContainer {
 
   // Register SmartDrive as PathPlanner events
   private void registerSmartDriveEvents() {
-    NamedCommands.registerCommand("SmartPrecision:Tag12", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_12_POSE));
-    NamedCommands.registerCommand("SmartPrecision:Tag16", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_16_POSE));
-    NamedCommands.registerCommand("SmartPrecision:Tag17", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_17_POSE));
-    NamedCommands.registerCommand("SmartPrecision:Tag18", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_18_POSE));
-    NamedCommands.registerCommand("SmartPrecision:Tag21", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_21_POSE));
-    NamedCommands.registerCommand("SmartPrecision:Tag22", 
-        SmartDriveToPosition.createPrecisionPhase(PRECISE_22_POSE));
-    
-    SmartLogger.logConsole("SmartDrive events ready for PathPlanner (6 targets)", "Events");
-    SmartLogger.logReplay("SmartDrive/EventsRegistered", 6.0);
+   // NamedCommands.registerCommand("SmartPrecision:Tag12", 
+        //SmartDriveToPosition.createPrecisionPhase(PRECISE_12_POSE));
+  
   }
 }

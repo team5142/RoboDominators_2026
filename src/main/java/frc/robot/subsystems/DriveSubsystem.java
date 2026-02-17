@@ -28,11 +28,6 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
   private final SwerveRequest.RobotCentric robotCentricDrive = new SwerveRequest.RobotCentric();
 
-  // SysId requests
-  private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
-  private final SwerveRequest.SysIdSwerveSteerGains m_steerCharacterization = new SwerveRequest.SysIdSwerveSteerGains();
-  private final SwerveRequest.SysIdSwerveRotation m_rotationCharacterization = new SwerveRequest.SysIdSwerveRotation();
-
   private int logCounter = 0;
 
   public DriveSubsystem(RobotState robotState, GyroSubsystem gyro) {
@@ -187,5 +182,97 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     return normalized;
   }
 
-  // ...existing SysId command methods (sysIdQuasistaticTranslation, etc.)...
+  // SysId characterization commands - wrap base class routines with explicit test selection
+  public Command sysIdQuasistaticTranslation(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectTranslationRoutine())
+      .andThen(sysIdQuasistatic(direction));
+  }
+
+  public Command sysIdDynamicTranslation(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectTranslationRoutine())
+      .andThen(sysIdDynamic(direction));
+  }
+
+  public Command sysIdQuasistaticSteer(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectSteerRoutine())
+      .andThen(sysIdQuasistatic(direction));
+  }
+
+  public Command sysIdDynamicSteer(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectSteerRoutine())
+      .andThen(sysIdDynamic(direction));
+  }
+
+  public Command sysIdQuasistaticRotation(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectRotationRoutine())
+      .andThen(sysIdQuasistatic(direction));
+  }
+
+  public Command sysIdDynamicRotation(SysIdRoutine.Direction direction) {
+    return runOnce(() -> selectRotationRoutine())
+      .andThen(sysIdDynamic(direction));
+  }
+
+  private void selectTranslationRoutine() {
+    // Access inherited field to switch active routine
+    try {
+      var field = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineToApply");
+      field.setAccessible(true);
+      var translationRoutine = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineTranslation");
+      translationRoutine.setAccessible(true);
+      field.set(this, translationRoutine.get(this));
+    } catch (Exception e) {
+      System.err.println("Failed to select translation routine: " + e.getMessage());
+    }
+  }
+
+  private void selectSteerRoutine() {
+    try {
+      var field = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineToApply");
+      field.setAccessible(true);
+      var steerRoutine = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineSteer");
+      steerRoutine.setAccessible(true);
+      field.set(this, steerRoutine.get(this));
+    } catch (Exception e) {
+      System.err.println("Failed to select steer routine: " + e.getMessage());
+    }
+  }
+
+  private void selectRotationRoutine() {
+    try {
+      var field = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineToApply");
+      field.setAccessible(true);
+      var rotationRoutine = CommandSwerveDrivetrain.class.getDeclaredField("m_sysIdRoutineRotation");
+      rotationRoutine.setAccessible(true);
+      field.set(this, rotationRoutine.get(this));
+    } catch (Exception e) {
+      System.err.println("Failed to select rotation routine: " + e.getMessage());
+    }
+  }
+
+  // CANcoder fusion control for SysId steer characterization
+  // CTRE RECOMMENDATION: Disable CANcoder fusion before running steer motor SysId tests
+  // This prevents the CANcoder feedback from interfering with motor-only characterization
+  // 
+  // NOTE: CTRE API doesn't expose direct access to module CANcoders from CommandSwerveDrivetrain
+  // You'll need to manually set CANcoder update frequencies to 0 using Phoenix Tuner X before steer tests,
+  // then restore them after. Alternatively, temporarily change STEER_FEEDBACK_TYPE to SyncCANcoder 
+  // (not FusedCANcoder) in Constants.java during steer characterization.
+  //
+  // The methods below are placeholders showing the intended logic:
+  
+  public void disableCANcoderFusion() {
+    System.out.println("WARNING: CANcoder fusion disable not implemented.");
+    System.out.println("Before running STEER SysId tests:");
+    System.out.println("  1. Use Phoenix Tuner X to set all CANcoder update frequencies to 0Hz");
+    System.out.println("  2. OR temporarily change Constants.Swerve.STEER_FEEDBACK_TYPE to SyncCANcoder");
+  }
+
+  public void enableCANcoderFusion() {
+    System.out.println("WARNING: CANcoder fusion enable not implemented.");
+    System.out.println("After STEER SysId tests complete:");
+    System.out.println("  1. Use Phoenix Tuner X to restore CANcoder update frequencies to 100Hz");
+    System.out.println("  2. OR restore Constants.Swerve.STEER_FEEDBACK_TYPE to FusedCANcoder");
+    System.out.println("  3. Reboot robot to apply changes");
+  }
 }

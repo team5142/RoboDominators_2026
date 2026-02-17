@@ -22,9 +22,7 @@ import frc.robot.util.SmartLogger;
 import java.util.ArrayList;
 import java.util.List;
 
-// Prototype command for looping intake sweeps through the neutral zone.
-// Path points are placeholders and should be updated once geometry is finalized.
-public class NeutralZoneIntakeSweepCommand extends Command {
+public class NeutralZoneSweepReimaginedCommand extends Command {
   public static class SweepConfig {
     public final double fieldLengthMeters;
     public final double fieldWidthMeters;
@@ -79,12 +77,14 @@ public class NeutralZoneIntakeSweepCommand extends Command {
 
   private List<SweepTarget> sweepLoop = new ArrayList<>();
   private List<SegmentStart> segmentStarts = new ArrayList<>();
+  private static int s_sweepSessionCounter = 0;
+  private int sweepSessionId = 0;
   private int currentIndex = 0;
   private Command activeCommand = null;
   private Command pendingEntryCommand = null;
   private String activeLegLabel = "";
 
-  public NeutralZoneIntakeSweepCommand(
+  public NeutralZoneSweepReimaginedCommand(
       PoseEstimatorSubsystem poseEstimator,
       DriveSubsystem driveSubsystem,
       SweepConfig config) {
@@ -95,15 +95,39 @@ public class NeutralZoneIntakeSweepCommand extends Command {
 
   @Override
   public void initialize() {
+    sweepSessionId = ++s_sweepSessionCounter;
     segmentStarts = new ArrayList<>();
-    sweepLoop = buildSweepLoop(config, segmentStarts); // Build the loop of sweep targets.
+    sweepLoop = buildSweepLoop(config, segmentStarts);
     Pose2d currentPose = poseEstimator.getEstimatedPose();
-    EntryPlan entryPlan = buildEntryPlan(currentPose, segmentStarts, sweepLoop);
-    currentIndex = entryPlan.currentIndex;
-    pendingEntryCommand = buildEntryCommand(currentPose, entryPlan.entryPose);
+    EntryPlan entryPlan = buildEntryPlan(currentPose, segmentStarts, sweepLoop, config);
+    currentIndex = entryPlan.nextIndex;
+    
+    double distanceToEntry = currentPose.getTranslation().getDistance(entryPlan.entryPose.getTranslation());
+    double headingErrorDeg = Math.abs(driveSubsystem.getGyroRotation().minus(entryPlan.entryPose.getRotation()).getDegrees());
+    
+    if (distanceToEntry > 0.3 || headingErrorDeg > 5.0) {
+      pendingEntryCommand = buildEntryCommand(currentPose, entryPlan.entryPose);
+      SmartLogger.logConsole(
+        "->NEUTRAL: Init session " + sweepSessionId
+          + " | entryIndex=" + currentIndex
+          + " | entryPose=" + SmartLogger.formatPose(entryPlan.entryPose)
+          + " | needsEntry=true (dist=" + String.format("%.2f", distanceToEntry) + "m)",
+        "NeutralSweep");
+    } else {
+      pendingEntryCommand = null;
+      SmartLogger.logConsole(
+        "->NEUTRAL: Init session " + sweepSessionId
+          + " | entryIndex=" + currentIndex
+          + " | entryPose=" + SmartLogger.formatPose(entryPlan.entryPose)
+          + " | needsEntry=false (already at entry)",
+        "NeutralSweep");
+    }
+    
     SmartLogger.logReplay("Sweep/EntryStartPose", entryPlan.entryPose);
-    SmartLogger.logReplay("Sweep/EntryTargetIndex", entryPlan.currentIndex);
-    startNextSegment(); // Begin the first segment.
+    SmartLogger.logReplay("Sweep/EntryTargetIndex", entryPlan.nextIndex);
+  SmartLogger.logReplay("Sweep/SessionId", sweepSessionId);
+  SmartLogger.logReplay("Sweep/EntryCurrentIndex", currentIndex);
+    startNextSegment();
   }
 
   @Override
@@ -113,17 +137,17 @@ public class NeutralZoneIntakeSweepCommand extends Command {
         SmartLogger.logConsole("->NEUTRAL: Completed " + activeLegLabel, "NeutralSweep");
         activeLegLabel = "";
       }
-      currentIndex = (currentIndex + 1) % sweepLoop.size(); // Advance to the next point in the loop.
-      startNextSegment(); // Keep looping until canceled.
+      currentIndex = (currentIndex + 1) % sweepLoop.size();
+      startNextSegment();
     }
   }
 
   @Override
   public void end(boolean interrupted) {
     if (activeCommand != null) {
-      activeCommand.cancel(); // Stop any active path.
+      activeCommand.cancel();
     }
-    driveSubsystem.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0)); // Stop the drivetrain.
+    driveSubsystem.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
     SmartLogger.logReplay("Sweep/Interrupted", interrupted);
   }
 
@@ -134,7 +158,7 @@ public class NeutralZoneIntakeSweepCommand extends Command {
 
   private void startNextSegment() {
     if (sweepLoop.isEmpty()) {
-      return; // No targets to follow.
+      return;
     }
 
     if (pendingEntryCommand != null) {
@@ -142,12 +166,22 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       pendingEntryCommand = null;
       activeLegLabel = "entry move";
       SmartLogger.logConsole("->NEUTRAL: Start entry move", "NeutralSweep");
+      SmartLogger.logReplay("Sweep/SessionId", sweepSessionId);
+      SmartLogger.logReplay("Sweep/ScheduleIndex", -1);
       CommandScheduler.getInstance().schedule(activeCommand);
       SmartLogger.logReplay("Sweep/EntryMove", true);
       return;
     }
 
-    SweepTarget target = sweepLoop.get(currentIndex); // Current sweep target.
+    int scheduledIndex = currentIndex;
+    SweepTarget target = sweepLoop.get(currentIndex);
+    SmartLogger.logReplay("Sweep/SessionId", sweepSessionId);
+    SmartLogger.logReplay("Sweep/ScheduleIndex", scheduledIndex);
+    SmartLogger.logConsole(
+        "->NEUTRAL: Schedule index " + scheduledIndex
+            + " | spin=" + target.spinInPlace
+            + " | pose=" + SmartLogger.formatPose(target.pose),
+        "NeutralSweep");
     if (target.spinInPlace) {
       activeCommand = new SpinToHeadingCommand(driveSubsystem, target.pose.getRotation());
       activeLegLabel = String.format(
@@ -155,17 +189,12 @@ public class NeutralZoneIntakeSweepCommand extends Command {
           target.pose.getRotation().getDegrees());
       SmartLogger.logConsole("->NEUTRAL: Start " + activeLegLabel, "NeutralSweep");
     } else {
-      Rotation2d moveHeading = target.pose.getRotation();
-      Pose2d movePose = new Pose2d(target.pose.getTranslation(), moveHeading);
-      Command moveCommand = AutoBuilder.pathfindToPose(movePose, config.pathConstraints); // Let PathPlanner handle routing.
-      double headingErrorDeg = Math.abs(driveSubsystem.getGyroRotation().minus(moveHeading).getDegrees());
-      Command alignedMove = moveCommand;
-      if (headingErrorDeg > 2.0) {
-        alignedMove = new SequentialCommandGroup(
-            new SpinToHeadingCommand(driveSubsystem, moveHeading),
-            moveCommand);
-      }
-      activeCommand = alignedMove;
+      Pose2d movePose = target.pose;
+      Rotation2d currentHeading = driveSubsystem.getGyroRotation();
+      Pose2d moveTarget = new Pose2d(movePose.getTranslation(), currentHeading);
+      Command moveCommand = AutoBuilder.pathfindToPose(moveTarget, config.pathConstraints);
+      activeCommand = moveCommand;
+      activeCommand = moveCommand;
       activeLegLabel = String.format(
           "move to (%.2f, %.2f) at %.1f deg",
           movePose.getX(),
@@ -181,58 +210,54 @@ public class NeutralZoneIntakeSweepCommand extends Command {
   private static EntryPlan buildEntryPlan(
       Pose2d currentPose,
       List<SegmentStart> starts,
-      List<SweepTarget> loop) {
-    SegmentStart nearestStart = findNearestStart(currentPose, starts);
-    double bestStartDistance = currentPose.getTranslation().getDistance(nearestStart.startPose.getTranslation());
+      List<SweepTarget> loop,
+      SweepConfig config) {
+    Pose2d nearLeftCorner = starts.get(0).startPose;
+    Pose2d nearRightCorner = starts.get(4).startPose;
+    
+    double distToLeft = currentPose.getTranslation().getDistance(nearLeftCorner.getTranslation());
+    double distToRight = currentPose.getTranslation().getDistance(nearRightCorner.getTranslation());
+    
+    Pose2d chosenEntryPose;
+    int chosenStartIndex;
+    
+    if (distToLeft <= distToRight) {
+      chosenEntryPose = nearLeftCorner;
+      chosenStartIndex = findLoopIndexForPose(loop, nearLeftCorner);
+    } else {
+      chosenEntryPose = nearRightCorner;
+      chosenStartIndex = findLoopIndexForPose(loop, nearRightCorner);
+    }
+    
+    return new EntryPlan(chosenEntryPose, chosenStartIndex);
+  }
 
-    int bestTargetIndex = -1;
-    double bestTargetDistance = Double.POSITIVE_INFINITY;
+  private static int findLoopIndexForPose(List<SweepTarget> loop, Pose2d targetPose) {
     for (int i = 0; i < loop.size(); i++) {
       SweepTarget target = loop.get(i);
-      if (target.spinInPlace) {
-        continue;
-      }
-      double distance = currentPose.getTranslation().getDistance(target.pose.getTranslation());
-      if (distance < bestTargetDistance) {
-        bestTargetDistance = distance;
-        bestTargetIndex = i;
+      double distance = target.pose.getTranslation().getDistance(targetPose.getTranslation());
+      if (distance < 0.1 && !target.spinInPlace) {
+        return i;
       }
     }
-
-    if (bestTargetIndex >= 0 && bestTargetDistance < bestStartDistance) {
-      return new EntryPlan(loop.get(bestTargetIndex).pose, bestTargetIndex);
-    }
-
-    int startIndex = (nearestStart.targetIndex - 1 + loop.size()) % loop.size();
-    return new EntryPlan(nearestStart.startPose, startIndex);
+    return 0;
   }
 
-  private static SegmentStart findNearestStart(Pose2d currentPose, List<SegmentStart> starts) {
-    SegmentStart bestStart = starts.get(0);
-    double bestDistance = Double.POSITIVE_INFINITY;
-
-    for (int i = 0; i < starts.size(); i++) {
-      SegmentStart start = starts.get(i);
-      double distance = currentPose.getTranslation().getDistance(start.startPose.getTranslation());
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestStart = start;
-      }
-    }
-
-    return bestStart;
-  }
-
-  private Command buildEntryCommand(Pose2d currentPose, Pose2d startPose) {
-    double headingErrorDeg = Math.abs(driveSubsystem.getGyroRotation().minus(startPose.getRotation()).getDegrees());
-    Command entryMove = AutoBuilder.pathfindToPose(startPose, config.pathConstraints);
+  private Command buildEntryCommand(Pose2d currentPose, Pose2d entryPose) {
+    Rotation2d targetHeading = entryPose.getRotation();
+    Rotation2d currentHeading = driveSubsystem.getGyroRotation();
+    double headingErrorDeg = Math.abs(currentHeading.minus(targetHeading).getDegrees());
+    
+    Pose2d moveTarget = new Pose2d(entryPose.getTranslation(), currentHeading);
+    Command entryMove = AutoBuilder.pathfindToPose(moveTarget, config.pathConstraints);
+    
     if (headingErrorDeg > 2.0) {
-      SmartLogger.logReplay("Sweep/EntrySpinHeading", startPose.getRotation().getDegrees());
+      SmartLogger.logReplay("Sweep/EntrySpinHeading", targetHeading.getDegrees());
       return new SequentialCommandGroup(
-          new SpinToHeadingCommand(driveSubsystem, startPose.getRotation()),
+          new SpinToHeadingCommand(driveSubsystem, targetHeading),
           entryMove);
     }
-    SmartLogger.logReplay("Sweep/EntrySpinHeading", startPose.getRotation().getDegrees());
+    SmartLogger.logReplay("Sweep/EntrySpinHeading", targetHeading.getDegrees());
     return entryMove;
   }
 
@@ -262,9 +287,9 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       neutralMinX = centerX - neutralHalfLength + zoneMargin;
       neutralMaxX = centerX + neutralHalfLength - zoneMargin;
 
-      leftLaneY = edgeLaneMargin; // Near the left wall.
-      rightLaneY = config.fieldWidthMeters - edgeLaneMargin; // Near the right wall.
-      centerLaneY = (config.fieldWidthMeters / 2.0) + centerLaneMargin; // Slightly off center.
+      leftLaneY = edgeLaneMargin;
+      rightLaneY = config.fieldWidthMeters - edgeLaneMargin;
+      centerLaneY = (config.fieldWidthMeters / 2.0) + centerLaneMargin;
     }
 
     List<SweepTarget> loop = new ArrayList<>();
@@ -293,7 +318,7 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       }
     }
 
-    return applyAllianceMirroring(loop, segmentStarts, config.fieldLengthMeters); // Flip for red alliance if needed.
+    return applyAllianceMirroring(loop, segmentStarts, config.fieldLengthMeters);
   }
 
   private static List<SweepTarget> applyAllianceMirroring(
@@ -302,7 +327,7 @@ public class NeutralZoneIntakeSweepCommand extends Command {
       double fieldLengthMeters) {
     var alliance = DriverStation.getAlliance();
     if (alliance.isEmpty() || alliance.get() == DriverStation.Alliance.Blue) {
-      return loop; // Blue is the default field frame.
+      return loop;
     }
 
     List<SweepTarget> mirrored = new ArrayList<>();
@@ -320,15 +345,14 @@ public class NeutralZoneIntakeSweepCommand extends Command {
   }
 
   private static Pose2d mirrorPoseForRed(Pose2d bluePose, double fieldLengthMeters) {
-    double mirroredX = fieldLengthMeters - bluePose.getX(); // Flip across field length.
-    Rotation2d mirroredRotation = bluePose.getRotation().rotateBy(Rotation2d.fromDegrees(180.0)); // Face downfield.
+    double mirroredX = fieldLengthMeters - bluePose.getX();
+    Rotation2d mirroredRotation = bluePose.getRotation().rotateBy(Rotation2d.fromDegrees(180.0));
     return new Pose2d(mirroredX, bluePose.getY(), mirroredRotation);
   }
 
   private static Rotation2d headingFromDelta(double dx, double dy) {
     return Rotation2d.fromRadians(Math.atan2(dy, dx));
   }
-
 
   private static class SweepTarget {
     private final Pose2d pose;
@@ -352,11 +376,11 @@ public class NeutralZoneIntakeSweepCommand extends Command {
 
   private static class EntryPlan {
     private final Pose2d entryPose;
-    private final int currentIndex;
+    private final int nextIndex;
 
-    private EntryPlan(Pose2d entryPose, int currentIndex) {
+    private EntryPlan(Pose2d entryPose, int nextIndex) {
       this.entryPose = entryPose;
-      this.currentIndex = currentIndex;
+      this.nextIndex = nextIndex;
     }
   }
 
@@ -417,10 +441,10 @@ public class NeutralZoneIntakeSweepCommand extends Command {
         : practiceFieldLengthMeters;
     double fieldWidthMeters = 8.05;
     double neutralZoneLengthMeters = Units.inchesToMeters(240.0);
-    double edgeMarginMeters = Units.inchesToMeters(3.0); // Buffer from the zone edge.
-    double centerLaneOffsetMeters = Units.inchesToMeters(18.0); // Center lane spacing.
-    double edgeLaneOffsetMeters = Units.inchesToMeters(18.0); // Wall lane spacing.
-    double robotHalfWidthMeters = Units.inchesToMeters(16.5); // Half robot width with bumpers.
+    double edgeMarginMeters = Units.inchesToMeters(3.0);
+    double centerLaneOffsetMeters = Units.inchesToMeters(18.0);
+    double edgeLaneOffsetMeters = Units.inchesToMeters(18.0);
+    double robotHalfWidthMeters = Units.inchesToMeters(16.5);
     boolean useMeasuredFieldLines = !RobotContainer.COMPETITION_MODE;
     double wallOffsetMeters = Units.inchesToMeters(3.0);
     double measuredNearX = 5.9 + wallOffsetMeters;
@@ -430,8 +454,8 @@ public class NeutralZoneIntakeSweepCommand extends Command {
     double measuredRightY = 0.700 + wallOffsetMeters;
 
     PathConstraints constraints = new PathConstraints(
-  2.0,
-  2.0,
+        2.0,
+        2.0,
         Math.toRadians(360.0),
         Math.toRadians(540.0));
 

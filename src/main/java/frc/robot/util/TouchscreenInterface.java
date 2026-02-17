@@ -72,12 +72,7 @@ public class TouchscreenInterface {
   }
 
   public void configure() {
-    targets.put("BLUE_REEF_TAG_17", new SmartDriveTarget(BLUE_REEF_TAG_17, PRECISE_17_POSE));
-    targets.put("BLUE_REEF_TAG_18", new SmartDriveTarget(BLUE_REEF_TAG_18, PRECISE_18_POSE));
-    targets.put("BLUE_REEF_TAG_21", new SmartDriveTarget(BLUE_REEF_TAG_21, PRECISE_21_POSE));
-    targets.put("BLUE_REEF_TAG_22", new SmartDriveTarget(BLUE_REEF_TAG_22, PRECISE_22_POSE));
-    targets.put("BLUE_TAG_16", new SmartDriveTarget(BLUE_TAG_16, PRECISE_16_POSE));
-    targets.put("BLUE_TAG_12", new SmartDriveTarget(BLUE_TAG_12, PRECISE_12_POSE));
+
 
     // Keep existing boolean listeners for AdvantageScope/Shuffleboard compatibility
     NetworkTable opTable = ntInst.getTable("OperatorInterface");

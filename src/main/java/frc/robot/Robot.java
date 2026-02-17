@@ -32,16 +32,19 @@ public class Robot extends LoggedRobot {
   // Runs ONCE at robot boot - setup logging and create subsystems
   @Override
   public void robotInit() {
-    Logger.recordMetadata("ProjectName", "RoboDominators_2026");
-    Logger.recordMetadata("TeamNumber", "5142");
-    Logger.recordMetadata("RobotName", "Lebron2");
+    String projectName = "RoboDominators_2026";
+    String teamNumber = "5142";
+    String robotName = "Osprey";
+    Logger.recordMetadata("ProjectName", projectName);
+    Logger.recordMetadata("TeamNumber", teamNumber);
+    Logger.recordMetadata("RobotName", robotName);
     
     Logger.addDataReceiver(new NT4Publisher());
     Logger.addDataReceiver(new WPILOGWriter("/home/lvuser/logs"));
     Logger.start();
     
-    String initMsg = "RoboDominators 5142 - Lebron2\n" +
-                    "AdvantageKit: ACTIVE\n" +
+    String initMsg = projectName + " " + teamNumber + " - " + robotName + "\n" 
+                    + "AdvantageKit: ACTIVE\n" + 
                     "Battery: " + RobotController.getBatteryVoltage() + "V";
     SmartLogger.logConsole(initMsg, "Robot Init", 15);
     

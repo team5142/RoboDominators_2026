@@ -346,7 +346,7 @@ public final class Constants {
     public static final double STARTING_POSE_TOLERANCE_METERS = 0.15;
     public static final double STARTING_POSE_TOLERANCE_DEGREES = 5.0;
     public static final double VISION_INITIALIZATION_TIMEOUT_SECONDS = 7.0;
-    public static final Pose2d DEFAULT_FALLBACK_POSE = StartingPositions.BLUE_REEF_TAG_17;
+    public static final Pose2d DEFAULT_FALLBACK_POSE = StartingPositions.BLUE_REBUILT_RIGHT_CORNER;
     
     // Post-path correction timeout (SmartDrive precision phase)
     public static final double POST_PATH_CORRECTION_TIMEOUT_S = 3.0;
@@ -357,8 +357,8 @@ public final class Constants {
     // Left bump staging poses (Y = 5.528 m, bump centerline 217.64 in from wall)
     public static final Pose2d BLUE_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 5.528, Rotation2d.fromDegrees(45.0));
     public static final Pose2d BLUE_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 5.528, Rotation2d.fromDegrees(45.0));
-    
-    // Right bump staging poses (Y = 2.508 m, bump centerline 98.76 in from wall)
+    public static final Pose2d BLUE_AUTO_START_RIGHT = new Pose2d(3.657, 2.444, Rotation2d.fromDegrees(0.0));
+   // Right bump staging poses (Y = 2.508 m, bump centerline 98.76 in from wall)
     public static final Pose2d BLUE_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 2.65, Rotation2d.fromDegrees(45.0));
     public static final Pose2d BLUE_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 2.65, Rotation2d.fromDegrees(45.0));
 
@@ -413,26 +413,12 @@ public final class Constants {
     public static final Pose2d BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.755, 3.29, Rotation2d.fromDegrees(.0)); 
     public static final Pose2d PRECISE_BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.555, 3.29, Rotation2d.fromDegrees(.0)); 
     
-    
-    //OLD REEFSCAPE POSES - REMOVE USE BEFORE DELETING
-    public static final Pose2d BLUE_TAG_12 = new Pose2d(1.72, 1.51, Rotation2d.fromDegrees(-130.0));
-    public static final Pose2d BLUE_TAG_16 = new Pose2d(6.09, 1.2, Rotation2d.fromDegrees(-90.0));
-    public static final Pose2d BLUE_REEF_TAG_17 = new Pose2d(3.65, 2.37, Rotation2d.fromDegrees(60.0));
-    public static final Pose2d BLUE_REEF_TAG_18 = new Pose2d(2.67, 4.03, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d BLUE_REEF_TAG_21 = new Pose2d(6.6, 4.05, Rotation2d.fromDegrees(180.0));
-    public static final Pose2d BLUE_REEF_TAG_22 = new Pose2d(5.552, 2.168, Rotation2d.fromDegrees(120.0));
-    public static final Pose2d TEST_SPOT_1 = new Pose2d(5.84, 1.850, Rotation2d.fromDegrees(133.0));
+   
     // AUTO RESET POSE STAGING
     public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(5.533, 1.185, Rotation2d.fromDegrees(180.0));
     
     // Precision poses (Phase 2: AutoPilot final targets)
-    public static final Pose2d PRECISE_12_POSE = new Pose2d(1.335, 1.02, Rotation2d.fromDegrees(-130.0));
-    public static final Pose2d PRECISE_16_POSE = new Pose2d(6.09, 0.5, Rotation2d.fromDegrees(-90.0));
-    public static final Pose2d PRECISE_17_POSE = new Pose2d(3.94, 2.86, Rotation2d.fromDegrees(60.0));
-    public static final Pose2d PRECISE_18_POSE = new Pose2d(3.27, 4.03, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d PRECISE_21_POSE = new Pose2d(5.99, 4.05, Rotation2d.fromDegrees(180.0));
-    public static final Pose2d PRECISE_22_POSE = new Pose2d(5.29, 2.86, Rotation2d.fromDegrees(120.0));
-    public static final Pose2d PRECISE_TEST_SPOT_1 = new Pose2d(6.66, 2.470, Rotation2d.fromDegrees(133.0));
+    
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
   }
@@ -489,12 +475,8 @@ public final class Constants {
 
   // Fixed target poses for turret aiming (blue alliance, red mirrored later)
   public static final class TurretTargets {
-    public static final Pose2d REEF_TAG_17 = StartingPositions.BLUE_REEF_TAG_17;
-    public static final Pose2d REEF_TAG_18 = StartingPositions.BLUE_REEF_TAG_18;
-    public static final Pose2d REEF_TAG_21 = StartingPositions.BLUE_REEF_TAG_21;
-    public static final Pose2d REEF_TAG_22 = StartingPositions.BLUE_REEF_TAG_22;
-    public static final Pose2d TAG_12 = StartingPositions.BLUE_TAG_12;
-    public static final Pose2d TAG_16 = StartingPositions.BLUE_TAG_16;
+    public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
+    
   }
 
   // AutoPilot precision navigation library (singleton instances)
