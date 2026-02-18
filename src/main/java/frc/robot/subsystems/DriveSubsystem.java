@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
+import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
 
 /**
@@ -101,7 +102,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     Logger.recordOutput("Drive/OperatorPerspectiveLocked", true);
     Logger.recordOutput("Drive/OperatorPerspectiveForward", fieldDirection.getDegrees());
     
-    System.out.println("[DriveSubsystem] Operator perspective manually set and locked to: " + fieldDirection.getDegrees() + " deg");
+    SmartLogger.logConsole("[Drive] Operator perspective locked to: " + fieldDirection.getDegrees() + " deg");
   }
   
   private Rotation2d getOperatorPerspectiveForward() {

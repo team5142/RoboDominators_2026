@@ -89,21 +89,21 @@ public final class Constants {
 
     // PID gains (tuned via SysId characterization tool)
     public static final class SteerGains {
-      public static final double kP = 100;//48.633;
+      public static final double kP = 25.601;//25.601
       public static final double kI = 0.0;
-      public static final double kD = 0.5;////3.2691;
-      public static final double kS = 0.1;//0.0782;
-      public static final double kV = 2.66;//2.6267;
-      public static final double kA = 0;//0.11226;
+      public static final double kD = 0.62218;
+      public static final double kS = 0.12222;
+      public static final double kV = 0;
+      public static final double kA = 0;
     }
 
     public static final class DriveGains {
-      public static final double kP = 0.1;//0.16077;
+      public static final double kP = 0.13816;//0.16077;
       public static final double kI = 0.0;
       public static final double kD = 0.0;
-      public static final double kS = 0;//0.17399;
-      public static final double kV = 0.124;//0.11894;
-      public static final double kA = 0;//0.003069;
+      public static final double kS = 0.17978;//0.17399;
+      public static final double kV = 0.11294;//0.11894;
+      public static final double kA = 0.0017;//0.003069;
     }
 
     public static final ClosedLoopOutputType STEER_CLOSED_LOOP_OUTPUT = ClosedLoopOutputType.Voltage;
@@ -331,14 +331,14 @@ public final class Constants {
   // Autonomous path following (PathPlanner PID tuning)
   public static final class Auto {
     // Translation PID (trust your SysId drive gains!)
-    public static final double TRANSLATION_KP = 3.0;  // Keep (translation is smooth)
-    public static final double TRANSLATION_KI = 0.0;  // Keep zero
-    public static final double TRANSLATION_KD = 0.2;  // Keep (more damping)
+    public static final double TRANSLATION_KP = 1.5;  
+    public static final double TRANSLATION_KI = 0.0;
+    public static final double TRANSLATION_KD = 0.0;
     
     // Rotation PID (trust your SysId steer gains!)
-    public static final double ROTATION_KP = 8.5;  // Was 3.0 (33% reduction - gentler rotation)
-    public static final double ROTATION_KI = 0.0;     // Keep zero
-    public static final double ROTATION_KD = 0.0;     // Was 0.3 (more damping to prevent oscillation)
+    public static final double ROTATION_KP = 3.5;     
+    public static final double ROTATION_KI = 0.0;
+    public static final double ROTATION_KD = 0.0;
     
     public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
     
@@ -355,16 +355,16 @@ public final class Constants {
 // Bump traversal staging poses (blue alliance frame, red mirrored automatically)
   public static final class BumpPoses {
     // Left bump staging poses (Y = 5.528 m, bump centerline 217.64 in from wall)
-    public static final Pose2d BLUE_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 5.528, Rotation2d.fromDegrees(45.0));
-    public static final Pose2d BLUE_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 5.528, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 5.39, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 5.39, Rotation2d.fromDegrees(45.0));
     public static final Pose2d BLUE_AUTO_START_RIGHT = new Pose2d(3.657, 2.444, Rotation2d.fromDegrees(0.0));
    // Right bump staging poses (Y = 2.508 m, bump centerline 98.76 in from wall)
-    public static final Pose2d BLUE_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 2.65, Rotation2d.fromDegrees(45.0));
-    public static final Pose2d BLUE_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 2.65, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(2.972, 2.35, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(6.284, 2.35, Rotation2d.fromDegrees(45.0));
 
     // Far-side (opponent zone) staging poses (X pushed into opponent zone past neutral exit)
-    public static final Pose2d BLUE_LEFTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 5.528, Rotation2d.fromDegrees(45.0));
-    public static final Pose2d BLUE_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 2.65, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_LEFTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 5.39, Rotation2d.fromDegrees(45.0));
+    public static final Pose2d BLUE_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 2.35, Rotation2d.fromDegrees(45.0));
 
     // Red alliance mirrored poses (X_red = FIELD_LENGTH - X_blue, rotation + 180 deg)
     public static final Pose2d RED_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(

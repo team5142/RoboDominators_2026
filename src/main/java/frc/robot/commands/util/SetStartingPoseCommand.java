@@ -3,6 +3,7 @@ package frc.robot.commands.util;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.DriveSubsystem;
@@ -24,14 +25,22 @@ import frc.robot.util.SmartLogger;
  * Match behavior: PoseInitializer handles automatic COMP_SEED - this command is rarely used
  */
 public class SetStartingPoseCommand extends Command {
+  private static final double CONFIRM_TOLERANCE_METERS = 0.15;
+  private static final double CONFIRM_TOLERANCE_DEG = 5.0;
+  private static final double CONFIRM_TIMEOUT_SEC = 0.6;
+  private static final int MAX_SEED_ATTEMPTS = 3;
+
   private final Pose2d targetPose;
   private final String positionName;
   private final GyroSubsystem gyro;
   private final QuestNavSubsystem questNav;
   private final DriveSubsystem drive;
   private final PoseEstimatorSubsystem poseEstimator;
-  
+
   private boolean executionBlocked = false;
+  private boolean confirmed = false;
+  private int seedAttempts = 0;
+  private final Timer confirmTimer = new Timer();
 
   public SetStartingPoseCommand(
       Pose2d targetPose,
@@ -46,97 +55,104 @@ public class SetStartingPoseCommand extends Command {
     this.questNav = questNav;
     this.drive = drive;
     this.poseEstimator = poseEstimator;
-    
-    // Prevent conflicts with autonomous/teleop control
     addRequirements(poseEstimator);
   }
 
   @Override
   public void initialize() {
-    // === SAFETY CHECKS (Match vs Practice mode) ===
-    
+    executionBlocked = false;
+    confirmed = false;
+    seedAttempts = 0;
+
     boolean isFMSAttached = DriverStation.isFMSAttached();
     boolean isDisabled = DriverStation.isDisabled();
-    
-    // MATCH MODE: FMS attached - must be disabled to prevent mid-match cheating
+
     if (isFMSAttached && !isDisabled) {
-      SmartLogger.logConsoleError("=== MANUAL SEED BLOCKED ===");
-      SmartLogger.logConsoleError("FMS attached - must be DISABLED to set pose!");
-      SmartLogger.logConsoleError("(Prevents mid-match position cheating)");
-      SmartLogger.logConsoleError("==========================");
-      
+      SmartLogger.logConsoleError("=== MANUAL SEED BLOCKED: must be DISABLED during match ===");
       Logger.recordOutput("ManualReset/BlockedFMSEnabled", true);
       executionBlocked = true;
       return;
     }
-    
-    // PRACTICE MODE: No FMS - allow seeding anytime (even teleop)
-    // This lets you calibrate/test while driving around
-    
-    // === MANUAL COMP_SEED (Shop/Practice) ===
-    
-        // === MANUAL COMP_SEED (Shop/Practice) ===
-    
-        double targetAngleDegrees = targetPose.getRotation().getDegrees();
-    
-        SmartLogger.logConsole("=== MANUAL POSE RESET ===");
-        SmartLogger.logConsole("Position: " + positionName);
-        SmartLogger.logConsole("Target: " + formatPose(targetPose));
-        SmartLogger.logConsole("Mode: " + (isFMSAttached ? "MATCH (disabled)" : "PRACTICE"));
-        
-        // Step 1: Reset gyro to target heading (MUST happen first!)
-        gyro.setHeading(targetAngleDegrees);
-        SmartLogger.logConsole("✓ Pigeon2 reset to " + targetAngleDegrees + "°");
-        
-        // Step 2: Get confirmed gyro angle (after reset)
-        Rotation2d confirmedGyroAngle = drive.getGyroRotation();
-        SmartLogger.logConsole("✓ Confirmed gyro: " + String.format("%.1f°", confirmedGyroAngle.getDegrees()));
-        
-        // Step 3: Centralized COMP_SEED reset (pass confirmed gyro angle)
-        poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
-        
-        // SmartDashboard feedback
-        SmartDashboard.putString("Starting Position", positionName);
-        SmartDashboard.putString("Starting Pose", formatPoseForDisplay(targetPose));
-        
-        // Verify
-        Pose2d actualPose = poseEstimator.getEstimatedPose();
-        double actualAngle = drive.getGyroRotation().getDegrees();
-        
-        SmartDashboard.putString("Actual Pose", formatPoseForDisplay(actualPose));
-        
-        SmartLogger.logConsole("Verification:");
-        SmartLogger.logConsole("  Actual pose: " + formatPose(actualPose));
-        SmartLogger.logConsole("  Actual angle: " + String.format("%.1f°", actualAngle));
-        SmartLogger.logConsole("========================");
-        
-        // AdvantageKit logs
-        Logger.recordOutput("ManualReset/Name", positionName);
-        Logger.recordOutput("ManualReset/TargetPose", targetPose);
-        Logger.recordOutput("ManualReset/TargetAngle", targetAngleDegrees);
-        Logger.recordOutput("ManualReset/ConfirmedGyroAngle", confirmedGyroAngle.getDegrees());
-        Logger.recordOutput("ManualReset/ActualPose", actualPose);
-        Logger.recordOutput("ManualReset/ActualAngle", actualAngle);
-        Logger.recordOutput("ManualReset/Mode", isFMSAttached ? "MATCH" : "PRACTICE");
-        Logger.recordOutput("ManualReset/Success", true);
-      }
-    
-      @Override
-      public boolean isFinished() {
-        return true; // Instant command
-      }
-      
-      private String formatPose(Pose2d pose) {
-        return String.format("(%.2fm, %.2fm, %.1f°)", 
-            pose.getX(), 
-            pose.getY(), 
-            pose.getRotation().getDegrees());
-      }
-      
-      private String formatPoseForDisplay(Pose2d pose) {
-        return String.format("X: %.2fm, Y: %.2fm, Θ: %.1f°",
-            pose.getX(),
-            pose.getY(),
-            pose.getRotation().getDegrees());
+
+    SmartLogger.logConsole("=== MANUAL POSE RESET: " + positionName + " ===");
+    SmartLogger.logConsole("Target: " + SmartLogger.formatPose(targetPose));
+    SmartDashboard.putString("Seed/Status", "SEEDING...");
+
+    // Reset gyro first, then do the first seed attempt
+    gyro.setHeading(targetPose.getRotation().getDegrees());
+    Rotation2d confirmedGyroAngle = drive.getGyroRotation();
+    poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
+    seedAttempts = 1;
+
+    confirmTimer.reset();
+    confirmTimer.start();
+
+    Logger.recordOutput("ManualReset/Name", positionName);
+    Logger.recordOutput("ManualReset/TargetPose", targetPose);
+  }
+
+  @Override
+  public void execute() {
+    if (executionBlocked || confirmed) return;
+
+    Pose2d questPose = questNav.getRobotPose().orElse(null);
+    if (questPose != null) {
+      double posErr = questPose.getTranslation().getDistance(targetPose.getTranslation());
+      double rotErr = Math.abs(questPose.getRotation().minus(targetPose.getRotation()).getDegrees());
+
+      SmartDashboard.putNumber("Seed/PosErrorMeters", posErr);
+      SmartDashboard.putNumber("Seed/RotErrorDeg", rotErr);
+
+      if (posErr < CONFIRM_TOLERANCE_METERS && rotErr < CONFIRM_TOLERANCE_DEG) {
+        confirmed = true;
+        SmartDashboard.putString("Seed/Status", "CONFIRMED");
+        SmartLogger.logConsole("Seed confirmed after " + seedAttempts + " attempt(s). PosErr=" +
+            String.format("%.3fm", posErr) + " RotErr=" + String.format("%.1fdeg", rotErr));
+        Logger.recordOutput("ManualReset/SeedConfirmed", true);
+        Logger.recordOutput("ManualReset/SeedAttempts", seedAttempts);
+        return;
       }
     }
+
+    // Retry if timed out and attempts remain
+    if (confirmTimer.hasElapsed(CONFIRM_TIMEOUT_SEC) && seedAttempts < MAX_SEED_ATTEMPTS) {
+      seedAttempts++;
+      SmartLogger.logConsole("Seed not confirmed - retry " + seedAttempts + "/" + MAX_SEED_ATTEMPTS);
+      SmartDashboard.putString("Seed/Status", "RETRY " + seedAttempts);
+      poseEstimator.manualCompSeed(targetPose, drive.getGyroRotation());
+      confirmTimer.reset();
+    }
+  }
+
+  @Override
+  public boolean isFinished() {
+    if (executionBlocked) return true;
+    if (confirmed) return true;
+    // Give up after all retries are exhausted and final timeout elapses
+    if (seedAttempts >= MAX_SEED_ATTEMPTS && confirmTimer.hasElapsed(CONFIRM_TIMEOUT_SEC)) {
+      SmartDashboard.putString("Seed/Status", "FAILED - CHECK QUEST");
+      SmartLogger.logConsoleError("Seed FAILED after " + MAX_SEED_ATTEMPTS + " attempts - Quest may not be tracking");
+      Logger.recordOutput("ManualReset/SeedConfirmed", false);
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  public void end(boolean interrupted) {
+    confirmTimer.stop();
+    if (!executionBlocked && !confirmed) {
+      SmartDashboard.putString("Seed/Status", "INTERRUPTED");
+    }
+    // Final verification log
+    Pose2d actualPose = poseEstimator.getEstimatedPose();
+    SmartDashboard.putString("Actual Pose", formatPoseForDisplay(actualPose));
+    Logger.recordOutput("ManualReset/ActualPose", actualPose);
+    Logger.recordOutput("ManualReset/Success", confirmed);
+  }
+
+  private String formatPoseForDisplay(Pose2d pose) {
+    return String.format("X: %.2fm, Y: %.2fm, Θ: %.1f°",
+        pose.getX(), pose.getY(), pose.getRotation().getDegrees());
+  }
+}

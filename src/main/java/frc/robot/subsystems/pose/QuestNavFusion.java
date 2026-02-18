@@ -608,7 +608,7 @@ public class QuestNavFusion {
   }
 
   public void onShopResumeInit() {
-    SmartLogger.logConsole("[QuestNav Fusion] SHOP_RESUME init - enabling grace period");
+    SmartLogger.logConsole("[QuestNav Fusion] SHOP_RESUME - grace period started (100ms)");
     
     lastResetTime = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
     
@@ -621,7 +621,6 @@ public class QuestNavFusion {
     
     Logger.recordOutput("PoseEstimator/QuestNav/ShopResumeInit", true);
     Logger.recordOutput("PoseEstimator/QuestNav/GraceStarted", true);
-    SmartLogger.logConsole("  Grace period: 100ms (teleport checks suspended)");
   }
 
   private void logStateTransition(String transition, String reason) {

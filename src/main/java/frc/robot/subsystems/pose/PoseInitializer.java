@@ -1,12 +1,11 @@
 package frc.robot.subsystems.pose;
 
-import static frc.robot.Constants.StartingPositions.*;
-
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -14,6 +13,12 @@ import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.subsystems.QuestNavSubsystem;
 import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 // Determines initialization mode: COMP_SEED (seed Quest to known start) vs SHOP_RESUME (use Quest's existing tracking)
 public class PoseInitializer {
@@ -42,6 +47,10 @@ public class PoseInitializer {
   private InitializationState initState = InitializationState.WAITING;
   private SendableChooser<Command> autoChooser;
   private boolean noPoseWarningShown = false;
+
+  // Cache last JSON parse result - avoids file I/O on every periodic loop
+  private String cachedAutoName = null;
+  private Pose2d cachedAutoStartPose = null;
 
   private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
   private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
@@ -123,13 +132,8 @@ public class PoseInitializer {
         double waitTime = initWaitTimer.get();
         Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
         
-        SmartLogger.logConsole("=== SHOP_RESUME MODE ===");
-        SmartLogger.logConsole("Using Quest's existing tracking (NOT SEEDED)");
-        SmartLogger.logConsole("Pose: " + SmartLogger.formatPose(questNavPose));
-        SmartLogger.logConsole("Wait time: " + String.format("%.2fs", waitTime));
-        SmartLogger.logConsoleError("WARNING: Pose is in Quest's own frame (NOT field-aligned!)");
-        SmartLogger.logConsoleError("Do NOT use for autonomous - teleop practice only!");
-        SmartLogger.logConsole("====================");
+        SmartLogger.logConsole("SHOP_RESUME: Quest tracking unanchored, pose: " + SmartLogger.formatPose(questNavPose));
+        SmartLogger.logConsoleError("WARNING: Not field-aligned - teleop practice only!");
         
         Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
         Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
@@ -153,15 +157,91 @@ public class PoseInitializer {
   public Pose2d getStartPoseForAutoName(String autoName) {
     if (autoName == null || autoName.isEmpty()) return null;
 
-    switch (autoName.toLowerCase()) {
-      case "leftside1piece":
-      case "leftside3piece":
-        return new Pose2d(7.20, 0.45, Rotation2d.fromDegrees(180.0));
-      case "rightside1piece":
-        return new Pose2d(7.20, 5.50, Rotation2d.fromDegrees(180.0));
-      default:
+    // Return cached result if same auto is requested again (avoids file I/O every loop)
+    if (autoName.equals(cachedAutoName)) return cachedAutoStartPose;
+
+    try {
+      // Read the .auto file to find first path name
+      File autoFile = new File(Filesystem.getDeployDirectory(), "pathplanner/autos/" + autoName + ".auto");
+      if (!autoFile.exists()) {
+        Logger.recordOutput("PoseInitializer/UnknownAuto", autoName);
+        cachedAutoName = autoName;
+        cachedAutoStartPose = null;
         return null;
+      }
+
+      JSONParser parser = new JSONParser();
+      JSONObject autoJson = (JSONObject) parser.parse(new BufferedReader(new FileReader(autoFile)));
+      String firstPathName = findFirstPathName(autoJson);
+      if (firstPathName == null) {
+        Logger.recordOutput("PoseInitializer/AutoNoPath", autoName);
+        cachedAutoName = autoName;
+        cachedAutoStartPose = null;
+        return null;
+      }
+
+      // Read the .path file and extract first waypoint anchor
+      File pathFile = new File(Filesystem.getDeployDirectory(), "pathplanner/paths/" + firstPathName + ".path");
+      if (!pathFile.exists()) {
+        Logger.recordOutput("PoseInitializer/PathNotFound", firstPathName);
+        cachedAutoName = autoName;
+        cachedAutoStartPose = null;
+        return null;
+      }
+
+      JSONObject pathJson = (JSONObject) parser.parse(new BufferedReader(new FileReader(pathFile)));
+      JSONArray waypoints = (JSONArray) pathJson.get("waypoints");
+      if (waypoints == null || waypoints.isEmpty()) return null;
+
+      JSONObject firstWaypoint = (JSONObject) waypoints.get(0);
+      JSONObject anchor = (JSONObject) firstWaypoint.get("anchor");
+      if (anchor == null) return null;
+
+      double x = ((Number) anchor.get("x")).doubleValue();
+      double y = ((Number) anchor.get("y")).doubleValue();
+
+      // Rotation from ideal heading in path file (null = 0)
+      Object idealRotation = pathJson.get("idealStartingState");
+      double rotDeg = 0.0;
+      if (idealRotation instanceof JSONObject) {
+        Object rot = ((JSONObject) idealRotation).get("rotation");
+        if (rot instanceof Number) rotDeg = ((Number) rot).doubleValue();
+      }
+
+      Pose2d pose = new Pose2d(x, y, Rotation2d.fromDegrees(rotDeg));
+      Logger.recordOutput("PoseInitializer/AutoStartPose", pose);
+      cachedAutoName = autoName;
+      cachedAutoStartPose = pose;
+      return pose;
+    } catch (Exception e) {
+      Logger.recordOutput("PoseInitializer/AutoStartPoseError", e.getMessage());
+      cachedAutoName = autoName;
+      cachedAutoStartPose = null;
+      return null;
     }
+  }
+
+  // Recursively finds the first path command name in an auto command tree
+  private String findFirstPathName(JSONObject command) {
+    if (command == null) return null;
+    String type = (String) command.get("type");
+    JSONObject data = (JSONObject) command.get("data");
+    if ("path".equals(type) && data != null) {
+      return (String) data.get("pathName");
+    }
+    if (data != null) {
+      JSONArray commands = (JSONArray) data.get("commands");
+      if (commands != null) {
+        for (Object cmd : commands) {
+          String found = findFirstPathName((JSONObject) cmd);
+          if (found != null) return found;
+        }
+      }
+    }
+    // Top-level auto file has command at root
+    JSONObject rootCommand = (JSONObject) command.get("command");
+    if (rootCommand != null) return findFirstPathName(rootCommand);
+    return null;
   }
 
   private Pose2d getExpectedAutoStartPose() {

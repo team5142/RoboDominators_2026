@@ -268,7 +268,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     
     if (robotState.getMode() == RobotState.Mode.DISABLED) {
-      initializer.updateReadiness();
+      // 5Hz is enough for dashboard readiness display (not every 20ms loop)
+      if (logCounter % 10 == 0) {
+        initializer.updateReadiness();
+      }
       // validator.periodicValidation(getEstimatedPose()); // Comment out (saves 50-100ms)
     }
     
@@ -288,15 +291,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           questNavSubsystem.seedToPose(initResult.pose);
           questNavFusion.setExpectedSeedPose(initResult.pose);
           questNavFusion.setValidationMode(Constants.QuestNav.InitMode.COMP_SEED);
-          questNavFusion.onManualSeed(initResult.pose); // Existing call
+          questNavFusion.onManualSeed(initResult.pose);
           currentInitMode = Constants.QuestNav.InitMode.COMP_SEED;
-          
-          // Operator perspective should be inverse of robot starting heading
-          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation().unaryMinus());
 
-          SmartLogger.logConsole("Field orientation locked to " + 
-              String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
-          
+          // Set driver perspective: always downfield (0 on blue, 180 on red)
+          driveSubsystem.setOperatorPerspectiveForward(getDriverDownfieldAngle());
+
           SmartLogger.logConsole("COMP_SEED: Quest seeded to " + SmartLogger.formatPose(initResult.pose));
           Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
           Logger.recordOutput("QuestNav/Seeded", true);
@@ -307,13 +307,11 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           questNavFusion.setValidationMode(Constants.QuestNav.InitMode.SHOP_RESUME);
           questNavFusion.onShopResumeInit();
           currentInitMode = Constants.QuestNav.InitMode.SHOP_RESUME;
-          
-          // FIX: Lock field orientation to Quest's pose rotation (not gyro)
-          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation().unaryMinus());
 
-          SmartLogger.logConsole("Field orientation locked to Quest heading: " + 
-              String.format("%.1f deg", initResult.pose.getRotation().getDegrees()));
-              
+          // In shop mode, set perspective to the robot's current physical heading
+          // so "forward on stick" always means the direction the robot is facing on boot
+          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+
           SmartLogger.logConsole("SHOP_RESUME: Using Quest's existing tracking (not seeded)");
           Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
           Logger.recordOutput("QuestNav/Seeded", false);
@@ -452,5 +450,13 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   
   public boolean forceAcceptQuestNavPose() {
     return questNavFusion.forceAcceptMeasurement();
+  }
+
+  // Returns the downfield direction from the driver's perspective.
+  // Blue driver faces +X (0 deg), Red driver faces -X (180 deg).
+  private Rotation2d getDriverDownfieldAngle() {
+    boolean isRed = DriverStation.getAlliance().orElse(DriverStation.Alliance.Blue)
+        == DriverStation.Alliance.Red;
+    return Rotation2d.fromDegrees(isRed ? 180.0 : 0.0);
   }
 }

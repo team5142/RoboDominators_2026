@@ -189,7 +189,7 @@ public class RobotContainer {
         .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
 
     // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
-    /*
+
     // Y/B/X: SmartDrive to tags
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_LEFTBUMP, PRECISE_BLUE_ALLIANCE_LEFTBUMP));
@@ -207,18 +207,25 @@ public class RobotContainer {
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
     new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
-    */
+
+    // D-PAD: PathPlanner PID Tuning Autos
+    new Trigger(() -> driverController.getPOV() == 0)
+        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuning"));
+    new Trigger(() -> driverController.getPOV() == 180)
+        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuningReturn"));
+    new Trigger(() -> driverController.getPOV() == 90)
+        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuningCurve"));
+
     // ========== END NORMAL OPERATION BUTTONS ==========
 
     // ========== SYSID CHARACTERIZATION BUTTONS (COMMENT OUT FOR NORMAL OPERATION) ==========
-    
+    /*
     // IMPORTANT: Before running SysId tests:
     // 1. Comment out normal operation buttons above
-    // 2. For STEER tests: call driveSubsystem.disableCANcoderFusion() before test
-    // 3. For STEER tests: call driveSubsystem.enableCANcoderFusion() after test
-    // 4. Start SignalLogger with left bumper, stop with right bumper
-    // 5. Run all 4 tests in one session: quasistatic fwd/rev, dynamic fwd/rev
-    
+    // 2. For STEER tests: set STEER_FEEDBACK_TYPE = RemoteCANcoder in Constants.java
+    // 3. Start SignalLogger with left bumper, stop with right bumper
+    // 4. Run all 4 tests in one session: quasistatic fwd/rev, dynamic fwd/rev
+
     // SIGNAL LOGGER CONTROL
     new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
         .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.start()));
@@ -234,8 +241,8 @@ public class RobotContainer {
         .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
     new JoystickButton(driverController, XboxController.Button.kX.value)
         .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    
-    // STEER TESTS (module steering motors) - REMEMBER TO DISABLE CANCODER FUSION FIRST!
+
+    // STEER TESTS (module steering motors) - set STEER_FEEDBACK_TYPE = RemoteCANcoder before running!
     // POV UP: Quasistatic Forward
     new Trigger(() -> driverController.getPOV() == 0)
         .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
@@ -248,7 +255,7 @@ public class RobotContainer {
     // POV LEFT: Dynamic Reverse
     new Trigger(() -> driverController.getPOV() == 270)
         .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    
+    */
     // ========== END SYSID BUTTONS ==========
 
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
@@ -386,6 +393,9 @@ public class RobotContainer {
 
     lastAppliedPreviewPose = pose;
     lastAppliedPreviewName = autoName;
+
+    // Reset gyro to match the auto start heading before resetting pose estimator
+    gyro.setHeading(pose.getRotation().getDegrees());
 
     poseEstimator.resetPose(
         pose,

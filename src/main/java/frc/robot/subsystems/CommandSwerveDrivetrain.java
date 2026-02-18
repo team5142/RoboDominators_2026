@@ -92,7 +92,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         )
     );
 
-    private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineTranslation; // Default to drive characterization
+    private SysIdRoutine m_sysIdRoutineToApply = m_sysIdRoutineSteer; // Default to drive characterization
 
     // Constructor - initializes swerve drivetrain from Tuner X constants
     public CommandSwerveDrivetrain(

@@ -136,8 +136,8 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
   }
 
   private Pose2d findNearestEntryCorner(Pose2d currentPose) {
-    Pose2d leftCorner = new Pose2d(5.976, 7.324, Rotation2d.fromDegrees(0.0));
-    Pose2d rightCorner = new Pose2d(5.976, 0.776, Rotation2d.fromDegrees(0.0));
+    Pose2d leftCorner = new Pose2d(5.976, 7.248, Rotation2d.fromDegrees(0.0));
+    Pose2d rightCorner = new Pose2d(5.976, 0.624, Rotation2d.fromDegrees(0.0));
     
     double distToLeft = currentPose.getTranslation().getDistance(leftCorner.getTranslation());
     double distToRight = currentPose.getTranslation().getDistance(rightCorner.getTranslation());
@@ -146,34 +146,24 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
       currentSegmentIndex = 0;
       return leftCorner;
     } else {
-      currentSegmentIndex = 4;
+      currentSegmentIndex = 8;
       return rightCorner;
     }
   }
 
   private Command buildEntryCommand(Pose2d currentPose, Pose2d entryPose) {
-    Rotation2d currentHeading = driveSubsystem.getGyroRotation();
-    Rotation2d targetHeading = entryPose.getRotation();
-    double headingErrorDeg = Math.abs(currentHeading.minus(targetHeading).getDegrees());
-    
-    Pose2d moveTarget = new Pose2d(entryPose.getTranslation(), currentHeading);
-    Command entryMove = AutoBuilder.pathfindToPose(moveTarget, pathConstraints);
-    
-    if (headingErrorDeg > 2.0) {
-      return new SequentialCommandGroup(
-          new SpinToHeadingCommand(driveSubsystem, targetHeading),
-          entryMove);
-    }
-    return entryMove;
+    // Pathfind directly to entry corner with intake-forward heading (0 deg).
+    // PathPlanner handles the approach heading - no pre-spin needed.
+    return AutoBuilder.pathfindToPose(entryPose, pathConstraints);
   }
 
   private List<SweepSegment> buildSegments() {
     boolean isCompetition = RobotContainer.COMPETITION_MODE;
     double farX = isCompetition ? 11.574 : 9.024;
     double nearX = 5.976;
-    double leftY = 7.324;
-    double centerY = 4.077;
-    double rightY = 0.776;
+    double leftY = 7.248;    // was 7.324, moved 3in away from left wall
+    double centerY = 3.936;  // midpoint of new left/right
+    double rightY = 0.624;   // was 0.776, moved 6in closer to right wall
     
     List<SweepSegment> segs = new ArrayList<>();
     
@@ -206,6 +196,7 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
         new Pose2d(nearX, centerY, Rotation2d.fromDegrees(270.0)),
         new Pose2d(nearX, rightY, Rotation2d.fromDegrees(270.0))));
     
+    // Spin from 270° to 0°
     // Spin from 270° to 0°
     segs.add(SweepSegment.spin(Rotation2d.fromDegrees(0.0)));
     
