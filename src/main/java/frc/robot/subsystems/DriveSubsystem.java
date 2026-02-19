@@ -161,10 +161,15 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
 
   public Command createOrientToFieldCommand(RobotState robotState) {
     return runOnce(() -> {
-      gyro.resetHeading();
-      setOperatorPerspectiveForward(Rotation2d.fromDegrees(0.0));
-      Logger.recordOutput("Drive/OrientToFieldButton", true);
-      System.out.println("Field orientation set - current direction is now 0° (downfield)");
+      // Set operator perspective to face downfield for the current alliance.
+      // Blue downfield = 0 deg (toward Red wall), Red downfield = 180 deg (toward Blue wall).
+      // Does NOT reset the gyro - pose estimator state is unaffected.
+      boolean isRed = DriverStation.getAlliance()
+          .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+      Rotation2d downfield = Rotation2d.fromDegrees(isRed ? 180.0 : 0.0);
+      setOperatorPerspectiveForward(downfield);
+      SmartLogger.logConsole("[Drive] Field orientation reset - downfield is now "
+          + downfield.getDegrees() + " deg", "Drive");
     });
   }
 

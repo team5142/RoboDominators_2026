@@ -308,9 +308,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
           questNavFusion.onShopResumeInit();
           currentInitMode = Constants.QuestNav.InitMode.SHOP_RESUME;
 
-          // In shop mode, set perspective to the robot's current physical heading
-          // so "forward on stick" always means the direction the robot is facing on boot
-          driveSubsystem.setOperatorPerspectiveForward(initResult.pose.getRotation());
+          // In shop mode, perspective is alliance-based (same as COMP_SEED).
+          // Quest's unanchored heading is not meaningful for operator perspective.
+          driveSubsystem.setOperatorPerspectiveForward(getDriverDownfieldAngle());
 
           SmartLogger.logConsole("SHOP_RESUME: Using Quest's existing tracking (not seeded)");
           Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");

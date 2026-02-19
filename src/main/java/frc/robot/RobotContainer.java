@@ -24,6 +24,7 @@ import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
+import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.NeutralZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.util.LogCurrentPoseCommand;
@@ -394,8 +395,10 @@ public class RobotContainer {
     lastAppliedPreviewPose = pose;
     lastAppliedPreviewName = autoName;
 
-    // Reset gyro to match the auto start heading before resetting pose estimator
-    gyro.setHeading(pose.getRotation().getDegrees());
+    // Always reset gyro to 0 - CTRE field-centric uses (pigeon - perspective) as offset,
+    // so setting gyro to pose.getRotation() would double the offset and flip field-centric.
+    // WPILib pose estimator stores the heading difference internally.
+    gyro.setHeading(0.0);
 
     poseEstimator.resetPose(
         pose,
@@ -429,7 +432,20 @@ public class RobotContainer {
     return posErr > AUTO_SEED_POS_TOL_METERS || rotErr > AUTO_SEED_ROT_TOL_DEG;
   }
 
+  // Picks the sweep command based on the robot's current X position.
+  // Pose estimator is always Blue-origin, so we mirror X for Red before comparing.
+  // This matches the same zone-detection pattern used by DynamicBumpTraversalCommand.
   private Command createSmartSweepCommand() {
+    boolean isRed = isRedAlliance();
+    double rawX = poseEstimator.getEstimatedPose().getX();
+    double robotX = isRed ? (Constants.Field.FIELD_LENGTH_METERS - rawX) : rawX;
+    boolean inAllianceZone = robotX < Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+
+    if (inAllianceZone) {
+      SmartLogger.logConsole("->SWEEP: Alliance zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
+      return new AllianceZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
+    }
+    SmartLogger.logConsole("->SWEEP: Neutral zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
     return new NeutralZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
   }
 
@@ -444,7 +460,10 @@ public class RobotContainer {
   }
 
   private Pose2d getRebuiltRightCornerPose() {
-    return isRedAlliance() ? RED_REBUILT_RIGHT_CORNER : BLUE_REBUILT_RIGHT_CORNER;
+    if (!isRedAlliance()) return BLUE_REBUILT_RIGHT_CORNER;
+    // On a full competition field use the mirrored far corner.
+    // On the practice field use the dedicated Red seed pose instead.
+    return COMPETITION_MODE ? RED_REBUILT_RIGHT_CORNER : RED_PRACTICE_SEED;
   }
 
   // Register SmartDrive as PathPlanner events

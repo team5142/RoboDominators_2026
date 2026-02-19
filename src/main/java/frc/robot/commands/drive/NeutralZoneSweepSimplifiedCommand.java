@@ -10,6 +10,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
@@ -29,6 +30,7 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
   private int currentSegmentIndex = 0;
   private Command activeCommand = null;
   private boolean isInEntryPhase = true;
+  private boolean justScheduled = false;
   private static int sessionCounter = 0;
   private int sessionId = 0;
 
@@ -39,18 +41,22 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
     this.driveSubsystem = driveSubsystem;
     this.pathConstraints = new PathConstraints(2.0, 2.0, Math.toRadians(360.0), Math.toRadians(540.0));
     
-    // DO NOT add requirements - sub-commands handle their own requirements
+    // Claim driveSubsystem so whileTrue can interrupt and cancel activeCommand on release.
+    // SpinToHeadingCommand must NOT also claim it to avoid a conflict.
+    addRequirements(driveSubsystem);
   }
 
   @Override
   public void initialize() {
     sessionId = ++sessionCounter;
-    segments = buildSegments();
+    boolean isRed = DriverStation.getAlliance()
+        .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+    segments = buildSegments(isRed);
     currentSegmentIndex = 0;
     isInEntryPhase = true;
     
     Pose2d currentPose = poseEstimator.getEstimatedPose();
-    Pose2d entryPose = findNearestEntryCorner(currentPose);
+    Pose2d entryPose = findNearestEntryCorner(currentPose, isRed);
     
     double distanceToEntry = currentPose.getTranslation().getDistance(entryPose.getTranslation());
     Rotation2d currentHeading = driveSubsystem.getGyroRotation();
@@ -62,6 +68,8 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
           + " (dist=" + String.format("%.2f", distanceToEntry) + "m)", 
         "SimpleSweep");
       activeCommand = buildEntryCommand(currentPose, entryPose);
+      activeCommand = activeCommand.asProxy();
+      justScheduled = true;
       CommandScheduler.getInstance().schedule(activeCommand);
     } else {
       SmartLogger.logConsole(
@@ -74,6 +82,10 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
 
   @Override
   public void execute() {
+    if (justScheduled) {
+      justScheduled = false;
+      return;
+    }
     if (activeCommand == null || !activeCommand.isScheduled()) {
       if (isInEntryPhase) {
         SmartLogger.logConsole("->SWEEP: Entry complete, starting sweep", "SimpleSweep");
@@ -132,16 +144,24 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
       }
     }
     
+    activeCommand = activeCommand.asProxy();
+    justScheduled = true;
     CommandScheduler.getInstance().schedule(activeCommand);
   }
 
-  private Pose2d findNearestEntryCorner(Pose2d currentPose) {
-    Pose2d leftCorner = new Pose2d(5.976, 7.248, Rotation2d.fromDegrees(0.0));
-    Pose2d rightCorner = new Pose2d(5.976, 0.624, Rotation2d.fromDegrees(0.0));
-    
-    double distToLeft = currentPose.getTranslation().getDistance(leftCorner.getTranslation());
+  private Pose2d findNearestEntryCorner(Pose2d currentPose, boolean isRed) {
+    // Entry corners are the near-left and near-right corners of the loop.
+    // Each alliance's near wall is their own driver-station side.
+    Pose2d leftCorner  = isRed
+        ? new Pose2d(nearXRed(),  7.248, Rotation2d.fromDegrees(180.0))
+        : new Pose2d(nearXBlue(), 7.248, Rotation2d.fromDegrees(0.0));
+    Pose2d rightCorner = isRed
+        ? new Pose2d(nearXRed(),  0.624, Rotation2d.fromDegrees(180.0))
+        : new Pose2d(nearXBlue(), 0.624, Rotation2d.fromDegrees(0.0));
+
+    double distToLeft  = currentPose.getTranslation().getDistance(leftCorner.getTranslation());
     double distToRight = currentPose.getTranslation().getDistance(rightCorner.getTranslation());
-    
+
     if (distToLeft <= distToRight) {
       currentSegmentIndex = 0;
       return leftCorner;
@@ -152,87 +172,71 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
   }
 
   private Command buildEntryCommand(Pose2d currentPose, Pose2d entryPose) {
-    // Pathfind directly to entry corner with intake-forward heading (0 deg).
-    // PathPlanner handles the approach heading - no pre-spin needed.
+    // Pathfind directly to entry corner - PathPlanner handles the approach heading.
     return AutoBuilder.pathfindToPose(entryPose, pathConstraints);
   }
 
-  private List<SweepSegment> buildSegments() {
-    boolean isCompetition = RobotContainer.COMPETITION_MODE;
-    double farX = isCompetition ? 11.574 : 9.024;
-    double nearX = 5.976;
-    double leftY = 7.248;    // was 7.324, moved 3in away from left wall
-    double centerY = 3.936;  // midpoint of new left/right
-    double rightY = 0.624;   // was 0.776, moved 6in closer to right wall
-    
+  // Returns the near-wall X for Blue (their driver-station side, always present).
+  private static double nearXBlue() { return 5.976; }
+
+  // Returns the far-wall X for Blue (Red's driver-station side, shortened on practice field).
+  private static double farXBlue()  { return RobotContainer.COMPETITION_MODE ? 11.574 : 9.024; }
+
+  // Returns the near-wall X for Red (their driver-station side, always present).
+  private static double nearXRed()  { return RobotContainer.COMPETITION_MODE ? 10.564 : 9.024; }
+
+  // Returns the far-wall X for Red (Blue's driver-station side, always present).
+  private static double farXRed()   { return 5.976; }
+
+  private List<SweepSegment> buildSegments(boolean isRed) {
+
+    double nearX = isRed ? nearXRed()  : nearXBlue();
+    double farX  = isRed ? farXRed()   : farXBlue();
+    double leftY   = 7.248;
+    double centerY = 3.936;
+    double rightY  = 0.624;
+
+    // Intake heading: always faces the far wall while collecting.
+    // Blue far wall is East (0 deg), Red far wall is West (180 deg).
+    // toLeft/toRight follow the Y axis which is the same for both alliances:
+    //   toLeft = 90 deg (North, toward high Y), toRight = 270 deg (South, toward low Y).
+    double toFar   = isRed ? 180.0 : 0.0;
+    double toNear  = isRed ? 0.0   : 180.0;
+    double toLeft  = 90.0;  // North - always toward the left/high-Y wall
+    double toRight = 270.0; // South - always toward the right/low-Y wall
+
     List<SweepSegment> segs = new ArrayList<>();
-    
-    // Segment 0: Move from near-left to far-left (facing East 0°)
-    segs.add(SweepSegment.move(
-        new Pose2d(nearX, leftY, Rotation2d.fromDegrees(0.0)),
-        new Pose2d(farX, leftY, Rotation2d.fromDegrees(0.0))));
-    
-    // Spin from 0° to 90°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(90.0)));
-    
-    // Segment 1: Move from far-left to far-center (facing North 90°)
-    segs.add(SweepSegment.move(
-        new Pose2d(farX, leftY, Rotation2d.fromDegrees(90.0)),
-        new Pose2d(farX, centerY, Rotation2d.fromDegrees(90.0))));
-    
-    // Spin from 90° to 180°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(180.0)));
-    
-    // Segment 2: Move from far-center to near-center (facing West 180°)
-    segs.add(SweepSegment.move(
-        new Pose2d(farX, centerY, Rotation2d.fromDegrees(180.0)),
-        new Pose2d(nearX, centerY, Rotation2d.fromDegrees(180.0))));
-    
-    // Spin from 180° to 270°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(270.0)));
-    
-    // Segment 3: Move from near-center to near-right (facing South 270°)
-    segs.add(SweepSegment.move(
-        new Pose2d(nearX, centerY, Rotation2d.fromDegrees(270.0)),
-        new Pose2d(nearX, rightY, Rotation2d.fromDegrees(270.0))));
-    
-    // Spin from 270° to 0°
-    // Spin from 270° to 0°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(0.0)));
-    
-    // Segment 4: Move from near-right to far-right (facing East 0°)
-    segs.add(SweepSegment.move(
-        new Pose2d(nearX, rightY, Rotation2d.fromDegrees(0.0)),
-        new Pose2d(farX, rightY, Rotation2d.fromDegrees(0.0))));
-    
-    // Spin from 0° to 90°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(90.0)));
-    
-    // Segment 5: Move from far-right to far-center (facing North 90°)
-    segs.add(SweepSegment.move(
-        new Pose2d(farX, rightY, Rotation2d.fromDegrees(90.0)),
-        new Pose2d(farX, centerY, Rotation2d.fromDegrees(90.0))));
-    
-    // Spin from 90° to 180°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(180.0)));
-    
-    // Segment 6: Move from far-center to near-center (facing West 180°)
-    segs.add(SweepSegment.move(
-        new Pose2d(farX, centerY, Rotation2d.fromDegrees(180.0)),
-        new Pose2d(nearX, centerY, Rotation2d.fromDegrees(180.0))));
-    
-    // Spin from 180° to 270°
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(270.0)));
-    
-    // Segment 7: Move from near-center to near-left (facing South 270°)
-    segs.add(SweepSegment.move(
-        new Pose2d(nearX, centerY, Rotation2d.fromDegrees(270.0)),
-        new Pose2d(nearX, leftY, Rotation2d.fromDegrees(270.0))));
-    
-    // Spin from 270° to 0° (back to start)
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(0.0)));
-    
+    // Leg 1: near-left to far-left
+    segs.add(SweepSegment.move(p(nearX, leftY,   toFar),  p(farX,  leftY,   toFar)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // turn toward center (lower Y)
+    // Leg 2: far-left to far-center
+    segs.add(SweepSegment.move(p(farX,  leftY,   toRight), p(farX,  centerY, toRight)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toNear)));  // turn to face near wall
+    // Leg 3: far-center to near-center
+    segs.add(SweepSegment.move(p(farX,  centerY, toNear),  p(nearX, centerY, toNear)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // continue toward right wall
+    // Leg 4: near-center to near-right
+    segs.add(SweepSegment.move(p(nearX, centerY, toRight), p(nearX, rightY,  toRight)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // turn to face far wall
+    // Leg 5: near-right to far-right
+    segs.add(SweepSegment.move(p(nearX, rightY,  toFar),   p(farX,  rightY,  toFar)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // turn toward center (higher Y)
+    // Leg 6: far-right to far-center
+    segs.add(SweepSegment.move(p(farX,  rightY,  toLeft),  p(farX,  centerY, toLeft)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toNear)));  // turn to face near wall
+    // Leg 7: far-center to near-center
+    segs.add(SweepSegment.move(p(farX,  centerY, toNear),  p(nearX, centerY, toNear)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // turn toward left wall
+    // Leg 8: near-center to near-left
+    segs.add(SweepSegment.move(p(nearX, centerY, toLeft),  p(nearX, leftY,   toLeft)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // back to start heading
+
     return segs;
+  }
+
+  // Convenience: build a Pose2d with a heading in degrees.
+  private static Pose2d p(double x, double y, double deg) {
+    return new Pose2d(x, y, Rotation2d.fromDegrees(deg));
   }
 
   private String formatPose(Pose2d pose) {
@@ -275,16 +279,21 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
           new TrapezoidProfile.Constraints(
               MAX_ANGULAR_SPEED_RAD_PER_SEC,
               MAX_ANGULAR_SPEED_RAD_PER_SEC * 2.0));
-      this.headingController.enableContinuousInput(-Math.PI, Math.PI);
+      // No continuous input - we set the goal as an absolute offset in initialize()
+      // so the controller always takes the explicit shortest arc and never wraps
       this.headingController.setTolerance(Math.toRadians(2.0));
 
-      addRequirements(driveSubsystem);
+      // No requirement here - the outer NeutralZoneSweepSimplifiedCommand owns driveSubsystem.
     }
 
     @Override
     public void initialize() {
-      headingController.reset(driveSubsystem.getGyroRotation().getRadians());
-      headingController.setGoal(targetHeading.getRadians());
+      double currentRad = driveSubsystem.getGyroRotation().getRadians();
+      // Shortest arc from current to target, always in (-pi, pi]
+      double shortestArc = MathUtil.angleModulus(targetHeading.getRadians() - currentRad);
+      headingController.reset(currentRad);
+      // Goal is current position plus the explicit shortest arc - no ambiguity at 0 or 180
+      headingController.setGoal(currentRad + shortestArc);
     }
 
     @Override

@@ -406,6 +406,8 @@ public final class Constants {
     // Staging poses (Phase 1: PathPlanner pathfind targets)
     public static final Pose2d BLUE_REBUILT_RIGHT_CORNER = new Pose2d(0.4826, 0.4191, Rotation2d.fromDegrees(0.0)); 
     public static final Pose2d RED_REBUILT_RIGHT_CORNER = new Pose2d(16.4592, 7.5819, Rotation2d.fromDegrees(0.0)); 
+    // Practice-field seed pose for Red - physically place robot at left wall (mirrored from Blue right corner Y)
+    public static final Pose2d RED_PRACTICE_SEED = new Pose2d(9.27, 7.6239, Rotation2d.fromDegrees(180.0));
     public static final Pose2d BLUE_ALLIANCE_LEFTBUMP = new Pose2d(3.512, 5.489, Rotation2d.fromDegrees(0.0)); 
     public static final Pose2d PRECISE_BLUE_ALLIANCE_LEFTBUMP = new Pose2d(3.712, 5.489, Rotation2d.fromDegrees(0.0)); 
     public static final Pose2d BLUE_ALLIANCE_RIGHTBUMP = new Pose2d(3.512, 2.393, Rotation2d.fromDegrees(0.0)); 

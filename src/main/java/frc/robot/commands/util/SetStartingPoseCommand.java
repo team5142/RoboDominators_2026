@@ -78,8 +78,11 @@ public class SetStartingPoseCommand extends Command {
     SmartLogger.logConsole("Target: " + SmartLogger.formatPose(targetPose));
     SmartDashboard.putString("Seed/Status", "SEEDING...");
 
-    // Reset gyro first, then do the first seed attempt
-    gyro.setHeading(targetPose.getRotation().getDegrees());
+    // Reset gyro to 0 so CTRE field-centric offset stays consistent.
+    // The pose estimator stores the heading internally via WPILib's resetPosition offset.
+    // Do NOT set gyro to targetPose.getRotation() - that would double the field-centric offset
+    // because CTRE uses (pigeon - operatorPerspective) as the effective field angle.
+    gyro.setHeading(0.0);
     Rotation2d confirmedGyroAngle = drive.getGyroRotation();
     poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
     seedAttempts = 1;
@@ -143,6 +146,13 @@ public class SetStartingPoseCommand extends Command {
     confirmTimer.stop();
     if (!executionBlocked && !confirmed) {
       SmartDashboard.putString("Seed/Status", "INTERRUPTED");
+    }
+    // Set perspective to alliance downfield (0 Blue, 180 Red) - matches what SHOP_RESUME sets.
+    // Use alliance direction, not targetPose.getRotation(), since Pigeon was reset to 0.
+    if (!executionBlocked) {
+      boolean isRed = DriverStation.getAlliance()
+          .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+      drive.setOperatorPerspectiveForward(Rotation2d.fromDegrees(isRed ? 180.0 : 0.0));
     }
     // Final verification log
     Pose2d actualPose = poseEstimator.getEstimatedPose();
