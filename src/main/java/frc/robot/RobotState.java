@@ -1,5 +1,6 @@
 package frc.robot;
 
+import frc.robot.util.MatchPhaseTracker;
 import frc.robot.util.SmartLogger;
 import edu.wpi.first.math.geometry.Pose2d;
 import java.util.LinkedList;
@@ -21,6 +22,9 @@ public class RobotState {
   private boolean sysIdMode = false;
   private boolean operatorDriveLockout = false;
   private edu.wpi.first.wpilibj.DriverStation.Alliance alliance = edu.wpi.first.wpilibj.DriverStation.Alliance.Blue;
+
+  // Match phase and hub active tracking
+  private final MatchPhaseTracker matchPhaseTracker = new MatchPhaseTracker();
   
   // Robot intent (high-level actions)
   public enum RobotIntent {
@@ -284,4 +288,36 @@ public class RobotState {
   }
 
   public double getClimberRotationPercent() { return climberRotationPercent; }
+
+  // Updates match phase state - call once per teleop periodic loop.
+  public void updateMatchPhase() {
+    matchPhaseTracker.update();
+  }
+
+  // True if our alliance hub is currently active for scoring.
+  public boolean isHubActive() {
+    return matchPhaseTracker.isHubActive();
+  }
+
+  // True if our hub will be active within leadSeconds from now.
+  // Use to start flywheel spin-up before the window opens.
+  public boolean isHubActiveIn(double leadSeconds) {
+    return matchPhaseTracker.isHubActiveIn(leadSeconds);
+  }
+
+  // True if we should be shooting right now, accounting for lead/stop-early times.
+  // leadSeconds: start spinning up this many seconds before a window opens.
+  // stopEarlySeconds: stop feeding balls this many seconds before a window closes (flight time).
+  public boolean shouldShoot(double leadSeconds, double stopEarlySeconds) {
+    return matchPhaseTracker.shouldShoot(leadSeconds, stopEarlySeconds);
+  }
+
+  public MatchPhaseTracker.GamePhase getGamePhase() {
+    return matchPhaseTracker.getPhase();
+  }
+
+  public String getPhaseName()            { return matchPhaseTracker.getPhaseName(); }
+  public int getShiftNumber()             { return matchPhaseTracker.getShiftNumber(); }
+  public double getSecondsUntilPhaseEnd() { return matchPhaseTracker.getSecondsUntilPhaseEnd(); }
+  public boolean hasMatchGameData()       { return matchPhaseTracker.hasGameData(); }
 }

@@ -1,0 +1,671 @@
+{
+  "version": 1.0,
+  "grid_size": 128,
+  "tabs": [
+    {
+      "name": "Disabled",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Field",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 768.0,
+            "height": 512.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/SmartDashboard/Field",
+              "period": 0.1,
+              "field_game": "Rebuilt",
+              "robot_width": 0.82,
+              "robot_length": 0.9,
+              "show_other_objects": true,
+              "show_trajectories": true,
+              "field_rotation": 0.0,
+              "robot_color": 4294198070,
+              "trajectory_color": 4294967295,
+              "show_robot_outside_widget": true
+            }
+          },
+          {
+            "title": "FMS Info",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "FMSInfo",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.1
+            }
+          },
+          {
+            "title": "Battery",
+            "x": 768.0,
+            "y": 128.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/SmartDashboard/Robot/Battery",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 6.0,
+              "max_value": 13.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Auto Chooser",
+            "x": 768.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "ComboBox Chooser",
+            "properties": {
+              "topic": "/SmartDashboard/Auto Chooser",
+              "period": 0.1,
+              "sort_options": false
+            }
+          },
+          {
+            "title": "QuestNav Connected",
+            "x": 768.0,
+            "y": 384.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/QuestNav/Connected",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "QuestNav Tracking",
+            "x": 960.0,
+            "y": 384.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/QuestNav/Tracking",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "Pose X",
+            "x": 0.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/X",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose Y",
+            "x": 192.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Y",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Heading",
+            "x": 384.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Rotation",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose Init",
+            "x": 576.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/Pose/Initialized",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "QuestNav Battery",
+            "x": 768.0,
+            "y": 512.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/Elastic/QuestNav/Battery",
+              "period": 0.1,
+              "data_type": "int",
+              "min_value": 0.0,
+              "max_value": 100.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Auto",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Field",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 768.0,
+            "height": 512.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/SmartDashboard/Field",
+              "period": 0.05,
+              "field_game": "Rebuilt",
+              "robot_width": 0.82,
+              "robot_length": 0.9,
+              "show_other_objects": true,
+              "show_trajectories": true,
+              "field_rotation": 0.0,
+              "robot_color": 4294198070,
+              "trajectory_color": 4294967295,
+              "show_robot_outside_widget": true
+            }
+          },
+          {
+            "title": "Match Time",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Large Text Display",
+            "properties": {
+              "topic": "/Elastic/Status/MatchTime",
+              "period": 0.1,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "FMS Info",
+            "x": 768.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "FMSInfo",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.1
+            }
+          },
+          {
+            "title": "Battery",
+            "x": 768.0,
+            "y": 384.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/SmartDashboard/Robot/Battery",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 6.0,
+              "max_value": 13.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Running Auto",
+            "x": 768.0,
+            "y": 512.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Robot/AutoSelected",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose X",
+            "x": 0.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/X",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose Y",
+            "x": 192.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Y",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Heading",
+            "x": 384.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Rotation",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Vision Active",
+            "x": 576.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/Vision/HasPose",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Teleop",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Field",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 768.0,
+            "height": 512.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/SmartDashboard/Field",
+              "period": 0.05,
+              "field_game": "Rebuilt",
+              "robot_width": 0.82,
+              "robot_length": 0.9,
+              "show_other_objects": true,
+              "show_trajectories": true,
+              "field_rotation": 0.0,
+              "robot_color": 4294198070,
+              "trajectory_color": 4294967295,
+              "show_robot_outside_widget": true
+            }
+          },
+          {
+            "title": "Phase",
+            "x": 768.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Phase/Name",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Hub Status",
+            "x": 1152.0,
+            "y": 0.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Phase/HubStatus",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Until Next Shift",
+            "x": 768.0,
+            "y": 128.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/Elastic/Phase/SecondsUntilNext",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 0.0,
+              "max_value": 25.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Countdown",
+            "x": 1152.0,
+            "y": 128.0,
+            "width": 384.0,
+            "height": 128.0,
+            "type": "Large Text Display",
+            "properties": {
+              "topic": "/Elastic/Phase/CountdownText",
+              "period": 0.05,
+              "data_type": "string"
+            }
+          },
+          {
+            "title": "Match Time",
+            "x": 768.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Large Text Display",
+            "properties": {
+              "topic": "/Elastic/Status/MatchTime",
+              "period": 0.1,
+              "data_type": "double"
+            }
+          },
+          {
+            "title": "QuestNav Camera",
+            "x": 1152.0,
+            "y": 256.0,
+            "width": 384.0,
+            "height": 256.0,
+            "type": "Camera Stream",
+            "properties": {
+              "topic": "/CameraPublisher/QuestNav",
+              "period": 0.1,
+              "rotation_turns": 0
+            }
+          },
+          {
+            "title": "FMS Info",
+            "x": 768.0,
+            "y": 512.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "FMSInfo",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.1
+            }
+          },
+          {
+            "title": "Battery",
+            "x": 1024.0,
+            "y": 512.0,
+            "width": 512.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/SmartDashboard/Robot/Battery",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 6.0,
+              "max_value": 13.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Pose X",
+            "x": 0.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/X",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose Y",
+            "x": 192.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Y",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Heading",
+            "x": 384.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Rotation",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "QuestNav Tracking",
+            "x": 576.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/QuestNav/Tracking",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Endgame",
+      "grid_layout": {
+        "layouts": [],
+        "containers": [
+          {
+            "title": "Field",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 640.0,
+            "height": 512.0,
+            "type": "Field",
+            "properties": {
+              "topic": "/SmartDashboard/Field",
+              "period": 0.05,
+              "field_game": "Rebuilt",
+              "robot_width": 0.82,
+              "robot_length": 0.9,
+              "show_other_objects": true,
+              "show_trajectories": true,
+              "field_rotation": 0.0,
+              "robot_color": 4294198070,
+              "trajectory_color": 4294967295,
+              "show_robot_outside_widget": true
+            }
+          },
+          {
+            "title": "Match Time",
+            "x": 640.0,
+            "y": 0.0,
+            "width": 512.0,
+            "height": 384.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Status/MatchTime",
+              "period": 0.1,
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Battery",
+            "x": 640.0,
+            "y": 384.0,
+            "width": 512.0,
+            "height": 128.0,
+            "type": "Voltage View",
+            "properties": {
+              "topic": "/SmartDashboard/Robot/Battery",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 6.0,
+              "max_value": 13.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Hub Active",
+            "x": 0.0,
+            "y": 512.0,
+            "width": 256.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/Status/HubActive",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "QuestNav Tracking",
+            "x": 256.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/Elastic/QuestNav/Tracking",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "Pose X",
+            "x": 448.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/X",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Pose Y",
+            "x": 640.0,
+            "y": 512.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/Elastic/Pose/Y",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "FMS Info",
+            "x": 832.0,
+            "y": 512.0,
+            "width": 320.0,
+            "height": 128.0,
+            "type": "FMSInfo",
+            "properties": {
+              "topic": "/FMSInfo",
+              "period": 0.1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -34,7 +34,6 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
   private int currentSegmentIndex = 0;
   private Command activeCommand = null;
   private boolean isInEntryPhase = true;
-  private boolean justScheduled = false;
   private static int sessionCounter = 0;
   private int sessionId = 0;
 
@@ -44,9 +43,6 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
     this.poseEstimator = poseEstimator;
     this.driveSubsystem = driveSubsystem;
     this.pathConstraints = new PathConstraints(2.0, 2.0, Math.toRadians(360.0), Math.toRadians(540.0));
-    // Claim driveSubsystem so whileTrue can interrupt and cancel activeCommand on release.
-    // SpinToHeadingCommand must NOT also claim it to avoid a conflict.
-    addRequirements(driveSubsystem);
   }
 
   @Override
@@ -71,8 +67,6 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
               + " (dist=" + String.format("%.2f", distanceToEntry) + "m)",
           "AZSweep");
       activeCommand = AutoBuilder.pathfindToPose(entryPose, pathConstraints);
-      activeCommand = activeCommand.asProxy();
-      justScheduled = true;
       CommandScheduler.getInstance().schedule(activeCommand);
     } else {
       SmartLogger.logConsole(
@@ -85,10 +79,6 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
 
   @Override
   public void execute() {
-    if (justScheduled) {
-      justScheduled = false;
-      return;
-    }
     if (activeCommand == null || !activeCommand.isScheduled()) {
       if (isInEntryPhase) {
         SmartLogger.logConsole("->AZSWEEP: Entry complete, starting sweep", "AZSweep");
@@ -147,13 +137,9 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
       }
     }
 
-    activeCommand = activeCommand.asProxy();
-    justScheduled = true;
     CommandScheduler.getInstance().schedule(activeCommand);
   }
 
-  // Entry corners are pose 1 (right wall) and pose 7 (right wall near driver station).
-  // Both are on the right/low-Y side. We pick whichever is closer.
   private Pose2d findNearestEntryCorner(Pose2d currentPose, boolean isRed) {
     // Four corners of the loop, each mapped to the segment index that follows entry there.
     // A: far/right — start of leg 1 (index 0)
@@ -192,7 +178,7 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
 
   // X at far edge of alliance zone (neutral zone boundary = start of loop on trench side)
   private static double farX(boolean isRed) {
-    return isRed ? (RobotContainer.COMPETITION_MODE ? 16.540 - 3.333 : 16.540 - 3.333) : 3.333;
+    return isRed ? (RobotContainer.COMPETITION_MODE ? 16.540 - 3.3 : 16.540 - 3.3) : 3.3;
   }
 
   // X at near edge: deepest point robot drives toward driver station wall
@@ -313,7 +299,8 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
               MAX_ANGULAR_SPEED_RAD_PER_SEC,
               MAX_ANGULAR_SPEED_RAD_PER_SEC * 2.0));
       this.headingController.setTolerance(Math.toRadians(2.0));
-      // No requirement here - the outer AllianceZoneSweepSimplifiedCommand owns driveSubsystem.
+      // Requires driveSubsystem to displace DriveWithJoysticks while spinning.
+      addRequirements(driveSubsystem);
     }
 
     @Override

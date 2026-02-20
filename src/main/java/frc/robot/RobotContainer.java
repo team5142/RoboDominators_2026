@@ -363,6 +363,13 @@ public class RobotContainer {
       applyPendingAutoPreviewPose();
     }
 
+    // Publish slow-changing fields every loop so the dashboard always has current values
+    SmartDashboard.putBoolean("Robot/IsRedAlliance", cachedAlliance == Alliance.Red);
+    SmartDashboard.putNumber("Robot/StationNumber", DriverStation.getLocation().orElse(1));
+    // Read the chooser's active option name from SmartDashboard - getSelected().getName() returns
+    // the Java class name, not the auto name, so we read the NT entry directly
+    String activeAuto = SmartDashboard.getString("Auto Chooser/active", "None");
+    SmartDashboard.putString("Robot/AutoSelected", activeAuto);
   }
 
   public static Alliance getAlliance() {

@@ -47,6 +47,9 @@ public class QuestNavFusion {
   private double manualSeedTimestamp = -1.0;
   private static final double POST_SEED_EPSILON_SEC = 0.020;
 
+  // Throttles verbose debug Logger block to ~10Hz (every 10 loops)
+  private int logCounter = 0;
+
   private final QuestNavSubsystem questNavSubsystem;
   private final DriveSubsystem driveSubsystem;
   private final SwerveDrivePoseEstimator swervePoseEstimator;
@@ -115,15 +118,17 @@ public class QuestNavFusion {
     double dt = (lastAcceptedQuestTimestamp > 0) ? (timestamp - lastAcceptedQuestTimestamp) : 0.0;
     boolean inGracePeriod = (lastResetTime > 0) && ((currentTime - lastResetTime) < POST_RESET_GRACE_SEC);
 
-    Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
-    Logger.recordOutput("PoseEstimator/QuestNav/InGracePeriod", inGracePeriod);
-    Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
-    
-    Logger.recordOutput("PoseEstimator/QuestNav/Debug/AcceptNextFrameLatch", acceptNextValidFrame);
-    Logger.recordOutput("PoseEstimator/QuestNav/Debug/ManualSeedTimestamp", manualSeedTimestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedTimestamp", lastAcceptedQuestTimestamp);
-    Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedPose", lastAcceptedQuestPose);
-    Logger.recordOutput("PoseEstimator/QuestNav/Debug/CurrentQuestPose", questPose);
+    // Debug block throttled to ~10Hz to avoid log spam every loop
+    if (logCounter++ % 10 == 0) {
+      Logger.recordOutput("PoseEstimator/QuestNav/DT", dt);
+      Logger.recordOutput("PoseEstimator/QuestNav/InGracePeriod", inGracePeriod);
+      Logger.recordOutput("PoseEstimator/QuestNav/MeasurementAge", measurementAge);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/AcceptNextFrameLatch", acceptNextValidFrame);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/ManualSeedTimestamp", manualSeedTimestamp);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedTimestamp", lastAcceptedQuestTimestamp);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/LastAcceptedPose", lastAcceptedQuestPose);
+      Logger.recordOutput("PoseEstimator/QuestNav/Debug/CurrentQuestPose", questPose);
+    }
 
     if (acceptNextValidFrame && (timestamp + POST_SEED_EPSILON_SEC) >= manualSeedTimestamp) {
       SmartLogger.logConsole("[QuestNav Fusion] Accepting first post-seed frame (skipping ALL gates)");

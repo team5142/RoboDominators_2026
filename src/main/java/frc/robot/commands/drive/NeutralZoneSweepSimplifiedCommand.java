@@ -30,7 +30,6 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
   private int currentSegmentIndex = 0;
   private Command activeCommand = null;
   private boolean isInEntryPhase = true;
-  private boolean justScheduled = false;
   private static int sessionCounter = 0;
   private int sessionId = 0;
 
@@ -40,10 +39,6 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
     this.poseEstimator = poseEstimator;
     this.driveSubsystem = driveSubsystem;
     this.pathConstraints = new PathConstraints(2.0, 2.0, Math.toRadians(360.0), Math.toRadians(540.0));
-    
-    // Claim driveSubsystem so whileTrue can interrupt and cancel activeCommand on release.
-    // SpinToHeadingCommand must NOT also claim it to avoid a conflict.
-    addRequirements(driveSubsystem);
   }
 
   @Override
@@ -68,8 +63,6 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
           + " (dist=" + String.format("%.2f", distanceToEntry) + "m)", 
         "SimpleSweep");
       activeCommand = buildEntryCommand(currentPose, entryPose);
-      activeCommand = activeCommand.asProxy();
-      justScheduled = true;
       CommandScheduler.getInstance().schedule(activeCommand);
     } else {
       SmartLogger.logConsole(
@@ -82,10 +75,6 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
 
   @Override
   public void execute() {
-    if (justScheduled) {
-      justScheduled = false;
-      return;
-    }
     if (activeCommand == null || !activeCommand.isScheduled()) {
       if (isInEntryPhase) {
         SmartLogger.logConsole("->SWEEP: Entry complete, starting sweep", "SimpleSweep");
@@ -144,8 +133,6 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
       }
     }
     
-    activeCommand = activeCommand.asProxy();
-    justScheduled = true;
     CommandScheduler.getInstance().schedule(activeCommand);
   }
 
@@ -283,7 +270,8 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
       // so the controller always takes the explicit shortest arc and never wraps
       this.headingController.setTolerance(Math.toRadians(2.0));
 
-      // No requirement here - the outer NeutralZoneSweepSimplifiedCommand owns driveSubsystem.
+      // Requires driveSubsystem to displace DriveWithJoysticks while spinning.
+      addRequirements(driveSubsystem);
     }
 
     @Override

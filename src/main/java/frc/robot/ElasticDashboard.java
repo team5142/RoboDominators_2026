@@ -4,10 +4,12 @@ import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.Timer;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import frc.robot.subsystems.TagVisionSubsystem;
 import frc.robot.subsystems.DriveSubsystem;
+import frc.robot.util.MatchPhaseTracker;
 import frc.robot.util.SmartLogger;
 
 // Publishes robot data to Elastic Dashboard via NetworkTables
@@ -27,10 +29,19 @@ public class ElasticDashboard {
   private final NetworkTable visionTable;
   private final NetworkTable driveTable;
 
+  // Phase detail topics for teleop shift display
+  private final NetworkTable phaseTable;
+  private final NetworkTableEntry phaseName;
+  private final NetworkTableEntry phaseHubStatus;
+  private final NetworkTableEntry phaseSecondsUntilNext;
+  private final NetworkTableEntry phaseCountdownText;
+  private final NetworkTableEntry phaseShiftNumber;
+
   private final NetworkTableEntry statusMode;
   private final NetworkTableEntry statusEnabled;
   private final NetworkTableEntry statusMatchTime;
   private final NetworkTableEntry statusBatteryVoltage;
+  private final NetworkTableEntry statusHubActive;
 
   private final NetworkTableEntry poseX;
   private final NetworkTableEntry poseY;
@@ -51,6 +62,14 @@ public class ElasticDashboard {
   private final NetworkTableEntry driveVx;
   private final NetworkTableEntry driveVy;
   private final NetworkTableEntry driveOmega;
+
+  // Tab switching - written to /Elastic/SelectedTab every loop
+  private final NetworkTableEntry selectedTab;
+  private String lastSelectedTab = "";
+
+  // Tracks how long the robot has been enabled (used when no FMS match time)
+  private final Timer enabledTimer = new Timer();
+  private boolean wasEnabled = false;
   
   public ElasticDashboard(
       RobotState robotState,
@@ -81,11 +100,18 @@ public class ElasticDashboard {
     questTable = elasticTable.getSubTable("QuestNav");
     visionTable = elasticTable.getSubTable("Vision");
     driveTable = elasticTable.getSubTable("Drive");
+    phaseTable = elasticTable.getSubTable("Phase");
+
+    // Publish QuestNav passthrough camera URL for Elastic Camera Stream widget
+    NetworkTable cameraTable2 = elasticTable.getSubTable("Cameras");
+    cameraTable2.getEntry("QuestNav/URL").setString("http://10.51.42.200:5801/video");
+    cameraTable2.getEntry("QuestNav/Name").setString("QuestNav Camera");
 
     statusMode = statusTable.getEntry("Mode");
     statusEnabled = statusTable.getEntry("Enabled");
     statusMatchTime = statusTable.getEntry("MatchTime");
     statusBatteryVoltage = statusTable.getEntry("BatteryVoltage");
+    statusHubActive = statusTable.getEntry("HubActive");
 
     poseX = poseTable.getEntry("X");
     poseY = poseTable.getEntry("Y");
@@ -106,15 +132,38 @@ public class ElasticDashboard {
     driveVx = driveTable.getEntry("VelocityX");
     driveVy = driveTable.getEntry("VelocityY");
     driveOmega = driveTable.getEntry("Omega");
+
+    phaseName = phaseTable.getEntry("Name");
+    phaseHubStatus = phaseTable.getEntry("HubStatus");
+    phaseSecondsUntilNext = phaseTable.getEntry("SecondsUntilNext");
+    phaseCountdownText = phaseTable.getEntry("CountdownText");
+    phaseShiftNumber = phaseTable.getEntry("ShiftNumber");
+
+    selectedTab = NetworkTableInstance.getDefault().getTable("Elastic").getEntry("SelectedTab");
   }
   
   // Update dashboard - call from Robot.robotPeriodic()
   public void update(double batteryVoltage) {
+    // Switch Elastic tab based on match phase
+    String tab = computeTabName();
+    if (!tab.equals(lastSelectedTab)) {
+      selectedTab.setString(tab);
+      lastSelectedTab = tab;
+    }
+
     // Robot status
     statusMode.setString(robotState.getMode().toString());
     statusEnabled.setBoolean(robotState.isEnabled());
-    statusMatchTime.setDouble(round(DriverStation.getMatchTime(), 1));
+    // Track enabled timer - reset on enable, stop on disable
+    boolean enabled = robotState.isEnabled();
+    if (enabled && !wasEnabled) enabledTimer.restart();
+    else if (!enabled && wasEnabled) enabledTimer.stop();
+    wasEnabled = enabled;
+    // Use DS match time when FMS is connected, else count up elapsed enabled time
+    double dsTime = DriverStation.getMatchTime();
+    statusMatchTime.setDouble(round(dsTime >= 0 ? dsTime : enabledTimer.get(), 1));
     statusBatteryVoltage.setDouble(round(batteryVoltage, 2));
+    statusHubActive.setBoolean(robotState.isHubActive());
     
     // Pose estimation
     var pose = poseEstimator.getEstimatedPose();
@@ -144,8 +193,38 @@ public class ElasticDashboard {
     driveVx.setDouble(round(speeds.vxMetersPerSecond, 2));
     driveVy.setDouble(round(speeds.vyMetersPerSecond, 2));
     driveOmega.setDouble(round(speeds.omegaRadiansPerSecond, 2));
+
+    // Shift phase detail for Teleop tab
+    double secsUntilNext = robotState.getSecondsUntilPhaseEnd();
+    phaseName.setString(robotState.getPhaseName());
+    phaseHubStatus.setString(robotState.isHubActive() ? "ACTIVE" : "INACTIVE");
+    phaseSecondsUntilNext.setDouble(round(secsUntilNext, 1));
+    phaseShiftNumber.setInteger(robotState.getShiftNumber());
+    // Countdown text: "3", "2", "1" in the last 3s of a shift, else empty
+    int shiftNum = robotState.getShiftNumber();
+    if (shiftNum > 0 && secsUntilNext <= 3.5 && secsUntilNext > 0) {
+      phaseCountdownText.setString(String.valueOf((int) Math.ceil(secsUntilNext)));
+    } else if (shiftNum == 0 && secsUntilNext <= 3.5 && secsUntilNext > 0) {
+      phaseCountdownText.setString("ENDING " + (int) Math.ceil(secsUntilNext));
+    } else {
+      phaseCountdownText.setString("");
+    }
   }
   
+  // Map current game phase to the matching Elastic tab name
+  private String computeTabName() {
+    MatchPhaseTracker.GamePhase phase = robotState.getGamePhase();
+    if (phase == MatchPhaseTracker.GamePhase.DISABLED) {
+      return "Disabled";
+    } else if (phase == MatchPhaseTracker.GamePhase.AUTO) {
+      return "Auto";
+    } else if (phase == MatchPhaseTracker.GamePhase.END_GAME) {
+      return "Endgame";
+    } else {
+      return "Teleop";
+    }
+  }
+
   // Round value to specified decimal places (reduces NetworkTable spam)
   private double round(double value, int decimals) {
     double multiplier = Math.pow(10, decimals);

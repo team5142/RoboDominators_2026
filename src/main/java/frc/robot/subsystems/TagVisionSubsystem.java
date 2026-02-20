@@ -11,6 +11,7 @@ import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.vision.LimelightCamera;
 import frc.robot.subsystems.vision.PhotonVisionCamera;
@@ -138,6 +139,7 @@ public class TagVisionSubsystem extends SubsystemBase {
       SmartLogger.logReplay("TagVision/MultiTag", currentlyHasMultiTag);
       SmartLogger.logReplay("TagVision/SingleTag", currentlyHasSingleTag);
       SmartLogger.logReplay("TagVision/LatestPoseNull", latestLimelightPose == null);
+      SmartDashboard.putNumber("Robot/CameraCount", getActiveCameraCount());
     }
   }
 

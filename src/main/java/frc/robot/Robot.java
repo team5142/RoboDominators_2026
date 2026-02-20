@@ -2,6 +2,7 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import org.littletonrobotics.junction.LoggedRobot;
@@ -93,6 +94,11 @@ public class Robot extends LoggedRobot {
   public void robotPeriodic() {
     CommandScheduler.getInstance().run();
     
+    // Update match phase tracker every loop so tab switching works in all modes
+    if (robotState != null) {
+      robotState.updateMatchPhase();
+    }
+    
     // Read battery once per loop
     cachedBatteryVoltage = RobotController.getBatteryVoltage();
     
@@ -104,7 +110,8 @@ public class Robot extends LoggedRobot {
     // Log battery and current
     Logger.recordOutput("Battery/Voltage", cachedBatteryVoltage);
     Logger.recordOutput("Battery/Current", RobotController.getInputCurrent());
-    
+    SmartDashboard.putNumber("Robot/Battery", cachedBatteryVoltage);
+
     // Check brownout
     boolean brownedOut = RobotController.isBrownedOut();
     Logger.recordOutput("Robot/BrownedOut", brownedOut);
@@ -221,7 +228,6 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void teleopPeriodic() {
-    // Empty - command scheduler handles everything
   }
 
   @Override

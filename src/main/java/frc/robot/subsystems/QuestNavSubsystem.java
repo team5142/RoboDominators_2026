@@ -9,6 +9,7 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.SmartLogger;
 import gg.questnav.questnav.QuestNav;
@@ -40,6 +41,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   private int logCounter = 0;
   private static final int LOG_SKIP_CYCLES = 9;
 
+  // Cached every loop - avoids repeated NT reads in the same cycle
   private boolean cachedConnected = false;
   private boolean cachedTracking = false;
   
@@ -116,19 +118,21 @@ public class QuestNavSubsystem extends SubsystemBase {
     } catch (Exception e) {
       SmartLogger.logReplay("QuestNav/PeriodicError", e.getMessage());
     }
-    
+
+    // Refresh connection state once per loop - all callers use these cached values
+    cachedConnected = checkConnectedRaw();
+    cachedTracking = checkTrackingRaw();
+
     drainQuestNavFrames();
     
     logCounter++;
     boolean doLog = (logCounter % (LOG_SKIP_CYCLES + 1) == 0);
 
     if (doLog) {
-      cachedConnected = isConnected();
-      cachedTracking = isTracking();
-
       SmartLogger.logReplay("QuestNav/Connected", cachedConnected);
       SmartLogger.logReplay("QuestNav/Tracking", cachedTracking);
       SmartLogger.logReplay("QuestNav/Seeded", isSeeded);
+      SmartDashboard.putNumber("QuestNav/Battery", getBatteryPercent());
     }
 
     if (cachedRobotPose != null && doLog) {
@@ -276,6 +280,14 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   public boolean isConnected() {
+    return cachedConnected;
+  }
+
+  public boolean isTracking() {
+    return cachedTracking;
+  }
+
+  private boolean checkConnectedRaw() {
     try {
       OptionalInt battery = questNav.getBatteryPercent();
       if (battery.isPresent()) return true;
@@ -289,7 +301,7 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
   }
   
-  public boolean isTracking() {
+  private boolean checkTrackingRaw() {
     try {
       return questNav.isTracking();
     } catch (Exception e) {

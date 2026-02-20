@@ -1,277 +1,237 @@
-// NetworkTables 4.0 Client Implementation
-// Based on the WPILib NT4 protocol specification
+// NT4 Client - RoboDominators 5142
+// Implements WPILib NT4 over WebSocket with MessagePack binary frames.
+// Prefix subscriptions only (no per-topic subscribing needed from the dashboard).
+
+// Minimal MessagePack decoder - handles the types NT4 actually sends.
+const MsgPack = (() => {
+    function decode(buf) {
+        const ab = buf instanceof ArrayBuffer ? buf : buf.buffer;
+        const off = buf.byteOffset || 0;
+        const view = new DataView(ab);
+        const [val] = decodeAt(view, off);
+        return val;
+    }
+
+    function decodeAt(view, off) {
+        const b = view.getUint8(off);
+        if (b <= 0x7f) return [b, off + 1];
+        if ((b & 0xf0) === 0x80) return decodeMap(view, off + 1, b & 0x0f);
+        if ((b & 0xf0) === 0x90) return decodeArray(view, off + 1, b & 0x0f);
+        if ((b & 0xe0) === 0xa0) return decodeStr(view, off + 1, b & 0x1f);
+        if ((b & 0xe0) === 0xe0) return [b - 256, off + 1];
+        switch (b) {
+            case 0xc0: return [null, off + 1];
+            case 0xc2: return [false, off + 1];
+            case 0xc3: return [true, off + 1];
+            case 0xc4: { const n = view.getUint8(off+1); return [new Uint8Array(view.buffer, view.byteOffset+off+2, n), off+2+n]; }
+            case 0xca: return [view.getFloat32(off+1, false), off+5];
+            case 0xcb: return [view.getFloat64(off+1, false), off+9];
+            case 0xcc: return [view.getUint8(off+1), off+2];
+            case 0xcd: return [view.getUint16(off+1, false), off+3];
+            case 0xce: return [view.getUint32(off+1, false), off+5];
+            case 0xcf: return [Number(view.getBigUint64(off+1, false)), off+9];
+            case 0xd0: return [view.getInt8(off+1), off+2];
+            case 0xd1: return [view.getInt16(off+1, false), off+3];
+            case 0xd2: return [view.getInt32(off+1, false), off+5];
+            case 0xd3: return [Number(view.getBigInt64(off+1, false)), off+9];
+            case 0xd9: { const n = view.getUint8(off+1); return decodeStr(view, off+2, n); }
+            case 0xda: { const n = view.getUint16(off+1, false); return decodeStr(view, off+3, n); }
+            case 0xdb: { const n = view.getUint32(off+1, false); return decodeStr(view, off+5, n); }
+            case 0xdc: { const n = view.getUint16(off+1, false); return decodeArray(view, off+3, n); }
+            case 0xdd: { const n = view.getUint32(off+1, false); return decodeArray(view, off+5, n); }
+            case 0xde: { const n = view.getUint16(off+1, false); return decodeMap(view, off+3, n); }
+            case 0xdf: { const n = view.getUint32(off+1, false); return decodeMap(view, off+5, n); }
+            default: throw new Error('MsgPack: unknown byte 0x' + b.toString(16) + ' at ' + off);
+        }
+    }
+
+    function decodeStr(view, off, len) {
+        return [new TextDecoder().decode(new Uint8Array(view.buffer, view.byteOffset+off, len)), off+len];
+    }
+
+    function decodeArray(view, off, count) {
+        const arr = [];
+        for (let i = 0; i < count; i++) { const [v, o] = decodeAt(view, off); arr.push(v); off = o; }
+        return [arr, off];
+    }
+
+    function decodeMap(view, off, count) {
+        const obj = {};
+        for (let i = 0; i < count; i++) {
+            const [k, o1] = decodeAt(view, off);
+            const [v, o2] = decodeAt(view, o1);
+            obj[k] = v; off = o2;
+        }
+        return [obj, off];
+    }
+
+    return { decode };
+})();
 
 class NT4Client {
     constructor(serverAddr, appName = 'FRC_Dashboard') {
         this.serverAddr = serverAddr;
         this.appName = appName;
         this.ws = null;
-        this.serverTimeOffset = 0;
-        this.subscriptions = new Map();
-        this.topics = new Map();
-        this.values = new Map();
-        this.publishedTopics = new Map();
-        this.subUid = 0;
-        this.pubUid = 0;
         this.connected = false;
-        this.reconnectInterval = null;
+        this.reconnectTimer = null;
+        this.subUid = 0;
+        this.topicsById = new Map();   // id -> { name, type }
+        this.values = new Map();       // name -> last value
+        this.prefixes = [];
         this.onConnect = null;
         this.onDisconnect = null;
         this.onChange = null;
     }
 
     connect() {
-        if (this.ws) {
-            this.ws.close();
-        }
-
-        const wsAddr = `ws://${this.serverAddr}/nt/${this.appName}`;
-        console.log(`Connecting to ${wsAddr}`);
+        if (this.ws) { try { this.ws.close(); } catch (_) {} }
+        const url = `ws://${this.serverAddr}/nt/${this.appName}`;
+        console.log('[NT4] Connecting to', url);
         
-        this.ws = new WebSocket(wsAddr, ['networktables.first.wpi.edu']);
-        
+        this.ws = new WebSocket(url, ['networktables.first.wpi.edu']);
         this.ws.binaryType = 'arraybuffer';
-        
+
         this.ws.onopen = () => {
-            console.log('WebSocket connected');
+            console.log('[NT4] Connected');
             this.connected = true;
+            clearInterval(this.reconnectTimer);
+            this.reconnectTimer = null;
+            this.topicsById.clear();
+            if (this.prefixes.length > 0) this._sendSubscriptions();
             if (this.onConnect) this.onConnect();
-            
-            // Clear reconnect interval
-            if (this.reconnectInterval) {
-                clearInterval(this.reconnectInterval);
-                this.reconnectInterval = null;
+        };
+
+        this.ws.onmessage = (evt) => {
+            if (typeof evt.data === 'string') {
+                this._handleJson(evt.data);
+            } else {
+                this._handleBinary(evt.data);
             }
         };
-        
-        this.ws.onmessage = (event) => {
-            this.handleMessage(event.data);
-        };
-        
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-        
+
+        this.ws.onerror = (e) => console.warn('[NT4] WS error', e);
+
         this.ws.onclose = () => {
-            console.log('WebSocket disconnected');
+            console.log('[NT4] Disconnected');
             this.connected = false;
+            this.topicsById.clear();
             if (this.onDisconnect) this.onDisconnect();
-            
-            // Auto-reconnect
-            if (!this.reconnectInterval) {
-                this.reconnectInterval = setInterval(() => {
-                    console.log('Attempting reconnect...');
-                    this.connect();
-                }, 1000);
+            if (!this.reconnectTimer) {
+                this.reconnectTimer = setInterval(() => this.connect(), 2000);
             }
         };
     }
 
-    handleMessage(data) {
-        if (typeof data === 'string') {
-            // JSON message
-            const messages = JSON.parse(data);
-            messages.forEach(msg => this.processJsonMessage(msg));
-        } else {
-            // Binary message
-            this.processBinaryMessage(new DataView(data));
-        }
-    }
-
-    processJsonMessage(msg) {
-        const method = msg.method;
-        const params = msg.params;
-
-        switch (method) {
-            case 'announce':
-                this.handleAnnounce(params);
-                break;
-            case 'unannounce':
-                this.handleUnannounce(params);
-                break;
-            case 'properties':
-                this.handleProperties(params);
-                break;
-            default:
-                console.warn('Unknown method:', method);
-        }
-    }
-
-    handleAnnounce(params) {
-        const { name, id, type, properties } = params;
-        this.topics.set(id, { name, type, properties });
-        
-        // Check if we have subscriptions for this topic
-        this.subscriptions.forEach((sub, subId) => {
-            if (this.topicMatchesPattern(name, sub.topics)) {
-                // Send subscription request
-                this.sendJson([{
-                    method: 'subscribe',
-                    params: {
-                        topics: [name],
-                        subuid: subId,
-                        options: sub.options || {}
-                    }
-                }]);
-            }
-        });
-    }
-
-    handleUnannounce(params) {
-        const { name, id } = params;
-        this.topics.delete(id);
-    }
-
-    handleProperties(params) {
-        const { name, ack } = params;
-        // Handle property updates if needed
-    }
-
-    processBinaryMessage(view) {
-        let offset = 0;
-        
-        while (offset < view.byteLength) {
-            // Read topic ID (int)
-            const topicId = view.getInt32(offset, true);
-            offset += 4;
-            
-            // Read timestamp (int64)
-            const timestamp = view.getBigInt64(offset, true);
-            offset += 8;
-            
-            // Read type info
-            const typeInfo = view.getInt32(offset, true);
-            offset += 4;
-            
-            const topic = this.topics.get(topicId);
-            if (!topic) continue;
-            
-            // Decode value based on type
-            const { value, bytesRead } = this.decodeValue(view, offset, topic.type);
-            offset += bytesRead;
-            
-            // Store value
-            this.values.set(topic.name, value);
-            
-            // Notify subscribers
-            if (this.onChange) {
-                this.onChange(topic.name, value, timestamp);
-            }
-        }
-    }
-
-    decodeValue(view, offset, type) {
-        let value, bytesRead;
-        
-        switch (type) {
-            case 'boolean':
-                value = view.getUint8(offset) !== 0;
-                bytesRead = 1;
-                break;
-            case 'double':
-                value = view.getFloat64(offset, true);
-                bytesRead = 8;
-                break;
-            case 'float':
-                value = view.getFloat32(offset, true);
-                bytesRead = 4;
-                break;
-            case 'int':
-                value = view.getInt32(offset, true);
-                bytesRead = 4;
-                break;
-            case 'string':
-                const length = view.getInt32(offset, true);
-                offset += 4;
-                const bytes = new Uint8Array(view.buffer, view.byteOffset + offset, length);
-                value = new TextDecoder().decode(bytes);
-                bytesRead = 4 + length;
-                break;
-            default:
-                // For arrays and other complex types
-                value = null;
-                bytesRead = 0;
-        }
-        
-        return { value, bytesRead };
-    }
-
-    subscribe(topics, callback, options = {}) {
-        const subId = ++this.subUid;
-        
-        this.subscriptions.set(subId, {
-            topics: Array.isArray(topics) ? topics : [topics],
-            callback,
-            options
-        });
-        
-        if (this.connected) {
-            this.sendJson([{
-                method: 'subscribe',
-                params: {
-                    topics: Array.isArray(topics) ? topics : [topics],
-                    subuid: subId,
-                    options
-                }
-            }]);
-        }
-        
-        return subId;
-    }
-
-    unsubscribe(subId) {
-        this.subscriptions.delete(subId);
-        
-        if (this.connected) {
-            this.sendJson([{
-                method: 'unsubscribe',
-                params: {
-                    subuid: subId
-                }
-            }]);
-        }
+    // Call with the same wildcard list dashboard.js already uses - strips trailing /*
+    subscribe(prefixList) {
+        this.prefixes = prefixList.map(p => p.endsWith('/*') ? p.slice(0, -2) : p);
+        if (this.connected) this._sendSubscriptions();
     }
 
     getValue(topic, defaultValue = null) {
         return this.values.has(topic) ? this.values.get(topic) : defaultValue;
     }
 
-    sendJson(data) {
+    _sendSubscriptions() {
+        const msgs = [];
+        this.prefixes.forEach(prefix => {
+            msgs.push({
+                method: 'subscribe',
+                params: {
+                    topics: [prefix],
+                    subuid: ++this.subUid,
+                    options: { prefix: true, periodic: 0.1, all: false, sendAll: true, immediate: true }
+                }
+            });
+        });
+        this._sendJson(msgs);
+        console.log('[NT4] Subscribed to prefixes:', this.prefixes);
+    }
+
+    _handleJson(raw) {
+        let msgs;
+        try { msgs = JSON.parse(raw); } catch (e) { return; }
+        if (!Array.isArray(msgs)) msgs = [msgs];
+        msgs.forEach(msg => {
+            if (msg.method === 'announce') {
+                const { name, id, type } = msg.params;
+                this.topicsById.set(id, { name, type });
+            } else if (msg.method === 'unannounce') {
+                this.topicsById.delete(msg.params.id);
+            }
+        });
+    }
+
+    _handleBinary(buf) {
+        // NT4 binary frames are MessagePack arrays: [topicId, timestamp_us, typeId, value]
+        let frame;
+        try {
+            frame = MsgPack.decode(new DataView(buf));
+        } catch (e) {
+            console.warn('[NT4] MsgPack decode error:', e);
+            return;
+        }
+        if (!Array.isArray(frame) || frame.length < 4) return;
+
+        const [topicId, , , value] = frame;
+        if (topicId < 0) return; // timestamp sync
+
+        const topic = this.topicsById.get(topicId);
+        if (!topic) return;
+
+        this.values.set(topic.name, value);
+        if (this.onChange) this.onChange(topic.name, value);
+    }
+
+    _handleJson(raw) {
+        let msgs;
+        try { msgs = JSON.parse(raw); } catch (e) { return; }
+        if (!Array.isArray(msgs)) msgs = [msgs];
+        msgs.forEach(msg => {
+            if (msg.method === 'announce') {
+                const { name, id, type } = msg.params;
+                this.topicsById.set(id, { name, type });
+            } else if (msg.method === 'unannounce') {
+                this.topicsById.delete(msg.params.id);
+            }
+        });
+    }
+
+    _handleBinary(buf) {
+        // NT4 binary frames are MessagePack arrays: [topicId, timestamp_us, typeId, value]
+        let frame;
+        try {
+            frame = MsgPack.decode(new DataView(buf));
+        } catch (e) {
+            console.warn('[NT4] MsgPack decode error:', e);
+            return;
+        }
+        if (!Array.isArray(frame) || frame.length < 4) return;
+
+        const [topicId, , , value] = frame;
+        if (topicId < 0) return; // timestamp sync
+
+        const topic = this.topicsById.get(topicId);
+        if (!topic) return;
+
+        this.values.set(topic.name, value);
+        if (this.onChange) this.onChange(topic.name, value);
+    }
+
+    _sendJson(data) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(data));
         }
     }
 
-    topicMatchesPattern(topic, patterns) {
-        return patterns.some(pattern => {
-            const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
-            return regex.test(topic);
-        });
-    }
-
-    getServerTime() {
-        return Date.now() * 1000 + this.serverTimeOffset;
-    }
-
-    publish(topic, type, value) {
-        // Dashboard is READ-ONLY - don't publish anything
-        console.warn('Dashboard is read-only. Cannot publish to:', topic);
-        this.values.set(topic, value); // Store locally only
-    }
-    
     disconnect() {
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
-        if (this.reconnectInterval) {
-            clearInterval(this.reconnectInterval);
-            this.reconnectInterval = null;
-        }
+        clearInterval(this.reconnectTimer);
+        this.reconnectTimer = null;
+        if (this.ws) { this.ws.close(); this.ws = null; }
     }
 }
 
-// Export for use in dashboard
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = NT4Client;
 }

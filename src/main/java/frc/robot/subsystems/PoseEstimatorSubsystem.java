@@ -348,11 +348,14 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     Pose2d currentPose = getEstimatedPose();
     robotState.setRobotPose(currentPose);
     
+    // Update field pose every loop (required for Elastic Field widget)
     field.setRobotPose(currentPose);
-    questNavSubsystem.getRobotPose().ifPresent(questPose -> {
-      field.getObject("QuestNav").setPose(questPose);
-    });
-    
+    // QuestNav overlay and Target only updated when needed - reduces Field2d serialization cost
+    if (logCounter % 5 == 0) {
+      questNavSubsystem.getRobotPose().ifPresent(questPose -> {
+        field.getObject("QuestNav").setPose(questPose);
+      });
+    }
     if (robotState.getNavigationPhase() != RobotState.NavigationPhase.NONE) {
       field.getObject("Target").setPoses();
     }
@@ -363,7 +366,17 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     Logger.recordOutput("PoseEstimator/EstimatedPose", currentPose);
     Logger.recordOutput("PoseEstimator/InitState", initializer.getInitState().toString());
     Logger.recordOutput("PoseEstimator/CurrentInitMode", currentInitMode != null ? currentInitMode.toString() : "NONE");
-    
+
+    // Publish flat pose values for the HTML dashboard (throttled to 10Hz)
+    if (logCounter % 5 == 0) {
+      SmartDashboard.putNumber("Robot/PoseX", currentPose.getX());
+      SmartDashboard.putNumber("Robot/PoseY", currentPose.getY());
+      // Heading published every loop below so the dashboard always has current value
+    }
+
+    // Publish heading every loop - getDegrees() is bounded to [-180, 180] by Rotation2d
+    SmartDashboard.putNumber("Robot/Heading", currentPose.getRotation().getDegrees());
+
     if (logCounter % (LOG_SKIP_CYCLES + 1) == 0) {
       Logger.recordOutput("PoseEstimator/PoseChangeMeters", poseChange);
       Logger.recordOutput("PoseEstimator/InitWaitTime", initializer.getWaitTime());
