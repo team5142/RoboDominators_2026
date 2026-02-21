@@ -1,5 +1,5 @@
 {
-  "robotWidth": 0.9652,
+  "robotWidth": 0.965,
   "robotLength": 0.8382,
   "holonomicMode": true,
   "pathFolders": [],
@@ -28,5 +28,8 @@
   "brModuleY": -0.24765,
   "bumperOffsetX": 0.0,
   "bumperOffsetY": 0.0,
-  "robotFeatures": []
+  "robotFeatures": [
+    "{\"name\":\"Turret\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":-0.175,\"y\":-0.225},\"size\":{\"width\":0.33,\"length\":0.33},\"borderRadius\":0.05,\"strokeWidth\":0.02,\"filled\":false}}",
+    "{\"name\":\"Intake\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":0.525,\"y\":0.0},\"size\":{\"width\":0.775,\"length\":0.2},\"borderRadius\":0.0,\"strokeWidth\":0.02,\"filled\":false}}"
+  ]
 }

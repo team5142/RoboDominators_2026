@@ -26,6 +26,8 @@ import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
 import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.NeutralZoneSweepSimplifiedCommand;
+import frc.robot.commands.drive.OpposingAllianceZoneSweepCommand;
+import frc.robot.commands.drive.WallTraversalCommand;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.commands.util.LogCurrentPoseCommand;
 import frc.robot.commands.util.SetStartingPoseCommand;
@@ -209,13 +211,15 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
 
-    // D-PAD: PathPlanner PID Tuning Autos
+    // D-PAD: Wall traversal commands (Up=Far, Down=Near, Left=Left wall, Right=Right wall)
     new Trigger(() -> driverController.getPOV() == 0)
-        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuning"));
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.FAR)));
     new Trigger(() -> driverController.getPOV() == 180)
-        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuningReturn"));
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.NEAR)));
+    new Trigger(() -> driverController.getPOV() == 270)
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.LEFT)));
     new Trigger(() -> driverController.getPOV() == 90)
-        .whileTrue(AutoBuilder.buildAuto("PathPlannerTuningCurve"));
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.RIGHT)));
 
     // ========== END NORMAL OPERATION BUTTONS ==========
 
@@ -446,18 +450,23 @@ public class RobotContainer {
     boolean isRed = isRedAlliance();
     double rawX = poseEstimator.getEstimatedPose().getX();
     double robotX = isRed ? (Constants.Field.FIELD_LENGTH_METERS - rawX) : rawX;
-    boolean inAllianceZone = robotX < Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+    boolean inAllianceZone  = robotX < Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+    boolean inOpposingZone  = robotX > (Constants.Field.FIELD_LENGTH_METERS - Constants.Field.ALLIANCE_ZONE_LENGTH_METERS);
 
     if (inAllianceZone) {
       SmartLogger.logConsole("->SWEEP: Alliance zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
       return new AllianceZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
+    }
+    if (inOpposingZone) {
+      SmartLogger.logConsole("->SWEEP: Opposing zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
+      return new OpposingAllianceZoneSweepCommand(poseEstimator, driveSubsystem);
     }
     SmartLogger.logConsole("->SWEEP: Neutral zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
     return new NeutralZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
   }
 
   private Command createBumpTraversalCommand(DynamicBumpTraversalCommand.Side side) {
-    boolean modifier = driverController.getPOV() == 0; // D-pad up
+    boolean modifier = false; // no modifier active
     return new DynamicBumpTraversalCommand(
         poseEstimator,
         driveSubsystem,

@@ -1,0 +1,55 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Over the Blue Right Bump"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Neutral Zone Right Preparation to Collect"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Neutral Zone Opponent Side Collection"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Neutral Zone 2nd Pass Preparation"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Neutral Zone 2nd Pass Collection"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Blue Right Bump Return"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Blue Right Bump to Blue Tower Right"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}
