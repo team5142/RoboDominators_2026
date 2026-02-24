@@ -81,7 +81,7 @@ public class TurretSubsystem extends SubsystemBase {
   public void periodic() {
     io.updateInputs(inputs);
     state.updateFromInputs(inputs);
-  setpointGenerator.update(state, aimGoal, setpoints);
+    setpointGenerator.update(state, aimGoal, setpoints);
     controller.update(state, setpoints, outputs);
 
     io.setFlywheelPercent(outputs.flywheelPercent);

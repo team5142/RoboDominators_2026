@@ -1,6 +1,15 @@
 package frc.robot.commands.drive;
 
+// TODO (next session with robot):
+// 1. SpinToHeadingCommand is copied verbatim from NeutralZoneSweepSimplifiedCommand - extract to a
+//    shared file (commands/drive/SpinToHeadingCommand.java) so all sweep commands use the same one.
+// 2. SweepSegment.move() takes a 'start' parameter that is never used - remove it.
+// 3. toLeft() and toRight() take a boolean isRed parameter they never use - remove it.
+// 4. formatPose() duplicates SmartLogger.formatPose() - replace with the shared util call.
+// 5. No AKit logging - consider adding Logger.recordOutput for current segment index and target pose.
+
 import static frc.robot.Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC;
+import static frc.robot.Constants.Field.FIELD_LENGTH_METERS;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
@@ -14,7 +23,6 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
-import frc.robot.RobotContainer;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.util.SmartLogger;
@@ -178,17 +186,17 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
 
   // X at far edge of alliance zone (neutral zone boundary = start of loop on trench side)
   private static double farX(boolean isRed) {
-    return isRed ? (RobotContainer.COMPETITION_MODE ? 16.540 - 3.3 : 16.540 - 3.3) : 3.3;
+    return isRed ? (FIELD_LENGTH_METERS - 3.3) : 3.3;
   }
 
   // X at near edge: deepest point robot drives toward driver station wall
   private static double nearX(boolean isRed) {
-    return isRed ? (16.540 - 0.540) : 0.540;
+    return isRed ? (FIELD_LENGTH_METERS - 0.540) : 0.540;
   }
 
   // X at backup point: robot backs away from driver station wall to avoid outpost
   private static double backupX(boolean isRed) {
-    return isRed ? (16.540 - 1.530) : 1.530;
+    return isRed ? (FIELD_LENGTH_METERS - 1.530) : 1.530;
   }
 
   // Y of left wall (high-Y side) — same for both alliances

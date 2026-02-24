@@ -1,6 +1,9 @@
 package frc.robot.commands.drive;
 
+// TODO (robot session): SpinToHeadingCommand is copied from the sweep files - extract to a shared util class.
+
 import static frc.robot.Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC;
+import static frc.robot.Constants.Field.FIELD_LENGTH_METERS;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
@@ -12,8 +15,6 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.CommandScheduler;
-import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import frc.robot.RobotContainer;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
@@ -41,8 +42,7 @@ public class WallTraversalCommand extends Command {
   private List<TraversalSegment> segments;
   private int segIndex = 0;
   private Command activeCommand = null;
-  private boolean isInEntry = true;
-  private boolean finished = false;
+  private Command pendingMove = null; // set when a spin must complete before a move starts
 
   public WallTraversalCommand(
       PoseEstimatorSubsystem poseEstimator,
@@ -58,9 +58,9 @@ public class WallTraversalCommand extends Command {
 
   @Override
   public void initialize() {
-    finished = false;
     segIndex = 0;
-    isInEntry = true;
+    activeCommand = null;
+    pendingMove = null;
 
     boolean isRed = DriverStation.getAlliance()
         .map(a -> a == DriverStation.Alliance.Red).orElse(false);
@@ -69,122 +69,79 @@ public class WallTraversalCommand extends Command {
 
     segments = buildSegments(isRed, inAllianceZone, inOpposingZone);
 
-    Pose2d current = poseEstimator.getEstimatedPose();
-    // Choose which end of the wall to enter from — whichever is closer
-    Pose2d entry = chooseEntry(current, segments);
-
-    double dist = current.getTranslation().getDistance(entry.getTranslation());
-    double headingErr = Math.abs(
-        current.getRotation().minus(entry.getRotation()).getDegrees());
-
-    if (dist > 0.3 || headingErr > 5.0) {
-      SmartLogger.logConsole(
-          "->WALL[" + wall + "]: Entry to " + fmt(entry)
-              + " (dist=" + String.format("%.2f", dist) + "m)", "WallTraversal");
-      activeCommand = AutoBuilder.pathfindToPose(entry, constraints);
-      CommandScheduler.getInstance().schedule(activeCommand);
-    } else {
-      SmartLogger.logConsole(
-          "->WALL[" + wall + "]: Already at entry, starting traversal", "WallTraversal");
-      isInEntry = false;
-      scheduleNext();
-    }
+    SmartLogger.logConsole(
+        "->WALL[" + wall + "]: Starting with " + segments.size() + " segments", "WallTraversal");
+    startNext();
   }
 
   @Override
   public void execute() {
-    if (activeCommand == null || !activeCommand.isScheduled()) {
-      if (isInEntry) {
-        isInEntry = false;
-        scheduleNext();
+    if (activeCommand == null) return;
+    activeCommand.execute();
+    if (activeCommand.isFinished()) {
+      activeCommand.end(false);
+      // If a move was queued behind a spin, start it now
+      if (pendingMove != null) {
+        activeCommand = pendingMove;
+        pendingMove = null;
+        activeCommand.initialize();
+        return;
+      }
+      activeCommand = null;
+      segIndex++;
+      if (segIndex >= segments.size()) {
+        SmartLogger.logConsole("->WALL[" + wall + "]: Traversal complete, holding", "WallTraversal");
       } else {
-        segIndex++;
-        if (segIndex >= segments.size()) {
-          finished = true;
-          SmartLogger.logConsole("->WALL[" + wall + "]: Traversal complete", "WallTraversal");
-        } else {
-          scheduleNext();
-        }
+        startNext();
       }
     }
   }
 
   @Override
   public void end(boolean interrupted) {
-    if (activeCommand != null) activeCommand.cancel();
+    if (activeCommand != null) {
+      activeCommand.end(true);
+      activeCommand = null;
+    }
+    pendingMove = null;
     drive.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
     SmartLogger.logConsole("->WALL[" + wall + "]: ended (interrupted=" + interrupted + ")", "WallTraversal");
   }
 
   @Override
   public boolean isFinished() {
-    return finished;
+    return false; // whileTrue cancels this command when the button is released
   }
 
   // ---- Segment execution ----
 
-  private void scheduleNext() {
+  private static final double SPIN_THRESHOLD_DEG = 15.0;
+
+  private void startNext() {
     TraversalSegment seg = segments.get(segIndex);
-    if (seg.isSpin) {
-      activeCommand = new SpinToHeadingCommand(drive, seg.heading);
+    Rotation2d targetHeading = seg.pose.getRotation();
+    double curDeg = MathUtil.inputModulus(drive.getGyroRotation().getDegrees(), -180, 180);
+    double tgtDeg = MathUtil.inputModulus(targetHeading.getDegrees(), -180, 180);
+    double headingErr = Math.abs(MathUtil.inputModulus(curDeg - tgtDeg, -180, 180));
+
+    // Pass the target heading as the goal pose rotation so PP only translates — all
+    // rotation is handled by SpinToHeadingCommand before the move starts.
+    Pose2d movePose = new Pose2d(seg.pose.getTranslation(), Rotation2d.fromDegrees(tgtDeg));
+    Command move = AutoBuilder.pathfindToPose(movePose, constraints);
+    SmartLogger.logConsole("->WALL[" + wall + "]: Move to " + SmartLogger.formatPose(movePose), "WallTraversal");
+
+    if (headingErr > SPIN_THRESHOLD_DEG) {
       SmartLogger.logConsole(
-          "->WALL[" + wall + "]: Spin to "
-              + String.format("%.0f", seg.heading.getDegrees()) + "°", "WallTraversal");
+          "->WALL[" + wall + "]: Pre-spin " + String.format("%.0f", tgtDeg)
+              + "° (err=" + String.format("%.0f", headingErr) + "°)", "WallTraversal");
+      activeCommand = new SpinToHeadingCommand(drive, Rotation2d.fromDegrees(tgtDeg));
+      pendingMove = move;
+      activeCommand.initialize();
     } else {
-      Rotation2d heading = seg.pose.getRotation();
-      double headingErr = Math.abs(
-          drive.getGyroRotation().minus(heading).getDegrees());
-      Command move = AutoBuilder.pathfindToPose(seg.pose, constraints);
-      if (headingErr > 5.0) {
-        activeCommand = new SequentialCommandGroup(
-            new SpinToHeadingCommand(drive, heading), move);
-        SmartLogger.logConsole(
-            "->WALL[" + wall + "]: Pre-align then move to " + fmt(seg.pose), "WallTraversal");
-      } else {
-        activeCommand = move;
-        SmartLogger.logConsole(
-            "->WALL[" + wall + "]: Move to " + fmt(seg.pose), "WallTraversal");
-      }
+      activeCommand = move;
+      activeCommand.initialize();
     }
-    CommandScheduler.getInstance().schedule(activeCommand);
   }
-
-  // ---- Entry selection ----
-  // Picks the first or last pose in the segment list (whichever end is nearer).
-  // Reorders segments and flips headings so the robot always faces its direction of travel.
-  private Pose2d chooseEntry(Pose2d current, List<TraversalSegment> segs) {
-    Pose2d firstPose = firstMovePose(segs, 0);
-    Pose2d lastPose  = lastMovePose(segs);
-
-    double distFirst = current.getTranslation().getDistance(firstPose.getTranslation());
-    double distLast  = current.getTranslation().getDistance(lastPose.getTranslation());
-
-    if (distLast < distFirst) {
-      // Robot is closer to the far end — reverse list and flip headings to match new travel direction
-      java.util.Collections.reverse(segs);
-      for (int i = 0; i < segs.size(); i++) {
-        segs.set(i, segs.get(i).flipped());
-      }
-      return firstMovePose(segs, 0);
-    }
-    return firstPose;
-  }
-
-  private static Pose2d firstMovePose(List<TraversalSegment> segs, int from) {
-    for (int i = from; i < segs.size(); i++) {
-      if (!segs.get(i).isSpin) return segs.get(i).pose;
-    }
-    return segs.get(0).pose;
-  }
-
-  private static Pose2d lastMovePose(List<TraversalSegment> segs) {
-    for (int i = segs.size() - 1; i >= 0; i--) {
-      if (!segs.get(i).isSpin) return segs.get(i).pose;
-    }
-    return segs.get(0).pose;
-  }
-
-  // ---- Zone detection ----
   private boolean isInAllianceZone(boolean isRed) {
     double x = poseEstimator.getEstimatedPose().getX();
     double normX = isRed ? (FIELD_LEN - x) : x;
@@ -198,7 +155,7 @@ public class WallTraversalCommand extends Command {
   }
 
   // ---- Coordinate constants ----
-  private static final double FIELD_LEN  = 16.540;
+  private static final double FIELD_LEN  = FIELD_LENGTH_METERS;
   private static final double AZ_FAR_X  = 3.3;     // alliance zone far edge (neutral boundary)
   private static final double AZ_NEAR_X = 0.540;   // alliance zone near edge (driver station)
   private static final double AZ_BACK_X = 1.530;   // backup X to clear outpost
@@ -206,8 +163,8 @@ public class WallTraversalCommand extends Command {
   private static final double NZ_FAR_X_BLUE  = RobotContainer.COMPETITION_MODE ? 11.574 : 9.024;
   private static final double NZ_NEAR_X_RED  = RobotContainer.COMPETITION_MODE ? 10.564 : 9.024;
   private static final double NZ_FAR_X_RED   = 5.976;
-  private static final double LEFT_Y    = 7.285;
-  private static final double RIGHT_Y   = 0.620;
+  private static final double LEFT_Y    = 7.133;
+  private static final double RIGHT_Y   = 0.468;
   private static final double TOWER_Y   = 2.633;   // tower pass Y in alliance zone
 
   // ---- Segment building ----
@@ -233,41 +190,82 @@ public class WallTraversalCommand extends Command {
     }
 
     List<TraversalSegment> segs = new ArrayList<>();
+    Pose2d cur = poseEstimator.getEstimatedPose();
 
     switch (wall) {
       case FAR -> {
-        // Far wall: traverse lY → rY, facing direction of travel in both directions
-        segs.add(TraversalSegment.spin(toLeft, toRight));
-        segs.add(TraversalSegment.move(p(fX, lY, toLeft), toLeft, toRight));
+        // Far wall: traverse high-Y corner to low-Y corner (or reverse).
+        // Determine direction based on which Y-end is closer.
+        boolean startLeft = cur.getTranslation().getDistance(p(fX, lY, 0).getTranslation())
+            <= cur.getTranslation().getDistance(p(fX, rY, 0).getTranslation());
+        if (startLeft) {
+          segs.add(TraversalSegment.move(p(fX, lY, toLeft),  toLeft));
+          segs.add(TraversalSegment.move(p(fX, rY, toRight), toRight));
+        } else {
+          segs.add(TraversalSegment.move(p(fX, rY, toRight), toRight));
+          segs.add(TraversalSegment.move(p(fX, lY, toLeft),  toLeft));
+        }
       }
       case NEAR -> {
         if (inAllianceZone || inOpposingZone) {
-          // Near wall with tower dogleg — not reversible, always starts from left side.
-          // Headings match the sweep command convention (intake faces the wall being swept).
-          segs.add(TraversalSegment.spin(Rotation2d.fromDegrees(toNear)));
-          segs.add(TraversalSegment.move(p(nX, lY, toNear), toNear));
-          segs.add(TraversalSegment.move(p(bX, lY, toNear), toNear));
-          segs.add(TraversalSegment.spin(Rotation2d.fromDegrees(toRight)));
-          segs.add(TraversalSegment.move(p(bX, tY, toRight), toRight));
-          segs.add(TraversalSegment.spin(Rotation2d.fromDegrees(toNear)));
-          segs.add(TraversalSegment.move(p(nX, tY, toNear), toNear));
-          segs.add(TraversalSegment.spin(Rotation2d.fromDegrees(toRight)));
-          segs.add(TraversalSegment.move(p(nX, rY, toRight), toRight));
+          // Near wall with tower dogleg. Direction based on which end is closer.
+          double distLeft  = cur.getTranslation().getDistance(p(nX, lY, 0).getTranslation());
+          double distRight = cur.getTranslation().getDistance(p(nX, rY, 0).getTranslation());
+          boolean startLeft = distLeft <= distRight;
+          if (startLeft) {
+            segs.add(TraversalSegment.move(p(nX, lY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(bX, lY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(bX, tY, toRight), toRight));
+            segs.add(TraversalSegment.move(p(nX, tY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(nX, rY, toRight), toRight));
+          } else {
+            segs.add(TraversalSegment.move(p(nX, rY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(bX, rY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(bX, tY, toLeft),  toLeft));
+            segs.add(TraversalSegment.move(p(nX, tY, toNear),  toNear));
+            segs.add(TraversalSegment.move(p(nX, lY, toLeft),  toLeft));
+          }
         } else {
-          // Neutral zone: straight line, facing direction of travel in both directions
-          segs.add(TraversalSegment.spin(toRight, toLeft));
-          segs.add(TraversalSegment.move(p(nX, rY, toRight), toRight, toLeft));
+          // Neutral zone: straight line along the near wall.
+          // Near end (nX) is closer to alliance driver station, far end (fX would alias to nX here).
+          // Actually both ends of the NEAR wall are the same X — traverse by Y only.
+          boolean startRight = cur.getTranslation().getDistance(p(nX, rY, 0).getTranslation())
+              <= cur.getTranslation().getDistance(p(nX, lY, 0).getTranslation());
+          if (startRight) {
+            segs.add(TraversalSegment.move(p(nX, rY, toRight), toRight));
+            segs.add(TraversalSegment.move(p(nX, lY, toLeft),  toLeft));
+          } else {
+            segs.add(TraversalSegment.move(p(nX, lY, toLeft),  toLeft));
+            segs.add(TraversalSegment.move(p(nX, rY, toRight), toRight));
+          }
         }
       }
       case LEFT -> {
-        // Left wall: nX → fX along high-Y wall, facing direction of travel in both directions
-        segs.add(TraversalSegment.spin(toFar, toNear));
-        segs.add(TraversalSegment.move(p(fX, lY, toFar), toFar, toNear));
+        // Left wall: traverse near-X corner to far-X corner (or reverse).
+        // Near-X end is the alliance-side end; far-X is the neutral-side end.
+        boolean startNear = cur.getTranslation().getDistance(p(nX, lY, 0).getTranslation())
+            <= cur.getTranslation().getDistance(p(fX, lY, 0).getTranslation());
+        if (startNear) {
+          segs.add(TraversalSegment.move(p(nX, lY, toFar),  toFar));
+          segs.add(TraversalSegment.move(p(fX, lY, toFar),  toFar));
+        } else {
+          segs.add(TraversalSegment.move(p(fX, lY, toNear), toNear));
+          segs.add(TraversalSegment.move(p(nX, lY, toNear), toNear));
+        }
       }
       case RIGHT -> {
-        // Right wall: nX → fX along low-Y wall, facing direction of travel in both directions
-        segs.add(TraversalSegment.spin(toFar, toNear));
-        segs.add(TraversalSegment.move(p(fX, rY, toFar), toFar, toNear));
+        // Right wall: traverse near-X corner to far-X corner (or reverse).
+        // If closer to far end → face toNear (e.g. 180° for blue), go fX→nX.
+        // If closer to near end → face toFar (e.g. 0° for blue), go nX→fX.
+        boolean startNear = cur.getTranslation().getDistance(p(nX, rY, 0).getTranslation())
+            <= cur.getTranslation().getDistance(p(fX, rY, 0).getTranslation());
+        if (startNear) {
+          segs.add(TraversalSegment.move(p(nX, rY, toFar),  toFar));
+          segs.add(TraversalSegment.move(p(fX, rY, toFar),  toFar));
+        } else {
+          segs.add(TraversalSegment.move(p(fX, rY, toNear), toNear));
+          segs.add(TraversalSegment.move(p(nX, rY, toNear), toNear));
+        }
       }
     }
     return segs;
@@ -296,56 +294,17 @@ public class WallTraversalCommand extends Command {
     return new Pose2d(x, y, Rotation2d.fromDegrees(deg));
   }
 
-  private String fmt(Pose2d pose) {
-    return String.format("(%.2f, %.2f, %.0f°)",
-        pose.getX(), pose.getY(), pose.getRotation().getDegrees());
-  }
-
   // ---- Segment record ----
   private static class TraversalSegment {
-    final boolean isSpin;
     final Pose2d pose;
-    final Rotation2d heading;        // heading used in the forward direction
-    final Rotation2d reverseHeading; // heading used when this segment is reversed
 
-    private TraversalSegment(boolean isSpin, Pose2d pose, Rotation2d heading, Rotation2d reverseHeading) {
-      this.isSpin = isSpin;
+    private TraversalSegment(Pose2d pose) {
       this.pose = pose;
-      this.heading = heading;
-      this.reverseHeading = reverseHeading;
-    }
-
-    // Returns a copy of this segment with heading and reverseHeading swapped,
-    // and the move destination replaced with a reversed-direction pose.
-    TraversalSegment flipped() {
-      Rotation2d rev = reverseHeading != null ? reverseHeading : heading;
-      if (isSpin) {
-        return new TraversalSegment(true, null, rev, heading);
-      }
-      // Rebuild pose with the reversed heading
-      Pose2d flippedPose = new Pose2d(pose.getTranslation(), rev);
-      return new TraversalSegment(false, flippedPose, rev, heading);
-    }
-
-    static TraversalSegment move(Pose2d end, double forwardDeg, double reverseDeg) {
-      return new TraversalSegment(false,
-          new Pose2d(end.getTranslation(), Rotation2d.fromDegrees(forwardDeg)),
-          Rotation2d.fromDegrees(forwardDeg),
-          Rotation2d.fromDegrees(reverseDeg));
     }
 
     static TraversalSegment move(Pose2d end, double headingDeg) {
-      return move(end, headingDeg, headingDeg);
-    }
-
-    static TraversalSegment spin(Rotation2d heading) {
-      return new TraversalSegment(true, null, heading, heading);
-    }
-
-    static TraversalSegment spin(double headingDeg, double reverseHeadingDeg) {
-      return new TraversalSegment(true, null,
-          Rotation2d.fromDegrees(headingDeg),
-          Rotation2d.fromDegrees(reverseHeadingDeg));
+      return new TraversalSegment(
+          new Pose2d(end.getTranslation(), Rotation2d.fromDegrees(headingDeg)));
     }
   }
 
@@ -369,8 +328,12 @@ public class WallTraversalCommand extends Command {
 
     @Override
     public void initialize() {
+      // Use raw (unwrapped) gyro as the measurement basis, but compute the shortest arc
+      // by normalizing. This keeps the PID measurement continuous through the turn.
       double cur = drive.getGyroRotation().getRadians();
-      double arc = MathUtil.angleModulus(target.getRadians() - cur);
+      double curNorm = MathUtil.angleModulus(cur);
+      double tgtNorm = MathUtil.angleModulus(target.getRadians());
+      double arc = MathUtil.angleModulus(tgtNorm - curNorm);
       pid.reset(cur);
       pid.setGoal(cur + arc);
     }

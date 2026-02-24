@@ -6,24 +6,17 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveModuleState;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.RobotState;
 import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * Swerve drivetrain extending CTRE's CommandSwerveDrivetrain.
- * Integrates with custom GyroSubsystem for QuestNav/Pigeon failover.
- * 
- * DOES NOT contain AutoPilot logic - that lives in commands!
- */
+// Swerve drivetrain - extends CTRE's CommandSwerveDrivetrain with GyroSubsystem integration.
+// AutoPilot logic lives in commands, not here.
 public class DriveSubsystem extends CommandSwerveDrivetrain {
   private final GyroSubsystem gyro;
   private final RobotState robotState;
-  
-  private boolean operatorPerspectiveSetFromPose = false;
   
   // Swerve requests for different drive modes
   private final SwerveRequest.FieldCentric fieldCentricDrive = new SwerveRequest.FieldCentric();
@@ -46,9 +39,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
 
   @Override
   public void periodic() {
-    if (!operatorPerspectiveSetFromPose) {
-      super.periodic();
-    }
+    super.periodic();
     
     ChassisSpeeds speeds = getRobotRelativeSpeeds();
     
@@ -69,8 +60,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     
     Logger.recordOutput("Drive/FieldForwardDirection", fieldForwardPose);
     Logger.recordOutput("Drive/FieldForwardDegrees", operatorForward.getDegrees());
-    SmartDashboard.putNumber("Drive/FieldForward", operatorForward.getDegrees());
-    
+
     // Log module states every 5th cycle (not every cycle)
     if (logCounter % 5 == 0) {
       SwerveModuleState[] moduleStates = getState().ModuleStates;
@@ -94,15 +84,26 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     logCounter++;
   }
   
+  // Resets Pigeon yaw to 0.
+  public void resetGyroToZero() {
+    gyro.setHeading(0.0);
+  }
+
+  // Seeds the Pigeon to a specific heading so CTRE field-centric math uses the correct offset.
+  public void setGyroHeading(Rotation2d heading) {
+    gyro.setHeading(heading.getDegrees());
+  }
+
   @Override
   public void setOperatorPerspectiveForward(Rotation2d fieldDirection) {
     super.setOperatorPerspectiveForward(fieldDirection);
-    operatorPerspectiveSetFromPose = true;
+    // Mark perspective as applied so CommandSwerveDrivetrain.periodic() won't overwrite it.
+    m_hasAppliedOperatorPerspective = true;
     
     Logger.recordOutput("Drive/OperatorPerspectiveLocked", true);
     Logger.recordOutput("Drive/OperatorPerspectiveForward", fieldDirection.getDegrees());
     
-    SmartLogger.logConsole("[Drive] Operator perspective locked to: " + fieldDirection.getDegrees() + " deg");
+    SmartLogger.logConsole("Operator perspective locked to: " + fieldDirection.getDegrees() + " deg", "Drive");
   }
   
   private Rotation2d getOperatorPerspectiveForward() {
@@ -173,8 +174,6 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     });
   }
 
-  // ...existing SysId methods...
-  
   public void lockWheels() {
     SwerveRequest.SwerveDriveBrake lockRequest = new SwerveRequest.SwerveDriveBrake();
     setControl(lockRequest);
@@ -228,7 +227,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       translationRoutine.setAccessible(true);
       field.set(this, translationRoutine.get(this));
     } catch (Exception e) {
-      System.err.println("Failed to select translation routine: " + e.getMessage());
+      SmartLogger.logConsoleError("[Drive] Failed to select translation SysId routine: " + e.getMessage());
     }
   }
 
@@ -240,7 +239,7 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       steerRoutine.setAccessible(true);
       field.set(this, steerRoutine.get(this));
     } catch (Exception e) {
-      System.err.println("Failed to select steer routine: " + e.getMessage());
+      SmartLogger.logConsoleError("[Drive] Failed to select steer SysId routine: " + e.getMessage());
     }
   }
 
@@ -252,33 +251,18 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
       rotationRoutine.setAccessible(true);
       field.set(this, rotationRoutine.get(this));
     } catch (Exception e) {
-      System.err.println("Failed to select rotation routine: " + e.getMessage());
+      SmartLogger.logConsoleError("[Drive] Failed to select rotation SysId routine: " + e.getMessage());
     }
   }
 
-  // CANcoder fusion control for SysId steer characterization
-  // CTRE RECOMMENDATION: Disable CANcoder fusion before running steer motor SysId tests
-  // This prevents the CANcoder feedback from interfering with motor-only characterization
-  // 
-  // NOTE: CTRE API doesn't expose direct access to module CANcoders from CommandSwerveDrivetrain
-  // You'll need to manually set CANcoder update frequencies to 0 using Phoenix Tuner X before steer tests,
-  // then restore them after. Alternatively, temporarily change STEER_FEEDBACK_TYPE to SyncCANcoder 
-  // (not FusedCANcoder) in Constants.java during steer characterization.
-  //
-  // The methods below are placeholders showing the intended logic:
-  
+  // Placeholder - CANcoder fusion cannot be toggled via API.
+  // Before steer SysId: use Phoenix Tuner X to set CANcoder update freq to 0Hz,
+  // OR change STEER_FEEDBACK_TYPE to SyncCANcoder in Constants.java, then reboot.
   public void disableCANcoderFusion() {
-    System.out.println("WARNING: CANcoder fusion disable not implemented.");
-    System.out.println("Before running STEER SysId tests:");
-    System.out.println("  1. Use Phoenix Tuner X to set all CANcoder update frequencies to 0Hz");
-    System.out.println("  2. OR temporarily change Constants.Swerve.STEER_FEEDBACK_TYPE to SyncCANcoder");
+    SmartLogger.logConsole("CANcoder fusion disable not implemented - use Phoenix Tuner X manually", "Drive");
   }
 
   public void enableCANcoderFusion() {
-    System.out.println("WARNING: CANcoder fusion enable not implemented.");
-    System.out.println("After STEER SysId tests complete:");
-    System.out.println("  1. Use Phoenix Tuner X to restore CANcoder update frequencies to 100Hz");
-    System.out.println("  2. OR restore Constants.Swerve.STEER_FEEDBACK_TYPE to FusedCANcoder");
-    System.out.println("  3. Reboot robot to apply changes");
+    SmartLogger.logConsole("CANcoder fusion enable not implemented - restore via Phoenix Tuner X and reboot", "Drive");
   }
 }

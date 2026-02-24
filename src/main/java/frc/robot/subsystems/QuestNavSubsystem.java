@@ -9,17 +9,18 @@ import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.util.SmartLogger;
 import gg.questnav.questnav.QuestNav;
 import gg.questnav.questnav.PoseFrame;
 
+import java.util.Optional;
 import java.util.OptionalInt;
 
 public class QuestNavSubsystem extends SubsystemBase {
   private final QuestNav questNav;
   private final Transform3d robotToQuest;
+  private final Transform3d robotToQuestInverse; // cached to avoid recomputing every frame
   
   private Pose2d cachedRobotPose = null;
   private Pose3d cachedRobotPose3d = null;
@@ -30,9 +31,6 @@ public class QuestNavSubsystem extends SubsystemBase {
   
   private boolean isSeeded = false;
   
-  private int totalFramesProcessed = 0;
-  private int acceptedFrameCount = 0;
-  private int rejectedFrameCount = 0;
   private String lastRejectionReason = "";
   private long lastAcceptedFrameCount = -1;
 
@@ -40,6 +38,8 @@ public class QuestNavSubsystem extends SubsystemBase {
 
   private int logCounter = 0;
   private static final int LOG_SKIP_CYCLES = 9;
+
+  private static final Rotation2d ZERO_ROTATION = new Rotation2d();
 
   // Cached every loop - avoids repeated NT reads in the same cycle
   private boolean cachedConnected = false;
@@ -58,14 +58,13 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   public QuestNavSubsystem() {
-    SmartLogger.logConsole("QuestNavSubsystem initializing...");
+    SmartLogger.logConsole("QuestNavSubsystem initializing...", "QuestNav");
     
     try {
       questNav = new QuestNav();
-      SmartLogger.logConsole("QuestNav object created successfully");
+      SmartLogger.logConsole("QuestNav object created successfully", "QuestNav");
     } catch (Exception e) {
-      SmartLogger.logConsoleError("Failed to create QuestNav object!");
-      e.printStackTrace();
+      SmartLogger.logConsoleError("Failed to create QuestNav object: " + e.getMessage());
       throw e;
     }
     
@@ -73,12 +72,13 @@ public class QuestNavSubsystem extends SubsystemBase {
         new Translation3d(QUEST_X_METERS, QUEST_Y_METERS, QUEST_Z_METERS),
         new Rotation3d(0, 0, Math.toRadians(QUEST_YAW_DEG))
     );
+    robotToQuestInverse = robotToQuest.inverse();
     
-    SmartLogger.logConsole("Robot-to-Quest transform: " + robotToQuest);
+    SmartLogger.logConsole("Robot-to-Quest transform: " + robotToQuest, "QuestNav");
     
     testConnectionWithTimeout(2000);
     
-    SmartLogger.logConsole("========================================\n");
+    SmartLogger.logConsole("========================================\n", "QuestNav");
   }
   
   private void testConnectionWithTimeout(long timeoutMs) {
@@ -111,12 +111,32 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
   }
   
+  // commandPeriodic() can block 10-60ms when Quest is busy. Run it at 10Hz max.
+  private int commandPeriodicCounter = 0;
+  private static final int COMMAND_PERIODIC_SKIP = 4; // every 5th cycle = 10Hz
+
+  // TODO (robot session): verify these before fixing:
+  // #1 - fusionPaused does not stop drainQuestNavFrames() - frames still cache while paused.
+  //      Fix: add early return in drainQuestNavFrames() when fusionPaused=true.
+  //      Risk: PoseEstimatorSubsystem may already gate on isFusionPaused() before using the result.
+  // #2 - cachedMeasurementTimestamp uses FPGA "now", not questNativeTimestamp (actual capture time).
+  //      Fix: use questNativeTimestamp when > 0 as the measurement timestamp fed to pose estimator.
+  //      Risk: changes fusion math - verify Quest clock vs RoboRIO clock sync is reliable first.
+  // #3 - checkConnectedRaw() reads getBatteryPercent() via NT every cycle to probe connection.
+  //      Fix: use questNav.isConnected() as the primary check; reserve battery for the log-rate call.
+  //      Risk: low - but confirm questNav.isConnected() is a cheap NT read before swapping.
+  // #5 - enterResumeMode() sets isSeeded=false but leaves stale cachedRobotPose intact.
+  //      Fix: clear cache fields same as seedToPose() does, or document that callers expect continuity.
+  //      Risk: any caller reading getRobotPose() right after resume gets the old (possibly stale) pose.
+
   @Override
   public void periodic() {
-    try {
-      questNav.commandPeriodic();
-    } catch (Exception e) {
-      SmartLogger.logReplay("QuestNav/PeriodicError", e.getMessage());
+    if (commandPeriodicCounter++ % (COMMAND_PERIODIC_SKIP + 1) == 0) {
+      try {
+        questNav.commandPeriodic();
+      } catch (Exception e) {
+        SmartLogger.logReplay("QuestNav/PeriodicError", e.getMessage());
+      }
     }
 
     // Refresh connection state once per loop - all callers use these cached values
@@ -132,7 +152,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       SmartLogger.logReplay("QuestNav/Connected", cachedConnected);
       SmartLogger.logReplay("QuestNav/Tracking", cachedTracking);
       SmartLogger.logReplay("QuestNav/Seeded", isSeeded);
-      SmartDashboard.putNumber("QuestNav/Battery", getBatteryPercent());
+      SmartLogger.logReplay("QuestNav/Battery", (double) getBatteryPercent());
     }
 
     if (cachedRobotPose != null && doLog) {
@@ -147,7 +167,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   public void resumeFusion() {
     fusionPaused = false;
     SmartLogger.logReplay("QuestNav/FusionPaused", false);
-    SmartLogger.logConsole("[QuestNav] Fusion resumed");
+    SmartLogger.logConsole("Fusion resumed", "QuestNav");
   }
   
   public boolean isFusionPaused() {
@@ -158,8 +178,6 @@ public class QuestNavSubsystem extends SubsystemBase {
     try {
       PoseFrame[] frames = questNav.getAllUnreadPoseFrames();
       if (frames == null || frames.length == 0) return;
-      
-      totalFramesProcessed += frames.length;
       
       PoseFrame latestFrame = frames[frames.length - 1];
       
@@ -178,13 +196,12 @@ public class QuestNavSubsystem extends SubsystemBase {
       
       Pose3d cameraPose3d = latestFrame.questPose3d();
       if (cameraPose3d == null) {
-        rejectedFrameCount++;
         String reason = "Null camera pose";
         logRejectionIfChanged(reason);
         return;
       }
       
-      Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuest.inverse());
+      Pose3d robotPose3d = cameraPose3d.transformBy(robotToQuestInverse);
       Pose2d robotPose2d = new Pose2d(
           robotPose3d.getX(),
           robotPose3d.getY(),
@@ -201,13 +218,11 @@ public class QuestNavSubsystem extends SubsystemBase {
       cachedFrameCount = frameCount;
       
       lastAcceptedFrameCount = frameCount;
-      acceptedFrameCount++;
       
       SmartLogger.logReplay("QuestNav/FrameAccepted", true);
       SmartLogger.logReplay("QuestNav/AcceptedFrameCount_Native", (double) frameCount);
       
     } catch (Exception e) {
-      rejectedFrameCount++;
       String reason = "Exception: " + e.getMessage();
       logRejectionIfChanged(reason);
       SmartLogger.logReplay("QuestNav/GetFramesError", e.getMessage());
@@ -221,9 +236,9 @@ public class QuestNavSubsystem extends SubsystemBase {
     }
   }
   
-  public java.util.Optional<QuestMeasurement> peekLatestMeasurement() {
+  public Optional<QuestMeasurement> peekLatestMeasurement() {
     if (cachedRobotPose == null || cachedFrameCount <= lastConsumedFrameCount) {
-      return java.util.Optional.empty();
+      return Optional.empty();
     }
     
     QuestMeasurement measurement = new QuestMeasurement(
@@ -232,13 +247,16 @@ public class QuestNavSubsystem extends SubsystemBase {
         cachedFrameCount
     );
     
-    return java.util.Optional.of(measurement);
+    return Optional.of(measurement);
   }
   
   public boolean acknowledgeMeasurement(long frameCount) {
+    // Already acknowledged - silent no-op, not an error
+    if (frameCount == lastConsumedFrameCount) return true;
+
     if (frameCount != cachedFrameCount || frameCount <= lastConsumedFrameCount) {
-      SmartLogger.logReplay("QuestNav/AcknowledgeFailed", 
-          "Attempted to ack frame=" + frameCount + " but current=" + cachedFrameCount + 
+      SmartLogger.logReplay("QuestNav/AcknowledgeFailed",
+          "Attempted to ack frame=" + frameCount + " but current=" + cachedFrameCount +
           " lastConsumed=" + lastConsumedFrameCount);
       return false;
     }
@@ -249,21 +267,21 @@ public class QuestNavSubsystem extends SubsystemBase {
   }
   
   @Deprecated
-  public java.util.Optional<QuestMeasurement> consumeLatestMeasurement() {
+  public Optional<QuestMeasurement> consumeLatestMeasurement() {
     SmartLogger.logConsoleError("consumeLatestMeasurement() is deprecated! Use QuestNavFusion.forceAccept() instead");
-    return java.util.Optional.empty();
+    return Optional.empty();
   }
   
   public boolean hasUnconsumedMeasurement() {
     return cachedRobotPose != null && cachedFrameCount > lastConsumedFrameCount;
   }
   
-  public java.util.Optional<Pose2d> getRobotPose() {
-    return java.util.Optional.ofNullable(cachedRobotPose);
+  public Optional<Pose2d> getRobotPose() {
+    return Optional.ofNullable(cachedRobotPose);
   }
   
-  public java.util.Optional<Pose3d> getRobotPose3d() {
-    return java.util.Optional.ofNullable(cachedRobotPose3d);
+  public Optional<Pose3d> getRobotPose3d() {
+    return Optional.ofNullable(cachedRobotPose3d);
   }
   
   public double getMeasurementAge() {
@@ -276,7 +294,7 @@ public class QuestNavSubsystem extends SubsystemBase {
   public Rotation2d getRotation() {
     return getRobotPose()
         .map(Pose2d::getRotation)
-        .orElse(new Rotation2d());
+        .orElse(ZERO_ROTATION);
   }
   
   public boolean isConnected() {
@@ -292,7 +310,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       OptionalInt battery = questNav.getBatteryPercent();
       if (battery.isPresent()) return true;
       
-      java.util.OptionalInt frameCount = questNav.getFrameCount();
+      OptionalInt frameCount = questNav.getFrameCount();
       if (frameCount.isPresent() && frameCount.getAsInt() >= 0) return true;
       
       return questNav.isConnected();
@@ -351,7 +369,7 @@ public class QuestNavSubsystem extends SubsystemBase {
       lastAcceptedFrameCount = -1;
       
       SmartLogger.logReplay("QuestNav/SeedToPose", fieldPose);
-      SmartLogger.logConsole("QuestNav seeded to: " + SmartLogger.formatPose(fieldPose));
+      SmartLogger.logConsole("QuestNav seeded to: " + SmartLogger.formatPose(fieldPose), "QuestNav");
     } catch (Exception e) {
       SmartLogger.logReplay("QuestNav/SeedError", e.getMessage());
       SmartLogger.logConsoleError("QuestNav seed failed: " + e.getMessage());
@@ -360,19 +378,19 @@ public class QuestNavSubsystem extends SubsystemBase {
   
   public void enterResumeMode() {
     isSeeded = false;
-    SmartLogger.logConsole("QuestNav in RESUME mode - using existing tracking");
+    SmartLogger.logConsole("QuestNav in RESUME mode - using existing tracking", "QuestNav");
     SmartLogger.logReplay("QuestNav/ResumeMode", true);
   }
   
   private void testConnection() {
-    SmartLogger.logConsole("Testing QuestNav connection (USB > Ethernet > RoboRIO)");
+    SmartLogger.logConsole("Testing QuestNav connection (USB > Ethernet > RoboRIO)", "QuestNav");
     
     boolean tracking = isTracking();
-    SmartLogger.logConsole("Tracking: " + tracking);
+    SmartLogger.logConsole("Tracking: " + tracking, "QuestNav");
     
     int battery = getBatteryPercent();
     if (battery >= 0) {
-      SmartLogger.logConsole("Battery: " + battery + "%");
+      SmartLogger.logConsole("Battery: " + battery + "%", "QuestNav");
       if (battery < 20) {
         SmartLogger.logConsoleError("Quest battery low!");
       }
@@ -381,9 +399,9 @@ public class QuestNavSubsystem extends SubsystemBase {
     if (!tracking) {
       SmartLogger.logConsoleError("QuestNav NOT tracking - check USB/Ethernet connection");
     } else {
-      SmartLogger.logConsole("QuestNav is tracking!");
+      SmartLogger.logConsole("QuestNav is tracking!", "QuestNav");
     }
     
-    SmartLogger.logConsole("Pose data will be available after first periodic() cycle");
+    SmartLogger.logConsole("Pose data will be available after first periodic() cycle", "QuestNav");
   }
 }

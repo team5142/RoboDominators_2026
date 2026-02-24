@@ -3,7 +3,7 @@ package frc.robot.subsystems.pose;
 import static frc.robot.Constants.Auto.*;
 
 import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.wpilibj.RobotState;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -11,18 +11,13 @@ import edu.wpi.first.wpilibj2.command.Command;
 import org.littletonrobotics.junction.Logger;
 import frc.robot.util.SmartLogger;
 
-/**
- * Validates robot pose against expected auto starting position
- * 
- * Responsibilities:
- * - Periodically check if robot is aligned for auto
- * - Provide driver feedback (SmartDashboard + console)
- * - Log validation results for debugging
- */
+// Validates robot pose against expected auto starting position.
+// Runs every 10 seconds in periodic() and pushes alignment status to SmartDashboard.
 public class PoseValidator {
   
-  private double lastValidationTime = 0.0;
   private static final double VALIDATION_INTERVAL_SECONDS = 10.0;
+  // Start at -INTERVAL so first validation fires one full interval after boot (lets odometry settle).
+  private double lastValidationTime = -VALIDATION_INTERVAL_SECONDS;
   
   private SendableChooser<Command> autoChooser;
   private PoseInitializer poseInitializer;
@@ -34,12 +29,12 @@ public class PoseValidator {
   public void setPoseInitializer(PoseInitializer poseInitializer) {
     this.poseInitializer = poseInitializer;
   }
-  
-  /**
-   * Periodically validate pose against expected auto start
-   * Called every cycle from PoseEstimatorSubsystem.periodic()
-   */
+
+  // Called every cycle from PoseEstimatorSubsystem.periodic() - throttled internally to 10s.
+  // Only runs while disabled so drive team never sees stale "NOT ALIGNED" mid-match.
   public void periodicValidation(Pose2d currentPose) {
+    if (!RobotState.isDisabled()) return;
+
     double currentTime = Timer.getFPGATimestamp();
     
     if (currentTime - lastValidationTime < VALIDATION_INTERVAL_SECONDS) {
@@ -87,6 +82,8 @@ public class PoseValidator {
       Pose2d pose = poseInitializer.getStartPoseForAutoName(autoName);
 
       if (pose == null) {
+        SmartDashboard.putString("Pose/Validation", "Unknown auto: " + autoName);
+        SmartDashboard.putBoolean("Pose/AutoAligned", false);
         Logger.recordOutput("PoseValidation/UnknownAuto", autoName);
       }
 

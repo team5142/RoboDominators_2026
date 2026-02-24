@@ -10,6 +10,7 @@ import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonPoseEstimator;
 import org.photonvision.PhotonPoseEstimator.PoseStrategy;
 import org.photonvision.targeting.PhotonPipelineResult;
+import frc.robot.util.SmartLogger;
 
 // PhotonVision camera wrapper - reads from PhotonVision coprocessor (OrangePi/RaspberryPi)
 // Uses PhotonLib to get pose estimates from camera's onboard processing
@@ -21,7 +22,8 @@ public class PhotonVisionCamera implements VisionCamera {
   private PhotonPipelineResult latestResult; // Cached result for hasTarget() check
   private boolean connectionWarningShown = false; // Throttle error messages
 
-  // Create PhotonVision camera with robot-to-camera transform for pose estimation
+  // Create PhotonVision camera with robot-to-camera transform for pose estimation.
+  // pipelineName is informational only - there is currently only one pipeline (index 0).
   public PhotonVisionCamera(
       String cameraName,
       String pipelineName, // Pipeline name in PhotonVision UI (e.g. "RLCalibratedAT")
@@ -47,15 +49,15 @@ public class PhotonVisionCamera implements VisionCamera {
       poseEstimator.setMultiTagFallbackStrategy(PoseStrategy.LOWEST_AMBIGUITY);
     }
     
-    System.out.println("PhotonVision camera initialized: " + cameraName 
-        + " (Pipeline: " + pipelineName 
-        + ", Strategy: " + (cameraName.equals("RLTagPV") ? "SINGLE_TAG" : "MULTI_TAG") + ")");
+    SmartLogger.logConsole("PhotonVision camera initialized: " + cameraName
+        + " (Strategy: " + (cameraName.equals("RLTagPV") ? "SINGLE_TAG" : "MULTI_TAG") + ")",
+        "Vision");
   }
 
-  // Get pipeline index by name - PhotonVision API uses index not name
-  // For now assumes pipeline 0 (the calibrated AprilTag pipeline)
+  // Always returns pipeline 0 - only one pipeline is configured.
+  // If multiple pipelines are ever needed, map names to indices here.
   private int getPipelineIndex(String pipelineName) {
-    return 0; // TODO: Map pipeline names to indices if you have multiple pipelines
+    return 0;
   }
 
   @Override
@@ -67,25 +69,6 @@ public class PhotonVisionCamera implements VisionCamera {
   public Optional<VisionResult> getLatestResult() {
     try {
       latestResult = camera.getLatestResult();
-      
-      // Debug logging - always log to AdvantageScope (no console spam)
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/Debug/ResultExists", latestResult != null);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/Debug/HasTargets", latestResult != null && latestResult.hasTargets());
-      
-      if (latestResult != null && latestResult.hasTargets()) {
-        org.littletonrobotics.junction.Logger.recordOutput(
-            "Vision/" + name + "/Debug/TargetCount", latestResult.getTargets().size());
-        
-        // Log which tag IDs are visible
-        var tagIds = latestResult.getTargets().stream()
-            .mapToInt(target -> target.getFiducialId())
-            .toArray();
-        org.littletonrobotics.junction.Logger.recordOutput(
-            "Vision/" + name + "/Debug/TagIDs", 
-            java.util.Arrays.stream(tagIds).mapToObj(String::valueOf).toArray(String[]::new));
-      }
       
       if (!latestResult.hasTargets()) {
         connectionWarningShown = false; // Reset warning when camera recovers
@@ -119,7 +102,7 @@ public class PhotonVisionCamera implements VisionCamera {
       if (Math.abs(pose2d.getX()) < 0.01 && Math.abs(pose2d.getY()) < 0.01) {
         org.littletonrobotics.junction.Logger.recordOutput(
             "Vision/" + name + "/RejectedZeroPose", true);
-        System.err.println("[" + name + "] REJECTED: Zero pose (0, 0, 0°) - invalid data");
+        SmartLogger.logConsoleError("[Vision] " + name + ": rejected zero pose (invalid data)");
         return Optional.empty();
       }
       
@@ -131,14 +114,7 @@ public class PhotonVisionCamera implements VisionCamera {
       
       connectionWarningShown = false; // Reset warning
       
-      // Debug - log all successful pose estimates
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/ValidPoseReceived", true);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/RawPose2d", pose2d);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/UsedTagIDs", 
-          usedTagIds.stream().map(String::valueOf).toArray(String[]::new));
+      org.littletonrobotics.junction.Logger.recordOutput("Vision/" + name + "/RawPose2d", pose2d);
       
       return Optional.of(new VisionResult(
           pose2d,
@@ -150,7 +126,7 @@ public class PhotonVisionCamera implements VisionCamera {
     } catch (Exception e) {
       // Camera disconnected, coprocessor crash, or NetworkTables error
       if (!connectionWarningShown) {
-        System.err.println("[WARNING] PhotonVision camera '" + name + "' error: " + e.getMessage());
+        SmartLogger.logConsoleError("[Vision] PhotonVision '" + name + "' error: " + e.getMessage());
         connectionWarningShown = true;
       }
       org.littletonrobotics.junction.Logger.recordOutput(

@@ -1,5 +1,14 @@
 package frc.robot.commands.drive;
 
+// TODO (next session with robot):
+// Same issues as AllianceZoneSweepSimplifiedCommand - review both files together:
+// 1. SpinToHeadingCommand is copied verbatim here - extract to a shared file
+//    (commands/drive/SpinToHeadingCommand.java) so both sweep commands use the same one.
+// 2. SweepSegment.move() takes a 'start' parameter that is never used - remove it.
+// 3. Check for dead conditionals and unused parameters (same pattern as AllianceZone farX() issue).
+// 4. formatPose() duplicates SmartLogger.formatPose() - replace with the shared util call.
+// 5. Check field coordinates match 2026 AndyMark dimensions (650.12 x 316.64 in).
+
 import static frc.robot.Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC;
 
 import com.pathplanner.lib.auto.AutoBuilder;
@@ -137,14 +146,14 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
   }
 
   private Pose2d findNearestEntryCorner(Pose2d currentPose, boolean isRed) {
-    // Entry corners are the near-left and near-right corners of the loop.
-    // Each alliance's near wall is their own driver-station side.
+    // Entry corners are the far-left and far-right corners of the loop.
+    // The sweep now runs far->near on each wall to push fuel toward the alliance zone.
     Pose2d leftCorner  = isRed
-        ? new Pose2d(nearXRed(),  7.248, Rotation2d.fromDegrees(180.0))
-        : new Pose2d(nearXBlue(), 7.248, Rotation2d.fromDegrees(0.0));
+        ? new Pose2d(farXRed(),   7.248, Rotation2d.fromDegrees(0.0))
+        : new Pose2d(farXBlue(),  7.248, Rotation2d.fromDegrees(180.0));
     Pose2d rightCorner = isRed
-        ? new Pose2d(nearXRed(),  0.624, Rotation2d.fromDegrees(180.0))
-        : new Pose2d(nearXBlue(), 0.624, Rotation2d.fromDegrees(0.0));
+        ? new Pose2d(farXRed(),   0.624, Rotation2d.fromDegrees(0.0))
+        : new Pose2d(farXBlue(),  0.624, Rotation2d.fromDegrees(180.0));
 
     double distToLeft  = currentPose.getTranslation().getDistance(leftCorner.getTranslation());
     double distToRight = currentPose.getTranslation().getDistance(rightCorner.getTranslation());
@@ -183,8 +192,8 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
     double centerY = 3.936;
     double rightY  = 0.624;
 
-    // Intake heading: always faces the far wall while collecting.
-    // Blue far wall is East (0 deg), Red far wall is West (180 deg).
+    // Intake heading: faces toward near wall while collecting (pushing fuel back to alliance zone).
+    // Blue near wall is West (180 deg), Red near wall is East (0 deg).
     // toLeft/toRight follow the Y axis which is the same for both alliances:
     //   toLeft = 90 deg (North, toward high Y), toRight = 270 deg (South, toward low Y).
     double toFar   = isRed ? 180.0 : 0.0;
@@ -193,30 +202,30 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
     double toRight = 270.0; // South - always toward the right/low-Y wall
 
     List<SweepSegment> segs = new ArrayList<>();
-    // Leg 1: near-left to far-left
-    segs.add(SweepSegment.move(p(nearX, leftY,   toFar),  p(farX,  leftY,   toFar)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // turn toward center (lower Y)
-    // Leg 2: far-left to far-center
-    segs.add(SweepSegment.move(p(farX,  leftY,   toRight), p(farX,  centerY, toRight)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toNear)));  // turn to face near wall
-    // Leg 3: far-center to near-center
-    segs.add(SweepSegment.move(p(farX,  centerY, toNear),  p(nearX, centerY, toNear)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // continue toward right wall
-    // Leg 4: near-center to near-right
-    segs.add(SweepSegment.move(p(nearX, centerY, toRight), p(nearX, rightY,  toRight)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // turn to face far wall
-    // Leg 5: near-right to far-right
-    segs.add(SweepSegment.move(p(nearX, rightY,  toFar),   p(farX,  rightY,  toFar)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // turn toward center (higher Y)
-    // Leg 6: far-right to far-center
-    segs.add(SweepSegment.move(p(farX,  rightY,  toLeft),  p(farX,  centerY, toLeft)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toNear)));  // turn to face near wall
-    // Leg 7: far-center to near-center
-    segs.add(SweepSegment.move(p(farX,  centerY, toNear),  p(nearX, centerY, toNear)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // turn toward left wall
-    // Leg 8: near-center to near-left
-    segs.add(SweepSegment.move(p(nearX, centerY, toLeft),  p(nearX, leftY,   toLeft)));
-    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // back to start heading
+    // Leg 1: far-left to near-left (robot faces toNear, pushing fuel toward alliance zone)
+    segs.add(SweepSegment.move(p(farX,  leftY,   toNear),  p(nearX, leftY,   toNear)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // -90 right turn
+    // Leg 2: near-left to near-center (robot faces toRight along the near wall)
+    segs.add(SweepSegment.move(p(nearX, leftY,   toRight), p(nearX, centerY, toRight)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // spin directly to toFar, skipping intermediate toLeft to avoid double-turn
+    // Leg 3: near-center to far-center (robot faces toFar)
+    segs.add(SweepSegment.move(p(nearX, centerY, toFar),   p(farX,  centerY, toFar)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // -90 right turn
+    // Leg 4: far-center to far-right (robot faces toRight along the far wall)
+    segs.add(SweepSegment.move(p(farX,  centerY, toRight), p(farX,  rightY,  toRight)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toRight))); // -90 right turn
+    // Leg 5: far-right to near-right (robot faces toNear, pushing fuel toward alliance zone)
+    segs.add(SweepSegment.move(p(farX,  rightY,  toNear),  p(nearX, rightY,  toNear)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // +90 left turn
+    // Leg 6: near-right to near-center (robot faces toLeft along the near wall)
+    segs.add(SweepSegment.move(p(nearX, rightY,  toLeft),  p(nearX, centerY, toLeft)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toFar)));   // spin directly to toFar, skipping intermediate toRight to avoid double-turn
+    // Leg 7: near-center to far-center (robot faces toFar)
+    segs.add(SweepSegment.move(p(nearX, centerY, toFar),   p(farX,  centerY, toFar)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // +90 left turn
+    // Leg 8: far-center to far-left (robot faces toLeft along the far wall)
+    segs.add(SweepSegment.move(p(farX,  centerY, toLeft),  p(farX,  leftY,   toLeft)));
+    segs.add(SweepSegment.spin(Rotation2d.fromDegrees(toLeft)));  // +90 left turn, back to start
 
     return segs;
   }

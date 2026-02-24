@@ -1,28 +1,34 @@
 package frc.robot.commands.drive;
 
-import com.therekrab.autopilot.APConstraints;
-import com.therekrab.autopilot.APProfile;
+// TODO (next session with robot):
+// 1. Remove the 3 unused constructor parameters (maxVelocity, maxAcceleration, maxJerk) -
+//    they are always passed as 0, 0, 0 from SmartDriveToPosition and do nothing.
+// 2. Confirm AutoPilot vendor library is tuned and atTarget() tolerance is tight enough
+//    for use as a shooting position command.
+
 import com.therekrab.autopilot.APTarget;
-import com.therekrab.autopilot.Autopilot;
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.Constants;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
+import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
 
 import static edu.wpi.first.units.Units.MetersPerSecond;
 
-/**
- * AutoPilot command for precision navigation - uses singleton AutoPilot
- */
+// Precision navigation using the therekrab/autopilot vendor library.
+// Called by SmartDriveToPosition for the final approach after PathPlanner gets close.
+// Uses a singleton AutoPilot instance defined in Constants.AutoPilotConstants.
 public class AutoPilotToTargetCommand extends Command {
   private final DriveSubsystem m_driveSubsystem;
   private final PoseEstimatorSubsystem m_poseEstimator;
   private final Pose2d m_targetPose;
-  
+
   private APTarget m_target;
+  private int execCounter = 0;
   
   public AutoPilotToTargetCommand(
       Pose2d targetPose,
@@ -43,44 +49,41 @@ public class AutoPilotToTargetCommand extends Command {
   public void initialize() {
     // FIXED: Just create target - AutoPilot instance is singleton
     m_target = new APTarget(m_targetPose);
-    
-    System.out.println("[AutoPilot] Navigate to: " + formatPose(m_targetPose));
+
+    SmartLogger.logConsole("AutoPilot navigating to: " + SmartLogger.formatPose(m_targetPose), "AutoPilot");
     Logger.recordOutput("AutoPilot/TargetPose", m_targetPose);
+    execCounter = 0;
   }
-  
+
   @Override
   public void execute() {
     Pose2d currentPose = m_poseEstimator.getEstimatedPose();
     var robotRelativeSpeeds = m_driveSubsystem.getRobotRelativeSpeeds();
-    
-    // Use singleton AutoPilot instance
+
     var result = Constants.AutoPilotConstants.PRECISION_AUTOPILOT.calculate(currentPose, robotRelativeSpeeds, m_target);
-    
-    // Calculate omega
+
     double currentAngle = currentPose.getRotation().getRadians();
     double targetAngle = result.targetAngle().getRadians();
-    double omega = targetAngle - currentAngle;
-    
-    // Normalize omega
-    while (omega > Math.PI) omega -= 2 * Math.PI;
-    while (omega < -Math.PI) omega += 2 * Math.PI;
-    
-    // Convert to field-relative
+
+    // Shortest-arc angle wrap - keeps omega within [-pi, pi]
+    double omega = MathUtil.angleModulus(targetAngle - currentAngle);
+
     ChassisSpeeds targetSpeeds = ChassisSpeeds.fromFieldRelativeSpeeds(
         result.vx().in(MetersPerSecond),
         result.vy().in(MetersPerSecond),
         omega,
         currentPose.getRotation()
     );
-    
-    // Apply speeds
+
     m_driveSubsystem.driveRobotRelative(targetSpeeds);
-    
-    // Log
-    Logger.recordOutput("AutoPilot/Active", true);
-    Logger.recordOutput("AutoPilot/VX", result.vx().in(MetersPerSecond));
-    Logger.recordOutput("AutoPilot/VY", result.vy().in(MetersPerSecond));
-    Logger.recordOutput("AutoPilot/Omega", omega);
+
+    // Throttle to 10Hz - VX/VY/Omega are debug values, not needed every loop
+    if (execCounter++ % 5 == 0) {
+      Logger.recordOutput("AutoPilot/Active", true);
+      Logger.recordOutput("AutoPilot/VX", result.vx().in(MetersPerSecond));
+      Logger.recordOutput("AutoPilot/VY", result.vy().in(MetersPerSecond));
+      Logger.recordOutput("AutoPilot/Omega", omega);
+    }
   }
   
   @Override
@@ -91,11 +94,7 @@ public class AutoPilotToTargetCommand extends Command {
   @Override
   public void end(boolean interrupted) {
     m_driveSubsystem.driveRobotRelative(new ChassisSpeeds(0, 0, 0));
-    System.out.println("[AutoPilot] " + (interrupted ? "INTERRUPTED" : "Complete"));
+    SmartLogger.logConsole("AutoPilot " + (interrupted ? "interrupted" : "complete"), "AutoPilot");
     Logger.recordOutput("AutoPilot/Active", false);
-  }
-  
-  private static String formatPose(Pose2d pose) {
-    return String.format("(%.2fm, %.2fm, %.1f°)", pose.getX(), pose.getY(), pose.getRotation().getDegrees());
   }
 }

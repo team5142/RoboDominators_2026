@@ -1,6 +1,14 @@
 package frc.robot.commands.drive;
 
+// TODO (next session with robot):
+// Same issues as AllianceZoneSweepSimplifiedCommand - review all three sweep files together:
+// 1. SpinToHeadingCommand is copied verbatim here - extract to a shared file.
+// 2. SweepSegment.move() takes a 'start' parameter that is never used - remove it.
+// 3. toLeft() and toRight() take a boolean isRed they never use - remove the parameter.
+// 4. formatPose() duplicates SmartLogger.formatPose() - replace with the shared util call.
+
 import static frc.robot.Constants.Swerve.MAX_ANGULAR_SPEED_RAD_PER_SEC;
+import static frc.robot.Constants.Field.FIELD_LENGTH_METERS;
 
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.path.PathConstraints;
@@ -22,8 +30,8 @@ import java.util.List;
 
 // Same loop shape as AllianceZoneSweepSimplifiedCommand but mirrored to the far
 // (opposing alliance) side of the field. All X coordinates are reflected across
-// the field center (16.540 - x). Y and heading logic are unchanged.
-public class OpposingAllianceZoneSweepCommand extends Command {
+// the field center. Y and heading logic are unchanged.
+public class OpposingAllianceZoneSweepSimplifiedCommand extends Command {
   private final PoseEstimatorSubsystem poseEstimator;
   private final DriveSubsystem driveSubsystem;
   private final PathConstraints pathConstraints;
@@ -35,11 +43,9 @@ public class OpposingAllianceZoneSweepCommand extends Command {
   private static int sessionCounter = 0;
   private int sessionId = 0;
 
-  private static final double FIELD_LENGTH = 16.540;
-  // Field width used to mirror Y coordinates to the opposing side's tower position
-  private static final double FIELD_WIDTH  = 8.0427;
+  private static final double FIELD_WIDTH  = 8.0427; // 316.64 in - 2026 AndyMark perimeter (confirmed)
 
-  public OpposingAllianceZoneSweepCommand(
+  public OpposingAllianceZoneSweepSimplifiedCommand(
       PoseEstimatorSubsystem poseEstimator,
       DriveSubsystem driveSubsystem) {
     this.poseEstimator = poseEstimator;
@@ -176,24 +182,24 @@ public class OpposingAllianceZoneSweepCommand extends Command {
   }
 
   // ---- Coordinate helpers ----
-  // X values are the AllianceZoneSweep X values mirrored: mirror(x) = FIELD_LENGTH - x.
+  // X values are the AllianceZoneSweep X values mirrored: mirror(x) = FIELD_LENGTH_METERS - x.
   // Y values are also mirrored across the field width: mirror(y) = FIELD_WIDTH - y.
   // This places the loop at the opposing alliance's driver station wall with the tower
   // on the correct (high-Y) side.
 
   // Far edge of opposing alliance zone (neutral zone boundary on the far side)
   private static double farX(boolean isRed) {
-    return isRed ? 3.3 : (FIELD_LENGTH - 3.3);
+    return isRed ? 3.3 : (FIELD_LENGTH_METERS - 3.3);
   }
 
   // Near edge: deepest point toward the opposing driver station wall
   private static double nearX(boolean isRed) {
-    return isRed ? 0.540 : (FIELD_LENGTH - 0.540);
+    return isRed ? 0.540 : (FIELD_LENGTH_METERS - 0.540);
   }
 
   // Backup X: avoids the outpost on the far side
   private static double backupX(boolean isRed) {
-    return isRed ? 1.530 : (FIELD_LENGTH - 1.530);
+    return isRed ? 1.530 : (FIELD_LENGTH_METERS - 1.530);
   }
 
   // Y walls are mirrored: the opposing tower is on the HIGH-Y side, so leftY/rightY swap roles.

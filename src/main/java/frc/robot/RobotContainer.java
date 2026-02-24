@@ -5,15 +5,12 @@ import static frc.robot.Constants.Auto.*;
 import static frc.robot.Constants.StartingPositions.*;
 
 import com.pathplanner.lib.auto.AutoBuilder;
-import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
-import com.pathplanner.lib.path.PathPlannerPath;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -26,10 +23,10 @@ import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
 import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.NeutralZoneSweepSimplifiedCommand;
-import frc.robot.commands.drive.OpposingAllianceZoneSweepCommand;
+import frc.robot.commands.drive.OpposingAllianceZoneSweepSimplifiedCommand;
 import frc.robot.commands.drive.WallTraversalCommand;
+import frc.robot.commands.drive.SnapToHeadingDynamic;
 import frc.robot.commands.drive.SmartDriveToPosition;
-import frc.robot.commands.util.LogCurrentPoseCommand;
 import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import frc.robot.subsystems.turret.TurretIOCTRE;
@@ -39,7 +36,7 @@ import frc.robot.util.TouchscreenInterface;
 
 // Wires up robot hardware, controllers, and commands
 public class RobotContainer {
-  
+  // COMMAND TO GRAB THE LATEST 10 LOGS and then DELETE THEM .\scripts\storelogs.bat
   // === CONFIGURATION ===
   public static final boolean COMPETITION_MODE = false; // Disable logs/streams for matches
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
@@ -80,6 +77,9 @@ public class RobotContainer {
 
   private volatile boolean previewThreadRunning = true;
 
+  // Force preview thread to reapply pose/orientation on every boot
+  private boolean bootPreviewApplied = false;
+
   private TouchscreenInterface touchscreen;
 
   // === CONSTRUCTOR - Runs once at robot boot ===
@@ -90,8 +90,8 @@ public class RobotContainer {
     questNav = new QuestNavSubsystem();
     driveSubsystem = new DriveSubsystem(this.robotState, gyro);
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
-    tagVisionSubsystem = new TagVisionSubsystem(poseEstimator, gyro);
-    ledSubsystem = new LEDSubsystem(this.robotState, tagVisionSubsystem);
+    tagVisionSubsystem = new TagVisionSubsystem(poseEstimator);
+    ledSubsystem = new LEDSubsystem();
     turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
     intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
     climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
@@ -210,6 +210,14 @@ public class RobotContainer {
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
     new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
+
+    // BOTH TRIGGERS: Dynamic heading snap - picks heading based on field position
+    Trigger bothTriggers = new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
+        .and(new Trigger(() -> driverController.getRightTriggerAxis() > 0.5));
+    bothTriggers.whileTrue(new SnapToHeadingDynamic(
+        poseEstimator, driveSubsystem,
+        () -> -driverController.getLeftY(),
+        () -> -driverController.getLeftX()));
 
     // D-PAD: Wall traversal commands (Up=Far, Down=Near, Left=Left wall, Right=Right wall)
     new Trigger(() -> driverController.getPOV() == 0)
@@ -331,8 +339,11 @@ public class RobotContainer {
           if (DriverStation.isDisabled()) {
             Command selectedAuto = autoChooser.getSelected();
 
-            if (selectedAuto != null && selectedAuto != lastSelectedAuto) {
+            // On first pass after boot, always apply even if auto hasn't changed.
+            // This ensures orientation is correct regardless of prior cached state.
+            if (selectedAuto != null && (selectedAuto != lastSelectedAuto || !bootPreviewApplied)) {
               lastSelectedAuto = selectedAuto;
+              bootPreviewApplied = true;
               String autoName = selectedAuto.getName();
 
               Pose2d startingPose = poseEstimator
@@ -406,15 +417,21 @@ public class RobotContainer {
     lastAppliedPreviewPose = pose;
     lastAppliedPreviewName = autoName;
 
-    // Always reset gyro to 0 - CTRE field-centric uses (pigeon - perspective) as offset,
-    // so setting gyro to pose.getRotation() would double the offset and flip field-centric.
-    // WPILib pose estimator stores the heading difference internally.
-    gyro.setHeading(0.0);
+    // Seed the gyro to the auto start pose's field heading, then set perspective = allianceDownfield.
+    // CTRE field-centric: effectiveHeading = gyro - perspective, so forward = Red wall.
+    boolean isRedForPreview = cachedAlliance == Alliance.Red;
+    Rotation2d allianceDownfield = Rotation2d.fromDegrees(isRedForPreview ? 180.0 : 0.0);
+    Rotation2d poseHeading = pose.getRotation();
+    driveSubsystem.setGyroHeading(poseHeading);
+    driveSubsystem.setOperatorPerspectiveForward(allianceDownfield);
 
-    poseEstimator.resetPose(
-        pose,
-        driveSubsystem.getGyroRotation(),
-        driveSubsystem.getModulePositions());
+    poseEstimator.resetPose(pose, poseHeading, driveSubsystem.getModulePositions());
+
+    SmartLogger.logConsole(
+        "Preview orient: alliance=" + (isRedForPreview ? "Red" : "Blue")
+        + " | poseHeading=" + String.format("%.1f", poseHeading.getDegrees())
+        + " | perspective=" + String.format("%.1f", allianceDownfield.getDegrees()),
+        "Preview");
 
     if (questNavNeedsSeed(pose)) {
       questNav.seedToPose(pose);
@@ -459,7 +476,7 @@ public class RobotContainer {
     }
     if (inOpposingZone) {
       SmartLogger.logConsole("->SWEEP: Opposing zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
-      return new OpposingAllianceZoneSweepCommand(poseEstimator, driveSubsystem);
+      return new OpposingAllianceZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
     }
     SmartLogger.logConsole("->SWEEP: Neutral zone selected (x=" + String.format("%.2f", robotX) + ")", "Sweep");
     return new NeutralZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);

@@ -13,17 +13,9 @@ import frc.robot.subsystems.PoseEstimatorSubsystem;
 import org.littletonrobotics.junction.Logger;
 import frc.robot.util.SmartLogger;
 
-/**
- * SHOP/PRACTICE calibration tool - Sets robot's starting pose to known field position
- * 
- * Safety features:
- * - If FMS attached: Requires DISABLED (prevent mid-match cheating)
- * - If no FMS (practice): Allows seeding even while enabled (teleop calibration)
- * 
- * Use case: Manually place robot at known position (e.g., AprilTag), press START button
- * 
- * Match behavior: PoseInitializer handles automatic COMP_SEED - this command is rarely used
- */
+// Practice/shop calibration tool - manually seeds robot pose to a known field position.
+// If FMS is attached, only works while DISABLED. Without FMS, works anytime (teleop calibration).
+// Verifies via QuestNav after seeding; retries up to MAX_SEED_ATTEMPTS if not confirmed.
 public class SetStartingPoseCommand extends Command {
   private static final double CONFIRM_TOLERANCE_METERS = 0.15;
   private static final double CONFIRM_TOLERANCE_DEG = 5.0;
@@ -82,6 +74,7 @@ public class SetStartingPoseCommand extends Command {
     // The pose estimator stores the heading internally via WPILib's resetPosition offset.
     // Do NOT set gyro to targetPose.getRotation() - that would double the field-centric offset
     // because CTRE uses (pigeon - operatorPerspective) as the effective field angle.
+    // setOperatorPerspectiveForward is called at the end of execute() with the alliance downfield direction.
     gyro.setHeading(0.0);
     Rotation2d confirmedGyroAngle = drive.getGyroRotation();
     poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
@@ -156,13 +149,8 @@ public class SetStartingPoseCommand extends Command {
     }
     // Final verification log
     Pose2d actualPose = poseEstimator.getEstimatedPose();
-    SmartDashboard.putString("Actual Pose", formatPoseForDisplay(actualPose));
+    SmartDashboard.putString("Actual Pose", SmartLogger.formatPose(actualPose));
     Logger.recordOutput("ManualReset/ActualPose", actualPose);
     Logger.recordOutput("ManualReset/Success", confirmed);
-  }
-
-  private String formatPoseForDisplay(Pose2d pose) {
-    return String.format("X: %.2fm, Y: %.2fm, Θ: %.1f°",
-        pose.getX(), pose.getY(), pose.getRotation().getDegrees());
   }
 }

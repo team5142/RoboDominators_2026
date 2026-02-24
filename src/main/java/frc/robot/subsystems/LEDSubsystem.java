@@ -3,26 +3,12 @@ package frc.robot.subsystems;
 import edu.wpi.first.wpilibj.motorcontrol.Spark;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
-import frc.robot.RobotState;
 import frc.robot.util.SmartLogger;
 import java.util.Random;
 
-/**
- * LED subsystem for Blinkin controller
- * 
- * IMPORTANT LIMITATION:
- * - Blinkin is a PWM actuator
- * - PWM actuators are DISABLED by RoboRIO safety during disabled mode
- * - LED commands will ONLY work when robot is ENABLED (teleop/auto)
- * - Pre-match calibration LEDs are NOT POSSIBLE with this hardware
- * 
- * Future work:
- * - Consider CAN-based LED controller if disabled-mode operation is needed
- * - Or use indicator lights that aren't controlled by Blinkin
- */
+// Blinkin PWM LED controller. Note: PWM actuators are disabled by RoboRIO safety during robot-disabled
+// mode, so LED patterns only take effect when the robot is enabled (teleop/auto).
 public class LEDSubsystem extends SubsystemBase {
-  private final RobotState robotState;
-  private final TagVisionSubsystem tagVisionSubsystem;
   private final Spark blinkin;
   private final Random random = new Random();
   
@@ -41,9 +27,7 @@ public class LEDSubsystem extends SubsystemBase {
     }
   }
 
-  public LEDSubsystem(RobotState robotState, TagVisionSubsystem tagVisionSubsystem) {
-    this.robotState = robotState;
-    this.tagVisionSubsystem = tagVisionSubsystem;
+  public LEDSubsystem() {
     this.blinkin = new Spark(Constants.BLINKIN_PWM_PORT);
     
     // Configure for 12V strip mode

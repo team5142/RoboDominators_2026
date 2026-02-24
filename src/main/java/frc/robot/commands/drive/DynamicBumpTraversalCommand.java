@@ -6,6 +6,7 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.util.Units;
+import frc.robot.Constants;
 import frc.robot.RobotContainer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
@@ -16,8 +17,19 @@ import frc.robot.util.SmartLogger;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.WaitUntilCommand;
 
-// Prototype command for dynamic bump traversal.
-// Uses PathPlanner to reach a staging pose, cross the bump, and exit downfield.
+// TODO (next session with robot):
+// 1. Field geometry verified from 2026 AndyMark manual:
+//    - Field: 650.12 x 316.64 in (corrected from 691 in length)
+//    - Bump start X: ~159 in (code uses 160.0 in, <1 in off - OK)
+//    - Bump depth: 44.4 in (exact match)
+//    - Bump center Y: 98.36 in from side wall (code uses 99.0 in, 0.64 in off - OK)
+//    - Y layout (right to left): 49.86 trench + 12 base + 73 bump + 47 hub + 73 bump + 12 + 49.86
+//    - Bump peak angle: 15 deg, downhillPitchThreshold=5.0 deg should trigger reliably
+// 2. Verify staging entry heading (-45 deg) on the actual robot at the bump.
+
+// Drives the robot across the bump between alliance zones.
+// Uses a 3-pose plan: staging -> bump midpoint -> exit.
+// Gyro pitch detects when the robot crests the bump and switches to a softer descent profile.
 public class DynamicBumpTraversalCommand extends Command {
   public enum Side {
     LEFT,
@@ -92,28 +104,28 @@ public class DynamicBumpTraversalCommand extends Command {
 
   @Override
   public void initialize() {
-    Pose2d currentPose = poseEstimator.getEstimatedPose(); // Start from current robot pose.
-    TraversalPlan plan = buildTraversalPlan(currentPose, side, modifierRequested, config); // Compute staging and exit.
+    Pose2d currentPose = poseEstimator.getEstimatedPose();
+    TraversalPlan plan = buildTraversalPlan(currentPose, side, modifierRequested, config);
 
-  uphillSignCaptured = false;
-  uphillPitchSign = 1.0;
+    uphillSignCaptured = false;
+    uphillPitchSign = 1.0;
 
     double passThroughVelocity = 1.5;
     Command toStaging = AutoBuilder.pathfindToPose(
         plan.stagingPose,
         config.pathConstraints,
-        passThroughVelocity); // Drive to entry pose without stopping.
+        passThroughVelocity);
     Command toMid = AutoBuilder.pathfindToPose(
         plan.midPose,
         config.pathConstraints,
-        passThroughVelocity); // Cross the bump midpoint while moving.
-  Command waitForDownhill = new WaitUntilCommand(this::hasPitchFlipped);
-  Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.downhillConstraints); // Leave the bump safely.
+        passThroughVelocity);
+    Command waitForDownhill = new WaitUntilCommand(this::hasPitchFlipped);
+    Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.downhillConstraints);
 
-  activeCommand = new SequentialCommandGroup(
-    toStaging,
-    Commands.race(toMid, waitForDownhill),
-    toExit);
+    activeCommand = new SequentialCommandGroup(
+        toStaging,
+        Commands.race(toMid, waitForDownhill),
+        toExit);
     CommandScheduler.getInstance().schedule(activeCommand);
 
     SmartLogger.logReplay("BumpTraversal/Side", side.toString());
@@ -125,16 +137,16 @@ public class DynamicBumpTraversalCommand extends Command {
   @Override
   public void execute() {
     if (activeCommand != null && !activeCommand.isScheduled()) {
-      activeCommand = null; // Mark done when the sequence finishes.
+      activeCommand = null;
     }
   }
 
   @Override
   public void end(boolean interrupted) {
     if (activeCommand != null) {
-      activeCommand.cancel(); // Stop any active path.
+      activeCommand.cancel();
     }
-    driveSubsystem.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0)); // Stop the drivetrain.
+    driveSubsystem.driveRobotRelative(new ChassisSpeeds(0.0, 0.0, 0.0));
     SmartLogger.logReplay("BumpTraversal/Interrupted", interrupted);
   }
 
@@ -162,30 +174,30 @@ public class DynamicBumpTraversalCommand extends Command {
       BumpConfig config) {
     double fieldLength = config.fieldLengthMeters;
     double fieldWidth = config.fieldWidthMeters;
-  double allianceEndX = config.allianceZoneLengthMeters; // End of the near alliance zone.
-  double opposingStartX = fieldLength - config.allianceZoneLengthMeters; // Start of the far alliance zone.
+    double allianceEndX = config.allianceZoneLengthMeters;
+    double opposingStartX = fieldLength - config.allianceZoneLengthMeters;
 
     double neutralMinX = allianceEndX;
     double neutralMaxX = opposingStartX;
 
-  double bumpCenterY = (side == Side.LEFT)
-    ? (fieldWidth - config.bumpCenterOffsetMeters)
-    : config.bumpCenterOffsetMeters; // Pick left or right bump center.
+    double bumpCenterY = (side == Side.LEFT)
+        ? (fieldWidth - config.bumpCenterOffsetMeters)
+        : config.bumpCenterOffsetMeters;
 
-  boolean inAllianceZone = currentPose.getX() < neutralMinX; // Near side of the bump.
-  boolean inNeutralZone = currentPose.getX() >= neutralMinX && currentPose.getX() <= neutralMaxX; // Between zones.
+    boolean inAllianceZone = currentPose.getX() < neutralMinX;
+    boolean inNeutralZone = currentPose.getX() >= neutralMinX && currentPose.getX() <= neutralMaxX;
 
-  boolean goToOpposing = inNeutralZone && modifierRequested; // Modifier only works in neutral.
-  boolean travelTowardNeutral = inAllianceZone; // Default when starting in alliance zone.
-  boolean travelTowardOpposing = goToOpposing; // Only true with modifier.
+    boolean goToOpposing = inNeutralZone && modifierRequested;
+    boolean travelTowardNeutral = inAllianceZone;
+    boolean travelTowardOpposing = goToOpposing;
 
-  double bumpStartX = config.bumpStartXMeters; // Leading edge of the bump.
-  double bumpEndX = bumpStartX + config.bumpDepthMeters; // Far edge of the bump.
-  double bumpMidX = bumpStartX + (config.bumpDepthMeters / 2.0); // Midpoint used for rotation timing.
+    double bumpStartX = config.bumpStartXMeters;
+    double bumpEndX = bumpStartX + config.bumpDepthMeters;
+    double bumpMidX = bumpStartX + (config.bumpDepthMeters / 2.0);
 
-  double stagingOffset = config.stagingClearanceMeters
-    + config.robotHalfLengthMeters
-    + config.intakeExtensionMeters; // Keep the bumper and intake away from the bump.
+    double stagingOffset = config.stagingClearanceMeters
+        + config.robotHalfLengthMeters
+        + config.intakeExtensionMeters;
     double exitOffset = stagingOffset;
 
     double stagingX;
@@ -210,7 +222,7 @@ public class DynamicBumpTraversalCommand extends Command {
       exitHeading = Rotation2d.fromDegrees(180.0); // Face downfield for red.
     }
 
-  Rotation2d midHeading = stagingHeading; // Hold angle through the bump.
+    Rotation2d midHeading = stagingHeading;
     Pose2d stagingPose = new Pose2d(stagingX, bumpCenterY, stagingHeading);
     Pose2d midPose = new Pose2d(bumpMidX, bumpCenterY, midHeading);
     Pose2d exitPose = new Pose2d(exitX, bumpCenterY, exitHeading);
@@ -251,8 +263,8 @@ public class DynamicBumpTraversalCommand extends Command {
   }
 
   public static BumpConfig createPrototypeConfig() {
-  double fieldLengthMeters = 17.55; // Field length in meters.
-  double fieldWidthMeters = Units.inchesToMeters(316.64); // Field width in meters.
+  double fieldLengthMeters = Constants.Field.FIELD_LENGTH_METERS;
+  double fieldWidthMeters = Constants.Field.FIELD_WIDTH_METERS;
   double allianceZoneLengthMeters = Units.inchesToMeters(158.60); // Alliance zone depth.
   double bumpStartXMeters = Units.inchesToMeters(160.0); // Bump start from alliance wall.
   double bumpDepthMeters = Units.inchesToMeters(44.4); // Bump depth across X.

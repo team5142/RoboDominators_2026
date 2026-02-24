@@ -220,6 +220,7 @@ public class RobotState {
   public boolean getTurretHallRightRaw() { return turretHallRightRaw; }
 
   public void setTurretHoodAbsolutePositionRotations(double rotations) {
+    if (Math.abs(turretHoodAbsolutePositionRotations - rotations) < 0.0001) return;
     turretHoodAbsolutePositionRotations = rotations;
     SmartLogger.logReplay("RobotState/Turret/HoodAbsRot", rotations);
   }
@@ -227,6 +228,7 @@ public class RobotState {
   public double getTurretHoodAbsolutePositionRotations() { return turretHoodAbsolutePositionRotations; }
 
   public void setTurretRotationAbsolutePositionRotations(double rotations) {
+    if (Math.abs(turretRotationAbsolutePositionRotations - rotations) < 0.0001) return;
     turretRotationAbsolutePositionRotations = rotations;
     SmartLogger.logReplay("RobotState/Turret/RotationAbsRot", rotations);
   }
@@ -234,6 +236,7 @@ public class RobotState {
   public double getTurretRotationAbsolutePositionRotations() { return turretRotationAbsolutePositionRotations; }
 
   public void setTurretFlywheelPercent(double percent) {
+    if (Math.abs(turretFlywheelPercent - percent) < 0.001) return;
     turretFlywheelPercent = percent;
     SmartLogger.logReplay("RobotState/Turret/FlywheelPercent", percent);
   }
@@ -241,6 +244,7 @@ public class RobotState {
   public double getTurretFlywheelPercent() { return turretFlywheelPercent; }
 
   public void setTurretHoodPercent(double percent) {
+    if (Math.abs(turretHoodPercent - percent) < 0.001) return;
     turretHoodPercent = percent;
     SmartLogger.logReplay("RobotState/Turret/HoodPercent", percent);
   }
@@ -248,6 +252,7 @@ public class RobotState {
   public double getTurretHoodPercent() { return turretHoodPercent; }
 
   public void setTurretRotationPercent(double percent) {
+    if (Math.abs(turretRotationPercent - percent) < 0.001) return;
     turretRotationPercent = percent;
     SmartLogger.logReplay("RobotState/Turret/RotationPercent", percent);
   }
@@ -255,6 +260,7 @@ public class RobotState {
   public double getTurretRotationPercent() { return turretRotationPercent; }
 
   public void setTurretSingulatorPercent(double percent) {
+    if (Math.abs(turretSingulatorPercent - percent) < 0.001) return;
     turretSingulatorPercent = percent;
     SmartLogger.logReplay("RobotState/Turret/SingulatorPercent", percent);
   }
@@ -262,6 +268,7 @@ public class RobotState {
   public double getTurretSingulatorPercent() { return turretSingulatorPercent; }
 
   public void setIntakePercent(double percent) {
+    if (Math.abs(intakePercent - percent) < 0.001) return;
     intakePercent = percent;
     SmartLogger.logReplay("RobotState/Intake/Percent", percent);
   }
@@ -269,6 +276,7 @@ public class RobotState {
   public double getIntakePercent() { return intakePercent; }
 
   public void setIntakeExtensionPercent(double percent) {
+    if (Math.abs(intakeExtensionPercent - percent) < 0.001) return;
     intakeExtensionPercent = percent;
     SmartLogger.logReplay("RobotState/Intake/ExtensionPercent", percent);
   }
@@ -276,6 +284,7 @@ public class RobotState {
   public double getIntakeExtensionPercent() { return intakeExtensionPercent; }
 
   public void setClimberPullPercent(double percent) {
+    if (Math.abs(climberPullPercent - percent) < 0.001) return;
     climberPullPercent = percent;
     SmartLogger.logReplay("RobotState/Climber/PullPercent", percent);
   }
@@ -283,6 +292,7 @@ public class RobotState {
   public double getClimberPullPercent() { return climberPullPercent; }
 
   public void setClimberRotationPercent(double percent) {
+    if (Math.abs(climberRotationPercent - percent) < 0.001) return;
     climberRotationPercent = percent;
     SmartLogger.logReplay("RobotState/Climber/RotationPercent", percent);
   }

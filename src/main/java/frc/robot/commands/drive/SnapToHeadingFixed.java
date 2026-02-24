@@ -4,11 +4,8 @@ import static frc.robot.Constants.Swerve.*;
 
 import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.controller.ProfiledPIDController;
-import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.trajectory.TrapezoidProfile;
 import edu.wpi.first.wpilibj2.command.Command;
-import frc.robot.RobotState;
 import frc.robot.subsystems.DriveSubsystem;
 import java.util.function.DoubleSupplier;
 
@@ -18,21 +15,18 @@ import java.util.function.DoubleSupplier;
 // Bound to D-pad: Up=0°, Right=-90°, Down=180°, Left=90°
 public class SnapToHeadingFixed extends Command {
   private final DriveSubsystem driveSubsystem;
-  private final RobotState robotState;
-  private final DoubleSupplier xSupplier; // Forward/back from joystick
-  private final DoubleSupplier ySupplier; // Strafe from joystick
-  private final DoubleSupplier targetHeadingDegreesSupplier; // Target angle
+  private final DoubleSupplier xSupplier;
+  private final DoubleSupplier ySupplier;
+  private final DoubleSupplier targetHeadingDegreesSupplier;
 
-  private final ProfiledPIDController headingController; // PID with acceleration limits
+  private final ProfiledPIDController headingController;
 
   public SnapToHeadingFixed(
       DriveSubsystem driveSubsystem,
-      RobotState robotState,
       DoubleSupplier xSupplier,
       DoubleSupplier ySupplier,
       DoubleSupplier targetHeadingDegreesSupplier) {
     this.driveSubsystem = driveSubsystem;
-    this.robotState = robotState;
     this.xSupplier = xSupplier;
     this.ySupplier = ySupplier;
     this.targetHeadingDegreesSupplier = targetHeadingDegreesSupplier;
@@ -64,7 +58,6 @@ public class SnapToHeadingFixed extends Command {
     x = Math.copySign(x * x, x); // Square for finer control
     y = Math.copySign(y * y, y);
 
-    // Convert to m/s
     double xMetersPerSec = x * MAX_TRANSLATION_SPEED_MPS;
     double yMetersPerSec = y * MAX_TRANSLATION_SPEED_MPS;
 

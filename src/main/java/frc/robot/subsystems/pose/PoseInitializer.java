@@ -3,13 +3,13 @@ package frc.robot.subsystems.pose;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
-import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
+import frc.robot.Constants;
 import frc.robot.subsystems.QuestNavSubsystem;
 import frc.robot.util.SmartLogger;
 import org.littletonrobotics.junction.Logger;
@@ -52,8 +52,8 @@ public class PoseInitializer {
   private String cachedAutoName = null;
   private Pose2d cachedAutoStartPose = null;
 
-  private static final double FIELD_LENGTH_METERS = Units.feetToMeters(54.0);
-  private static final double FIELD_WIDTH_METERS = Units.feetToMeters(27.0);
+  private static final double FIELD_LENGTH_METERS = Constants.Field.FIELD_LENGTH_METERS;
+  private static final double FIELD_WIDTH_METERS = Constants.Field.FIELD_WIDTH_METERS;
   private static final double FIELD_MARGIN_METERS = 0.3;
   private static final double MAX_SANE_POSE_MAGNITUDE = 100.0; // Sanity check for unanchored poses
   
@@ -65,7 +65,14 @@ public class PoseInitializer {
   public void setAutoChooser(SendableChooser<Command> autoChooser) {
     this.autoChooser = autoChooser;
   }
-  
+
+  // Returns the currently selected auto command's name, or null if nothing is selected.
+  public String getSelectedAutoName() {
+    if (autoChooser == null) return null;
+    Command selected = autoChooser.getSelected();
+    return selected != null ? selected.getName() : null;
+  }
+
   public void updateReadiness() {
     Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
     boolean hasQuestNavPose = (questNavPose != null);

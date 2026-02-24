@@ -23,6 +23,68 @@ import org.littletonrobotics.junction.Logger;
 // briefly return a value >140 at teleop start; this is handled in computePhase().
 //
 // Call update() once per periodic loop (all modes).
+//
+// ============================================================
+// AUTOFIRE REGULATION STRATEGY (to implement when turret/singulator are ready)
+// ============================================================
+//
+// MECHANISM COUPLING RULES:
+//   - Flywheels (2x Kraken x60): always running at minimum shooting speed.
+//   - Singulator: the fire gate. Singulator ON = shooting. Singulator OFF = holding.
+//   - Spindexer: always coupled with singulator (feeds it). Turn both on together.
+//   - Intake: separate logic - do NOT couple intake to singulator state.
+//
+// FIRE DECISION TREE (evaluated in priority order, highest first):
+//
+//   Priority 1 - GLOBAL DISABLE FLAG
+//     If a "mechanism broken" sticky flag is set, singulator stays OFF regardless.
+//     This should be a persistent/sticky toggle (survives disable/enable cycles).
+//     Operator sets via dashboard or button. Implement as a boolean in RobotState.
+//     Example: robotState.setAutofireDisabled(true)
+//
+//   Priority 2 - ZONE
+//     Opponent zone:  NEVER fire. No hub target exists on that side.
+//     Neutral zone:   Fire only to PASS back to alliance zone (pass targets = mirrored
+//                     versions of hub scoring targets on the alliance side).
+//     Alliance zone:  Fire to SCORE into hub (normal shooting mode).
+//     Zone is determined from PoseEstimatorSubsystem.getEstimatedPose() vs field geometry.
+//
+//   Priority 3 - HUB ACTIVE
+//     In alliance zone:  only fire when isHubActive() == true.
+//     In neutral zone:   only pass when the NEXT active shift is coming up soon (see P4).
+//     In END_GAME both hubs are always active - always allow firing.
+//
+//   Priority 4 - STOP PASSING (neutral zone fill-up logic)
+//     If we are in the opponent's scoring period (hub inactive for us) AND we are in
+//     the neutral zone: STOP passing when the current inactive shift is ending soon.
+//     Goal: arrive at the alliance zone with a full hopper when our hub activates.
+//
+//     Stop-pass threshold: getSecondsUntilPhaseEnd() < TRANSIT_TO_ALLIANCE_SEC + PASS_STOP_BUFFER_SEC
+//       TRANSIT_TO_ALLIANCE_SEC: tunable - time to drive from neutral zone to alliance hub (est. 4-5s)
+//       PASS_STOP_BUFFER_SEC:    tunable - extra buffer to fill hopper before transit (est. 1-2s)
+//       Combined default estimate: ~6s before shift end, stop passing in neutral zone.
+//
+//     Example: shift ends at 105s, TRANSIT=4s, BUFFER=2s -> stop passing when matchTime < 111s.
+//     Use: !isHubActive() && inNeutralZone && getSecondsUntilPhaseEnd() < (TRANSIT + BUFFER)
+//
+//   Priority 5 - OPERATOR HOLD OVERRIDE
+//     Operator can suppress singulator at any time (e.g., jammed ball, physical issue).
+//     Decide with drive team: latching toggle (one press on, one press off) vs momentary hold.
+//     Recommend toggle for match use. Implement as a sticky boolean in RobotState.
+//
+// SUMMARY - pseudocode for AutofireController.shouldFire():
+//   if (robotState.isAutofireDisabled())       return false;  // P1: broken mechanism
+//   if (inOpponentZone())                      return false;  // P2: wrong zone
+//   if (robotState.isOperatorHoldActive())     return false;  // P5: driver override
+//   if (!isHubActive() && !inNeutralZone())    return false;  // P3: hub not active
+//   if (inNeutralZone() && stopPassingNow())   return false;  // P4: fill up before transit
+//   if (!isHubActive() && !isHubActiveIn(SPINUP_LEAD_SEC)) return false; // P3: not soon enough
+//   return true;
+//
+// PASSING TARGETS:
+//   Neutral zone pass targets are predefined field poses, mirrored by alliance (same
+//   infrastructure as hub scoring targets). The turret aims at these during neutral pass mode.
+// ============================================================
 public class MatchPhaseTracker {
 
   private static final double SPINUP_LEAD_SEC = 2.0;

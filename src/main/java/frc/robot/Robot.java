@@ -60,6 +60,7 @@ public class Robot extends LoggedRobot {
       } else {
         SmartLogger.logConsole("Limelight stream DISABLED (competition mode)", "Bandwidth Saving");
       }
+      setupQuestStream();
       
       elasticDashboard = new ElasticDashboard(
           robotState,
@@ -86,6 +87,21 @@ public class Robot extends LoggedRobot {
       SmartLogger.logConsole("Limelight stream: http://limelight-front.local:5800 (port 1181)");
     } catch (Exception e) {
       SmartLogger.logConsoleError("Failed to setup Limelight stream: " + e.getMessage());
+    }
+  }
+
+  // Setup QuestNav passthrough camera stream — available in both SHOP and COMP modes
+  private void setupQuestStream() {
+    try {
+      HttpCamera questCamera = new HttpCamera(
+          "QuestNav",
+          "http://10.51.42.200:5801/video",
+          HttpCamera.HttpCameraKind.kMJPGStreamer);
+      MjpegServer server = CameraServer.addServer("QuestNav Stream", 1182);
+      server.setSource(questCamera);
+      SmartLogger.logConsole("QuestNav stream: http://10.51.42.200:5801/video (port 1182)");
+    } catch (Exception e) {
+      SmartLogger.logConsoleError("Failed to setup QuestNav stream: " + e.getMessage());
     }
   }
 
@@ -190,13 +206,13 @@ public class Robot extends LoggedRobot {
       String autoName = autonomousCommand.getName();
       SmartLogger.logConsole("Running auto: " + autoName);
       Logger.recordOutput("Auto/SelectedName", autoName);
-      
+
       if (cachedBatteryVoltage < 10) {
         SmartLogger.logConsoleError("WARNING: Low battery for auto (" + cachedBatteryVoltage + "V)");
         DriverStation.reportWarning("Low battery for auto!", false);
       }
       
-      autonomousCommand.schedule();
+      CommandScheduler.getInstance().schedule(autonomousCommand);
       SmartLogger.logConsole("Auto command scheduled");
     } else {
       SmartLogger.logConsoleError("NO AUTO SELECTED!");
@@ -222,8 +238,13 @@ public class Robot extends LoggedRobot {
     robotState.setEnabled(true);
     robotState.setMode(RobotState.Mode.ENABLED_TELEOP);
     
+    robotContainer.poseEstimator.onTeleopInit();
+    
     Logger.recordOutput("Robot/Mode", "TELEOP");
-    SmartLogger.logConsole(">>> TELEOP started - driver has control");
+    double gyroYaw = robotContainer.driveSubsystem.getGyroRotation().getDegrees();
+    Logger.recordOutput("Transition/TeleopStartGyroYawDeg", gyroYaw);
+    Logger.recordOutput("Transition/TeleopStartPose", robotContainer.poseEstimator.getEstimatedPose());
+    SmartLogger.logConsole(">>> TELEOP started | gyro=" + String.format("%.1f", gyroYaw) + " deg | pose=" + SmartLogger.formatPose(robotContainer.poseEstimator.getEstimatedPose()));
   }
 
   @Override

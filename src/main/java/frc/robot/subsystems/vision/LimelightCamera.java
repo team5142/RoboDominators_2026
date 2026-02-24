@@ -4,7 +4,8 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.networktables.NetworkTable;
 import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.Timer; // ADD THIS
+import edu.wpi.first.wpilibj.Timer;
+import frc.robot.util.SmartLogger;
 import java.util.Optional;
 import java.util.List;
 
@@ -54,10 +55,6 @@ public class LimelightCamera implements VisionCamera {
       // Debug logging for alliance-specific pose selection
       org.littletonrobotics.junction.Logger.recordOutput(
           "Vision/" + name + "/Alliance", isBlue ? "Blue" : "Red");
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/BotposeKey", botposeKey);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/RawBotpose", botpose);
 
       // Extract pose from Limelight array [x, y, z, roll, pitch, yaw, latency]
       Pose2d pose = new Pose2d(
@@ -80,20 +77,17 @@ public class LimelightCamera implements VisionCamera {
       double currentTime = Timer.getFPGATimestamp();  // Current FPGA time
       double captureTimestamp = currentTime - latencySeconds;  // When photo was actually taken
       
-      int tagCount = (int) table.getEntry("tid").getDouble(0) > 0 ? 1 : 0; // Limelight only reports 1 tag at a time
-      double distance = Math.hypot(botpose[0], botpose[1]); // Rough distance estimate
+      int tagCount = (int) table.getEntry("tid").getDouble(0) > 0 ? 1 : 0;
+      // Limelight exposes primary tag distance via "ta" (target area) but not directly in meters.
+      // Use botpose distance from robot's perspective - not available easily, so leave as 0.
+      double distance = 0.0;
       
       // Get tag ID - Limelight reports one primary tag (tid = "target ID")
       int tagId = (int) table.getEntry("tid").getDouble(-1);
       List<Integer> tagIds = tagId > 0 ? java.util.List.of(tagId) : java.util.List.of();
 
-      // Debug logging for timestamp
       org.littletonrobotics.junction.Logger.recordOutput(
           "Vision/" + name + "/LatencyMs", latencyMs);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/CurrentTime", currentTime);
-      org.littletonrobotics.junction.Logger.recordOutput(
-          "Vision/" + name + "/CaptureTimestamp", captureTimestamp);
 
       connectionWarningShown = false; // Reset warning
       
@@ -103,7 +97,7 @@ public class LimelightCamera implements VisionCamera {
     } catch (Exception e) {
       // Limelight disconnected or NetworkTables error (network drop, camera reboot, etc.)
       if (!connectionWarningShown) {
-        System.err.println("[WARNING] Limelight '" + name + "' error: " + e.getMessage());
+        SmartLogger.logConsoleError("[Vision] Limelight '" + name + "' error: " + e.getMessage());
         connectionWarningShown = true;
       }
       org.littletonrobotics.junction.Logger.recordOutput(

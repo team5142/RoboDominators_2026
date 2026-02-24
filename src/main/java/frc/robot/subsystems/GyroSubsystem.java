@@ -8,27 +8,17 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import org.littletonrobotics.junction.Logger;
 
-/**
- * Gyro Subsystem - Pigeon2 IMU for robot heading
- * 
- * Provides:
- * - Yaw (rotation around vertical axis)
- * - Always-available heading (doesn't lose tracking like QuestNav)
- * - High update rate (200Hz+)
- * 
- * Note: QuestNav SLAM is now in QuestNavSubsystem (separate from gyro)
- */
+import frc.robot.util.SmartLogger;
+
+// Pigeon2 IMU for robot heading. Provides yaw/pitch/roll and always-available heading
+// (does not lose tracking like QuestNav during power cycles).
 public class GyroSubsystem extends SubsystemBase {
   private final Pigeon2 pigeon;
 
   public GyroSubsystem() {
-    System.out.println("=== GyroSubsystem Initialization ===");
-    
     pigeon = new Pigeon2(PIGEON_CAN_ID, CAN_BUS_NAME);
     pigeon.reset();
-    
-    System.out.println("Pigeon2 initialized on CAN ID: " + PIGEON_CAN_ID);
-    System.out.println("=====================================\n");
+    SmartLogger.logConsole("Pigeon2 initialized on CAN ID: " + PIGEON_CAN_ID, "Gyro");
   }
 
   @Override
@@ -43,9 +33,7 @@ public class GyroSubsystem extends SubsystemBase {
     Logger.recordOutput("Gyro/PigeonRollDegrees", getRollDegrees());
   }
 
-  /**
-   * Get current heading from Pigeon2
-   */
+  // Get current heading from Pigeon2.
   public Rotation2d getRotation() {
     return Rotation2d.fromDegrees(pigeon.getYaw().getValueAsDouble());
   }
@@ -58,26 +46,22 @@ public class GyroSubsystem extends SubsystemBase {
     return pigeon.getRoll().getValueAsDouble();
   }
 
-  /**
-   * Reset heading to zero
-   */
+  // Reset heading to zero. Logs to AKit and console.
   public void resetHeading() {
     pigeon.reset();
     
     if (DriverStation.isAutonomous()) {
       Logger.recordOutput("Gyro/HeadingReset/Auto", true);
-      System.out.println("Pigeon reset in AUTONOMOUS mode");
+      SmartLogger.logConsole("Pigeon reset in AUTONOMOUS mode", "Gyro");
     } else {
       Logger.recordOutput("Gyro/HeadingReset/Teleop", true);
-      System.out.println("Pigeon reset in TELEOP mode");
+      SmartLogger.logConsole("Pigeon reset in TELEOP mode", "Gyro");
     }
     
     Logger.recordOutput("Gyro/HeadingReset", true);
   }
 
-  /**
-   * Set heading to a specific angle
-   */
+  // Set heading to a specific angle in degrees.
   public void setHeading(double angleDegrees) {
     pigeon.setYaw(angleDegrees);
     Logger.recordOutput("Gyro/HeadingSet", angleDegrees);

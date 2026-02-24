@@ -36,7 +36,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     // Alliance perspective - defines "forward" direction for field-relative driving
     private static final Rotation2d kBlueAlliancePerspectiveRotation = Rotation2d.kZero; // Blue faces 0deg
     private static final Rotation2d kRedAlliancePerspectiveRotation = Rotation2d.k180deg; // Red faces 180deg
-    private boolean m_hasAppliedOperatorPerspective = false; // Track if perspective set
+    protected boolean m_hasAppliedOperatorPerspective = false; // Track if perspective set
 
     // SysId characterization requests - used to find motor PID/FF gains
     private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
@@ -150,7 +150,9 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     public void periodic() {
         // Apply alliance-specific field orientation (blue = 0deg, red = 180deg)
         // This ensures "forward" always points toward opponent alliance wall
-        if (!m_hasAppliedOperatorPerspective || DriverStation.isDisabled()) {
+        // Apply alliance perspective once at startup - do not reapply every loop.
+        // DriveSubsystem.setOperatorPerspectiveForward() handles updates when needed.
+        if (!m_hasAppliedOperatorPerspective) {
             DriverStation.getAlliance().ifPresent(allianceColor -> {
                 setOperatorPerspectiveForward(
                     allianceColor == Alliance.Red
@@ -176,13 +178,10 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         m_simNotifier.startPeriodic(kSimLoopPeriod);
     }
 
-    // OVERRIDE: Prevent CTRE's internal pose estimator from using vision
-    // Vision goes to OUR PoseEstimatorSubsystem instead!
+    // OVERRIDE: Prevent CTRE's internal pose estimator from using vision.
+    // Vision goes to PoseEstimatorSubsystem instead.
     @Override
     public void addVisionMeasurement(Pose2d visionRobotPoseMeters, double timestampSeconds) {
-        // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
-        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds)); // REMOVED!
-        
         // No-op - vision handled by PoseEstimatorSubsystem
     }
 
@@ -192,9 +191,6 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         double timestampSeconds,
         Matrix<N3, N1> visionMeasurementStdDevs
     ) {
-        // DON'T call super.addVisionMeasurement() - we handle vision ourselves!
-        // super.addVisionMeasurement(visionRobotPoseMeters, Utils.fpgaToCurrentTime(timestampSeconds), visionMeasurementStdDevs); // REMOVED!
-        
         // No-op - vision handled by PoseEstimatorSubsystem
     }
 }

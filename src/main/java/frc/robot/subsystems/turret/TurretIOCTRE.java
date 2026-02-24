@@ -1,5 +1,6 @@
 package frc.robot.subsystems.turret;
 
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
@@ -28,6 +29,17 @@ public class TurretIOCTRE implements TurretIO {
   public TurretIOCTRE() {
     flywheelFrontMotor = new TalonFX(Constants.Turret.FLYWHEEL_FRONT_MOTOR_ID);
     flywheelBackMotor = new TalonFX(Constants.Turret.FLYWHEEL_BACK_MOTOR_ID);
+
+    // Cap flywheel spinup current to reduce brownout risk when drive is also accelerating.
+    // 40A x 2 motors = 80A max flywheel draw. Raise to 60A if spinup feels too slow.
+    TalonFXConfiguration flywheelConfig = new TalonFXConfiguration();
+    flywheelConfig.CurrentLimits.StatorCurrentLimit = 40.0;
+    flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    // TODO (robot session): Add supply-side limit to protect breakers during long matches.
+    // flywheelConfig.CurrentLimits.SupplyCurrentLimit = 40.0;
+    // flywheelConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
+    flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
+    flywheelBackMotor.getConfigurator().apply(flywheelConfig);
     hoodMotor = new TalonFX(Constants.Turret.HOOD_MOTOR_ID);
     turretMotor = new TalonFX(Constants.Turret.TURRET_MOTOR_ID);
 

@@ -2,19 +2,10 @@ package frc.robot.subsystems;
 
 import static frc.robot.Constants.Vision.*;
 
-import edu.wpi.first.apriltag.AprilTagFieldLayout;
-import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.geometry.Pose2d;
-import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.math.geometry.Rotation3d;
-import edu.wpi.first.math.geometry.Transform3d;
-import edu.wpi.first.math.geometry.Translation3d;
-import edu.wpi.first.math.util.Units;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.vision.LimelightCamera;
-import frc.robot.subsystems.vision.PhotonVisionCamera;
 import frc.robot.subsystems.vision.VisionCamera;
 import frc.robot.subsystems.vision.VisionCamera.VisionResult;
 import frc.robot.util.SmartLogger;
@@ -30,30 +21,19 @@ public class TagVisionSubsystem extends SubsystemBase {
   private static final boolean LIMELIGHT_READ_DATA = true; // But still read data for calibration
   
   private final PoseEstimatorSubsystem poseEstimator;
-  private final GyroSubsystem gyroSubsystem;
-  private final AprilTagFieldLayout fieldLayout;
   private final List<VisionCamera> cameras;
 
   private boolean hasRecentPose = false;
   private boolean currentlyHasMultiTag = false;
   private boolean currentlyHasSingleTag = false;
-  private Pose2d latestLimelightPose = null; // NEW: Store for calibration
+  private Pose2d latestLimelightPose = null;
   private int logCounter = 0;
   private static final int LOG_SKIP_CYCLES = 9;
 
-  public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator, GyroSubsystem gyroSubsystem) {
+  public TagVisionSubsystem(PoseEstimatorSubsystem poseEstimator) {
     this.poseEstimator = poseEstimator;
-    this.gyroSubsystem = gyroSubsystem;
-
-    try {
-      fieldLayout = AprilTagFields.k2025ReefscapeAndyMark.loadAprilTagLayoutField();
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to load AprilTag field layout", e);
-    }
 
     cameras = new ArrayList<>();
-    
-    // Limelight 3 - Front camera (active when LIMELIGHT_ENABLED = true)
     cameras.add(new LimelightCamera(LL_FRONT_NAME, 0));
     
     // PhotonVision cameras (disabled - uncomment when new stable mounts installed)
@@ -81,7 +61,7 @@ public class TagVisionSubsystem extends SubsystemBase {
         fieldLayout));
     */
     
-    SmartLogger.logConsole("TagVisionSubsystem: Limelight only (PhotonVision disabled)");
+    SmartLogger.logConsole("TagVisionSubsystem: Limelight only (PhotonVision disabled)", "Vision");
   }
 
   @Override
@@ -144,11 +124,11 @@ public class TagVisionSubsystem extends SubsystemBase {
   }
 
   public boolean hasMultiTagDetection() {
-    return false; // Vision disabled
+    return currentlyHasMultiTag;
   }
   
   public boolean hasSingleTagDetection() {
-    return false; // Vision disabled
+    return currentlyHasSingleTag;
   }
 
   public boolean hasRecentTagPose() {

@@ -120,6 +120,11 @@ public final class Constants {
       config.Slot0.kV = DriveGains.kV;
       config.Slot0.kA = DriveGains.kA;
       config.ClosedLoopGeneral.ContinuousWrap = false;
+      // Limits peak torque current per drive motor to prevent battery voltage sag
+      // during hard acceleration. 4 motors x 60A = 240A max drive draw.
+      // Tune down to 40-50A if brownouts still occur at competition.
+      config.CurrentLimits.StatorCurrentLimit = 60.0;
+      config.CurrentLimits.StatorCurrentLimitEnable = true;
       return config;
     }
 
@@ -227,7 +232,9 @@ public final class Constants {
     // 1) VELOCITY GATING (enforce "stopped robot" requirement)
     // Reject fusion during motion to prevent fighting PathPlanner
     public static final double MAX_LINEAR_SPEED_FOR_FUSION_MPS = 1.8; // ~5 in/s
-    public static final double MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC = 1.5; // ~17 deg/s
+    // Raised from 1.5 -> 3.0 rad/s (~86->172 deg/s) to allow fusion during moderate turns.
+    // Revert to 1.5 if Quest causes estimator fighting during PathPlanner rotation.
+    public static final double MAX_ANGULAR_SPEED_FOR_FUSION_RAD_PER_SEC = 3.0; // ~172 deg/s
     
     // Stopped trust (HIGHEST trust when robot not moving - like stationary AprilTag)
     public static final double[] QUESTNAV_STD_DEVS_STOPPED = {0.02, 0.02, 0.03}; // 2cm XY, 1.7° theta
@@ -257,7 +264,9 @@ public final class Constants {
     
     // Teleport rejection (absolute backstops)
     public static final double TELEPORT_TRANSLATION_METERS = 0.6; // 60cm jump in one frame
-    public static final double TELEPORT_ROTATION_RADIANS = 0.9; // ~50° jump in one frame
+    // Raised from 0.9 -> 1.4 rad (~52->80 deg) to stop falsely flagging Quest during fast spins.
+    // Revert to 0.9 if teleport detection misses real tracking glitches.
+    public static final double TELEPORT_ROTATION_RADIANS = 1.4; // ~80° jump in one frame
 
   // Teleport gate option: only enforce when robot is moving fast
   public static final boolean TELEPORT_GATE_ONLY_WHEN_MOVING = true;
@@ -267,7 +276,9 @@ public final class Constants {
     
     // Divergence detection (Quest vs Odom comparison)
     public static final double DIVERGENCE_THRESHOLD_METERS = 0.20; // 20cm disagreement per cycle
-    public static final int DIVERGENCE_PATIENCE_CYCLES = 15; // 15 bad cycles = 300ms @ 50Hz
+    // Raised from 15 -> 25 cycles to avoid false DEGRADED transitions during fast turns.
+    // Revert to 15 if divergence detection feels too slow to catch real Quest drift.
+    public static final int DIVERGENCE_PATIENCE_CYCLES = 25; // 25 bad cycles = 500ms @ 50Hz
     public static final int DIVERGENCE_RECOVERY_CYCLES = 25; // 25 good cycles to recover
     public static final double DIVERGENCE_ANGULAR_WEIGHT = 0.3; // Convert rad to meters (30cm per radian)
     
@@ -283,9 +294,16 @@ public final class Constants {
     public static final double MIN_DT_FOR_IMPLIED_VELOCITY = 0.005; // 5ms minimum (avoid divide-by-zero)
     
     // Motion-aware trust scaling (replaces binary velocity gate for trust)
-    public static final double MOVING_TRUST_DEGRADATION_FACTOR = 1.5; // 1.5x std dev when moving fast
+    // Reduced from 1.5 -> 1.2 to reduce theta penalty during moderate rotation.
+    // Revert to 1.5 if Quest measurements feel too "sticky" when moving.
+    public static final double MOVING_TRUST_DEGRADATION_FACTOR = 1.2; // 1.2x std dev when moving fast
     public static final double DEGRADED_TRUST_FACTOR = 5.0; // 5x std dev when DEGRADED
     public static final double UNHEALTHY_TRUST_FACTOR = 50.0; // 50x std dev when UNHEALTHY (almost no influence)
+
+    // Recovery from UNHEALTHY: if Quest is self-stable while stopped, snap estimator back to Quest.
+    // Samples UNHEALTHY_RECOVERY_SAMPLES frames; if max variance < threshold, force-accept Quest pose.
+    public static final int UNHEALTHY_RECOVERY_SAMPLES = 10;   // ~200ms of samples at 50Hz
+    public static final double UNHEALTHY_RECOVERY_VARIANCE_METERS = 0.05; // Quest must be stable within 5cm
 
     // === INITIALIZATION MODE ===
     public enum InitMode {
@@ -427,7 +445,7 @@ public final class Constants {
 
   // Field constants used for fixed target mirroring
   public static final class Field {
-    public static final double FIELD_LENGTH_METERS = 16.540;
+    public static final double FIELD_LENGTH_METERS = Units.inchesToMeters(650.12); // 2026 AndyMark perimeter
     public static final double FIELD_WIDTH_METERS = Units.inchesToMeters(316.64);
     public static final double ALLIANCE_ZONE_LENGTH_METERS = Units.inchesToMeters(158.60);
   }
