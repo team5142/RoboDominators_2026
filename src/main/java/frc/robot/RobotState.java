@@ -3,8 +3,7 @@ package frc.robot;
 import frc.robot.util.MatchPhaseTracker;
 import frc.robot.util.SmartLogger;
 import edu.wpi.first.math.geometry.Pose2d;
-import java.util.LinkedList;
-import java.util.Queue;
+import edu.wpi.first.wpilibj.DriverStation;
 
 // Global robot state tracker - coordinates subsystem states and robot intents
 // Single source of truth for robot mode, navigation phase, and mechanism states (2026+)
@@ -21,7 +20,7 @@ public class RobotState {
   private boolean enabled = false;
   private boolean sysIdMode = false;
   private boolean operatorDriveLockout = false;
-  private edu.wpi.first.wpilibj.DriverStation.Alliance alliance = edu.wpi.first.wpilibj.DriverStation.Alliance.Blue;
+  private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
   // Match phase and hub active tracking
   private final MatchPhaseTracker matchPhaseTracker = new MatchPhaseTracker();
@@ -33,8 +32,6 @@ public class RobotState {
     // TODO 2026: Add INTAKE_FLOOR, SCORE_HIGH, CLIMB, etc.
   }
   private RobotIntent currentIntent = RobotIntent.IDLE;
-  @SuppressWarnings("unused")
-  private final Queue<RobotIntent> intentQueue = new LinkedList<>();
   
   // Navigation state (active - used by SmartDrive)
   public enum NavigationPhase {
@@ -87,6 +84,9 @@ public class RobotState {
   
   // PUBLIC API
   public void requestIntent(RobotIntent intent) {
+    if (currentIntent == intent) {
+      return;
+    }
     currentIntent = intent;
     SmartLogger.logReplay("RobotState/Intent", intent.toString());
   }
@@ -94,6 +94,9 @@ public class RobotState {
   public RobotIntent getCurrentIntent() { return currentIntent; }
   
   public void setNavigationPhase(NavigationPhase navPhase) {
+    if (this.navigationPhase == navPhase) {
+      return;
+    }
     this.navigationPhase = navPhase;
     SmartLogger.logReplay("RobotState/NavigationPhase", navPhase.toString());
   }
@@ -104,14 +107,16 @@ public class RobotState {
   public Pose2d getRobotPose() { return robotPose; }
   
   public void setMode(Mode mode) {
+    if (this.mode == mode) {
+      return;
+    }
     this.mode = mode;
     SmartLogger.logReplay("RobotState/Mode", mode.toString());
-    SmartLogger.logReplay("RobotState/Enabled", enabled);
   }
   
   public Mode getMode() { return mode; }
 
-  public void setAlliance(edu.wpi.first.wpilibj.DriverStation.Alliance alliance) {
+  public void setAlliance(DriverStation.Alliance alliance) {
     if (this.alliance == alliance) {
       return;
     }
@@ -119,7 +124,7 @@ public class RobotState {
     SmartLogger.logReplay("RobotState/Alliance", alliance.toString());
   }
 
-  public edu.wpi.first.wpilibj.DriverStation.Alliance getAlliance() { return alliance; }
+  public DriverStation.Alliance getAlliance() { return alliance; }
   
   public void setEnabled(boolean enabled) {
     this.enabled = enabled;
@@ -130,9 +135,7 @@ public class RobotState {
   
   public void setSysIdMode(boolean sysIdMode) {
     this.sysIdMode = sysIdMode;
-    if (sysIdMode) {
-      SmartLogger.logConsole("SysId mode enabled - vision updates disabled", "SysId Mode");
-    }
+    SmartLogger.logConsole("SysId mode " + (sysIdMode ? "enabled - vision updates disabled" : "disabled"), "SysId Mode");
   }
   
   public boolean isSysIdMode() { return sysIdMode; }

@@ -2,7 +2,6 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import org.littletonrobotics.junction.LoggedRobot;
@@ -126,7 +125,6 @@ public class Robot extends LoggedRobot {
     // Log battery and current
     Logger.recordOutput("Battery/Voltage", cachedBatteryVoltage);
     Logger.recordOutput("Battery/Current", RobotController.getInputCurrent());
-    SmartDashboard.putNumber("Robot/Battery", cachedBatteryVoltage);
 
     // Check brownout
     boolean brownedOut = RobotController.isBrownedOut();
@@ -184,9 +182,7 @@ public class Robot extends LoggedRobot {
   }
 
   @Override
-  public void disabledPeriodic() {
-    // Empty - no PWM actuators work in disabled mode
-  }
+  public void disabledPeriodic() {}
 
   @Override
   public void disabledExit() {}
@@ -242,9 +238,10 @@ public class Robot extends LoggedRobot {
     
     Logger.recordOutput("Robot/Mode", "TELEOP");
     double gyroYaw = robotContainer.driveSubsystem.getGyroRotation().getDegrees();
+    var teleopStartPose = robotContainer.poseEstimator.getEstimatedPose();
     Logger.recordOutput("Transition/TeleopStartGyroYawDeg", gyroYaw);
-    Logger.recordOutput("Transition/TeleopStartPose", robotContainer.poseEstimator.getEstimatedPose());
-    SmartLogger.logConsole(">>> TELEOP started | gyro=" + String.format("%.1f", gyroYaw) + " deg | pose=" + SmartLogger.formatPose(robotContainer.poseEstimator.getEstimatedPose()));
+    Logger.recordOutput("Transition/TeleopStartPose", teleopStartPose);
+    SmartLogger.logConsole(">>> TELEOP started | gyro=" + String.format("%.1f", gyroYaw) + " deg | pose=" + SmartLogger.formatPose(teleopStartPose));
   }
 
   @Override

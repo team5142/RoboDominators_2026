@@ -35,8 +35,8 @@ import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
 
 // Wires up robot hardware, controllers, and commands
+// To grab latest 10 logs and delete them: run .\scripts\storelogs.bat
 public class RobotContainer {
-  // COMMAND TO GRAB THE LATEST 10 LOGS and then DELETE THEM .\scripts\storelogs.bat
   // === CONFIGURATION ===
   public static final boolean COMPETITION_MODE = false; // Disable logs/streams for matches
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
@@ -49,11 +49,11 @@ public class RobotContainer {
   private static final double AUTO_SEED_ROT_TOL_DEG = 10.0;
 
   private static Alliance cachedAlliance = Alliance.Blue;
-  
-  // Hardware
+
+  // Driver Xbox controller on USB port defined in Constants
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
 
-  // Subsystems (declared first, initialized in constructor)
+  // Subsystems - order here matches initialization order in constructor
   final RobotState robotState;
   final GyroSubsystem gyro;
   final QuestNavSubsystem questNav;
@@ -65,13 +65,16 @@ public class RobotContainer {
   IntakeSubsystem intakeSubsystem;
   ClimberSubsystem climberSubsystem;
 
-  // Autonomous
+  // Autonomous chooser shown on dashboard; selection drives pose preview and auto init
   private final SendableChooser<Command> autoChooser;
   private Command lastSelectedAuto = null; // Track selection for preview updates
 
+  // Preview thread writes these; main thread reads them via applyPendingAutoPreviewPose()
+  // volatile ensures changes are visible across threads without synchronization
   private volatile Pose2d pendingAutoPreviewPose = null;
   private volatile String pendingAutoPreviewName = null;
 
+  // Last values written to the robot - used to skip redundant resets
   private Pose2d lastAppliedPreviewPose = null;
   private String lastAppliedPreviewName = null;
 
@@ -81,10 +84,13 @@ public class RobotContainer {
   private boolean bootPreviewApplied = false;
 
   private TouchscreenInterface touchscreen;
+  private int periodicCounter = 0;
 
   // === CONSTRUCTOR - Runs once at robot boot ===
   public RobotContainer(RobotState robotState) {
     this.robotState = robotState;
+
+    SmartLogger.configure(ENABLE_CONSOLE_LOGGING); // Configure first so all init logs work
 
     gyro = new GyroSubsystem();
     questNav = new QuestNavSubsystem();
@@ -106,20 +112,17 @@ public class RobotContainer {
       SmartLogger.logConsole("Climber disabled until hardware is ready", "Startup");
     }
 
-    SmartLogger.configure(ENABLE_CONSOLE_LOGGING);
-
     updateAllianceFromDriverStation();
-    this.robotState.setAlliance(cachedAlliance);
-    
+    this.robotState.setAlliance(cachedAlliance); // Must be set before PathPlanner config
+
     if (COMPETITION_MODE) {
       SmartLogger.logReplay("Robot/CompetitionMode", true);
     }
-    
-    poseEstimator.setTagVisionSubsystem(tagVisionSubsystem);
-    SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav);
-    
+
+    poseEstimator.setTagVisionSubsystem(tagVisionSubsystem); // Cross-wire vision into pose estimator
+    SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav); // Static config for SmartDrive commands
+
     configurePathPlanner();
-    registerSmartDriveEvents(); // Register PathPlanner event markers
     configureDefaultCommands();
     configureButtonBindings();
     
@@ -127,16 +130,19 @@ public class RobotContainer {
       configureTouchscreenInterface();
     }
     
-    autoChooser = AutoBuilder.buildAutoChooser();
-    SmartDashboard.putData("Auto Chooser", autoChooser);
+    autoChooser = AutoBuilder.buildAutoChooser(); // Scans deploy/pathplanner/autos/ for named autos
+    SmartDashboard.putData("Auto Chooser", autoChooser); // Sends chooser widget to dashboard
     robotState.setSysIdMode(SYSID_MODE);
-    poseEstimator.setAutoChooser(autoChooser);
-    startAutoPreviewMonitor();
+    poseEstimator.setAutoChooser(autoChooser); // Lets pose estimator read auto start poses
+    startAutoPreviewMonitor(); // Background thread: watches chooser and queues pose previews
     
     SmartLogger.logConsole("RobotContainer initialized - all subsystems ready", "Init Complete", 5);
   }
 
   // Configure PathPlanner auto builder
+  // Connects PathPlanner to this robot's drive system.
+  // feedforwards are intentionally ignored - we use odometry-only closed-loop control.
+  // Translation/rotation PID constants are tuned in Constants.java.
   private void configurePathPlanner() {
     try {
       RobotConfig config = RobotConfig.fromGUISettings();
@@ -145,7 +151,7 @@ public class RobotContainer {
           poseEstimator::getEstimatedPose,
           this::resetPose,
           driveSubsystem::getRobotRelativeSpeeds,
-          (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds),
+          (speeds, feedforwards) -> driveSubsystem.driveRobotRelative(speeds), // feedforwards unused
           new PPHolonomicDriveController(
               new PIDConstants(
           TRANSLATION_KP,
@@ -231,46 +237,6 @@ public class RobotContainer {
 
     // ========== END NORMAL OPERATION BUTTONS ==========
 
-    // ========== SYSID CHARACTERIZATION BUTTONS (COMMENT OUT FOR NORMAL OPERATION) ==========
-    /*
-    // IMPORTANT: Before running SysId tests:
-    // 1. Comment out normal operation buttons above
-    // 2. For STEER tests: set STEER_FEEDBACK_TYPE = RemoteCANcoder in Constants.java
-    // 3. Start SignalLogger with left bumper, stop with right bumper
-    // 4. Run all 4 tests in one session: quasistatic fwd/rev, dynamic fwd/rev
-
-    // SIGNAL LOGGER CONTROL
-    new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
-        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.start()));
-    new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
-        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.stop()));
-
-    // TRANSLATION TESTS (drive motors)
-    new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-
-    // STEER TESTS (module steering motors) - set STEER_FEEDBACK_TYPE = RemoteCANcoder before running!
-    // POV UP: Quasistatic Forward
-    new Trigger(() -> driverController.getPOV() == 0)
-        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    // POV DOWN: Quasistatic Reverse
-    new Trigger(() -> driverController.getPOV() == 180)
-        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    // POV RIGHT: Dynamic Forward
-    new Trigger(() -> driverController.getPOV() == 90)
-        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    // POV LEFT: Dynamic Reverse
-    new Trigger(() -> driverController.getPOV() == 270)
-        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    */
-    // ========== END SYSID BUTTONS ==========
-
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
     // new Trigger(() ->
     //     Math.abs(driverController.getLeftX()) > 0.10
@@ -281,11 +247,14 @@ public class RobotContainer {
     //         touchscreen.cancelActiveOperatorDrive();
     //       }
     //     }));
+
+    // To run SysId: comment out normal buttons above and uncomment configureSysIdBindings() below
+    // configureSysIdBindings();
   }
 
   // HTML touchscreen interface
   private void configureTouchscreenInterface() {
-    touchscreen = new TouchscreenInterface(robotState, driveSubsystem, poseEstimator, gyro, questNav);
+    touchscreen = new TouchscreenInterface(robotState, driveSubsystem, poseEstimator, questNav);
     touchscreen.configure();
   }
 
@@ -326,12 +295,12 @@ public class RobotContainer {
 
   // Mirror red alliance paths
   private boolean shouldFlipPath() {
-    Alliance alliance = getAlliance();
-    boolean isRed = isRedAlliance();
-    SmartLogger.logConsole("Alliance: " + alliance + " | Flipping: " + isRed, "Path Flip");
-    return isRed;
+    return isRedAlliance();
   }
 
+  // Runs at 2Hz as a daemon thread while disabled.
+  // Writes pendingAutoPreviewPose/Name (volatile) when the selected auto changes.
+  // The main thread reads them in periodic() via applyPendingAutoPreviewPose().
   private void startAutoPreviewMonitor() {
     Thread previewThread = new Thread(() -> {
       while (previewThreadRunning && !Thread.currentThread().isInterrupted()) {
@@ -366,25 +335,28 @@ public class RobotContainer {
       SmartLogger.logConsole("[Auto Preview] Thread stopped cleanly");
     });
 
-    previewThread.setDaemon(true);  // CRITICAL: Thread dies when robot code exits
+    previewThread.setDaemon(true); // Daemon thread - dies automatically when robot code exits
     previewThread.setName("AutoPreview");
     previewThread.start();
   }
 
   public void periodic() {
+    periodicCounter++;
     updateAllianceFromDriverStation();
     robotState.setAlliance(cachedAlliance);
     if (DriverStation.isDisabled()) {
       applyPendingAutoPreviewPose();
     }
 
-    // Publish slow-changing fields every loop so the dashboard always has current values
-    SmartDashboard.putBoolean("Robot/IsRedAlliance", cachedAlliance == Alliance.Red);
-    SmartDashboard.putNumber("Robot/StationNumber", DriverStation.getLocation().orElse(1));
-    // Read the chooser's active option name from SmartDashboard - getSelected().getName() returns
-    // the Java class name, not the auto name, so we read the NT entry directly
-    String activeAuto = SmartDashboard.getString("Auto Chooser/active", "None");
-    SmartDashboard.putString("Robot/AutoSelected", activeAuto);
+    // Publish slow-changing fields at 10Hz - alliance/station/auto don't change every loop
+    if (periodicCounter % 5 == 0) {
+      SmartDashboard.putBoolean("Robot/IsRedAlliance", cachedAlliance == Alliance.Red);
+      SmartDashboard.putNumber("Robot/StationNumber", DriverStation.getLocation().orElse(1));
+      // Read the chooser's active option name from SmartDashboard - getSelected().getName() returns
+      // the Java class name, not the auto name, so we read the NT entry directly
+      String activeAuto = SmartDashboard.getString("Auto Chooser/active", "None");
+      SmartDashboard.putString("Robot/AutoSelected", activeAuto);
+    }
   }
 
   public static Alliance getAlliance() {
@@ -399,6 +371,8 @@ public class RobotContainer {
     cachedAlliance = DriverStation.getAlliance().orElse(Alliance.Blue);
   }
 
+  // Called from periodic() (main thread) to apply a pose queued by the preview thread.
+  // Uses volatile reads - no locks needed because Pose2d is immutable.
   private void applyPendingAutoPreviewPose() {
     Pose2d pose = pendingAutoPreviewPose;
     String autoName = pendingAutoPreviewName;
@@ -441,6 +415,8 @@ public class RobotContainer {
     SmartLogger.logReplay("Auto/PreviewPose", pose);
   }
 
+  // Returns true if QuestNav's current pose is far enough from desiredPose to need re-seeding.
+  // Tolerances are defined in Constants to avoid seeding on minor drift.
   private boolean questNavNeedsSeed(Pose2d desiredPose) {
     if (!questNav.isTracking()) {
       return false;
@@ -482,6 +458,8 @@ public class RobotContainer {
     return new NeutralZoneSweepSimplifiedCommand(poseEstimator, driveSubsystem);
   }
 
+  // modifier=false means no modifier button is currently pressed.
+  // Future: pass a button trigger here to enable the modified traversal variant.
   private Command createBumpTraversalCommand(DynamicBumpTraversalCommand.Side side) {
     boolean modifier = false; // no modifier active
     return new DynamicBumpTraversalCommand(
@@ -499,10 +477,36 @@ public class RobotContainer {
     return COMPETITION_MODE ? RED_REBUILT_RIGHT_CORNER : RED_PRACTICE_SEED;
   }
 
-  // Register SmartDrive as PathPlanner events
-  private void registerSmartDriveEvents() {
-   // NamedCommands.registerCommand("SmartPrecision:Tag12", 
-        //SmartDriveToPosition.createPrecisionPhase(PRECISE_12_POSE));
-  
+  // SysId characterization bindings - swap in for normal buttons when characterizing.
+  // Before running: comment out configureButtonBindings() normal buttons and call this instead.
+  // For STEER tests: set STEER_FEEDBACK_TYPE = RemoteCANcoder in Constants.java first.
+  // Run all 4 tests (quasistatic fwd/rev, dynamic fwd/rev) in one session.
+  @SuppressWarnings("unused")
+  private void configureSysIdBindings() {
+    // Left/Right bumper: start/stop SignalLogger
+    new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
+        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.start()));
+    new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
+        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.stop()));
+
+    // Y/A/B/X: translation tests (drive motors)
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new JoystickButton(driverController, XboxController.Button.kA.value)
+        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    new JoystickButton(driverController, XboxController.Button.kB.value)
+        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+
+    // D-Pad: steer tests (module steering motors)
+    new Trigger(() -> driverController.getPOV() == 0)
+        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new Trigger(() -> driverController.getPOV() == 180)
+        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    new Trigger(() -> driverController.getPOV() == 90)
+        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+    new Trigger(() -> driverController.getPOV() == 270)
+        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
   }
 }

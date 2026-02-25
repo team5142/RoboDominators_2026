@@ -68,7 +68,11 @@ public class PhotonVisionCamera implements VisionCamera {
   @Override
   public Optional<VisionResult> getLatestResult() {
     try {
-      latestResult = camera.getLatestResult();
+      List<PhotonPipelineResult> unread = camera.getAllUnreadResults();
+      if (unread.isEmpty()) {
+        return Optional.empty();
+      }
+      latestResult = unread.get(unread.size() - 1); // Use the newest frame
       
       if (!latestResult.hasTargets()) {
         connectionWarningShown = false; // Reset warning when camera recovers

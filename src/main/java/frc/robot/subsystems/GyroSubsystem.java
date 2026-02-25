@@ -2,6 +2,7 @@ package frc.robot.subsystems;
 
 import static frc.robot.Constants.Swerve.*;
 
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.Pigeon2;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -16,7 +17,7 @@ public class GyroSubsystem extends SubsystemBase {
   private final Pigeon2 pigeon;
 
   public GyroSubsystem() {
-    pigeon = new Pigeon2(PIGEON_CAN_ID, CAN_BUS_NAME);
+    pigeon = new Pigeon2(PIGEON_CAN_ID, new CANBus(CAN_BUS_NAME));
     pigeon.reset();
     SmartLogger.logConsole("Pigeon2 initialized on CAN ID: " + PIGEON_CAN_ID, "Gyro");
   }

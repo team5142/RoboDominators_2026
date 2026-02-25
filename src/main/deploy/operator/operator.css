@@ -13,7 +13,6 @@ body {
     padding: 0;
 }
 
-/* Add a wrapper to enforce exact dimensions */
 #interface-wrapper {
     width: 1024px;
     height: 600px;
@@ -22,7 +21,7 @@ body {
     background: var(--bg-black);
 }
 
-/* Status Bar (Top) */
+/* ---- Status bar ---- */
 .status-bar {
     position: absolute;
     top: 0;
@@ -33,7 +32,7 @@ body {
     border-bottom: 2px solid var(--border-gray);
     display: flex;
     gap: 20px;
-    padding: 0 20px;
+    padding: 0 20px 0 60px;
     align-items: center;
     z-index: 100;
 }
@@ -46,8 +45,8 @@ body {
 }
 
 .status-light {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
     background: var(--status-error);
     border: 2px solid var(--border-gray);
@@ -56,240 +55,135 @@ body {
 
 .status-light.connected {
     background: var(--status-ok);
-    box-shadow: 0 0 10px var(--status-ok);
+    box-shadow: 0 0 8px var(--status-ok);
 }
 
-/* Field Container */
+.alliance-badge {
+    margin-left: auto;
+    padding: 2px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+}
+
+.alliance-badge.blue {
+    background: #0044cc;
+    color: #fff;
+}
+
+.alliance-badge.red {
+    background: #cc2200;
+    color: #fff;
+}
+
+/* ---- Field image panel ---- */
 .field-container {
     position: absolute;
     top: 40px;
     left: 0;
-    width: 682px;
-    height: 510px;
-    background: var(--bg-black);
+    width: 852px;
+    height: 492px;
+    overflow: hidden;
     border-right: 2px solid var(--border-gray);
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    padding-left: 100px;
-}
-
-/* Reef Container */
-.reef {
-    position: relative;
-    width: 254px;
-    height: 254px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: transparent !important;
-    border: none !important;
-    clip-path: none !important;
-}
-
-/* Center blocker */
-.reef-center-blocker {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80px;
-    height: 80px;
-    background: transparent;
-    pointer-events: auto;
-    z-index: 10;
-    cursor: default;
-}
-
-/* Reef face - Triangular VISUAL ONLY (not clickable) */
-.reef-face {
-    position: absolute;
-    width: 0;
-    height: 0;
-    border-left: 73px solid transparent;
-    border-right: 73px solid transparent;
-    border-bottom: 127px solid var(--card-bg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 32px;
-    font-weight: bold;
-    color: var(--algae);
-    cursor: default;
-    transition: all 0.3s ease; /* Smooth fade out like other buttons */
+    cursor: crosshair;
     user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    transform-origin: center;
+}
+
+/* When a set-mode is active, show a pulsing border */
+.field-container.selecting {
+    box-shadow: inset 0 0 0 3px var(--algae);
+    animation: select-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes select-pulse {
+    0%, 100% { box-shadow: inset 0 0 0 3px var(--algae); }
+    50%       { box-shadow: inset 0 0 0 3px #fff; }
+}
+
+.field-image {
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
     pointer-events: none;
-}
-
-/* Text inside triangles */
-.reef-face::after {
-    content: attr(data-tag);
-    position: absolute;
-    top: 43px;
-    left: 0;
-    transform: translateX(-50%);
-}
-
-/* Position triangular faces */
-#reef-21 {
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%) rotate(180deg);
-    border-bottom-color: var(--card-bg);
-    z-index: 6;
-}
-
-#reef-22 {
-    top: 33px;
-    left: calc(50% + 55px);
-    transform: translateX(-50%) rotate(240deg);
-    border-bottom-color: var(--card-bg);
-    z-index: 5;
-}
-
-#reef-17 {
-    top: 94px;
-    left: calc(50% + 55px);
-    transform: translateX(-50%) rotate(300deg);
-    border-bottom-color: var(--card-bg);
-    z-index: 4;
-}
-
-#reef-18 {
-    top: 127px;
-    left: 50%;
-    transform: translateX(-50%) rotate(0deg);
-    border-bottom-color: var(--card-bg);
-    z-index: 3;
-}
-
-#reef-19 {
-    top: 94px;
-    left: calc(50% - 55px);
-    transform: translateX(-50%) rotate(60deg);
-    border-bottom-color: rgba(13, 13, 13, 0.3);
-    opacity: 0.3;
-    pointer-events: none;
-    z-index: 2;
-}
-
-#reef-20 {
-    top: 33px;
-    left: calc(50% - 55px);
-    transform: translateX(-50%) rotate(120deg);
-    border-bottom-color: rgba(13, 13, 13, 0.3);
-    opacity: 0.3;
-    pointer-events: none;
-    z-index: 1;
-}
-
-/* Active/pressed state - SAME AS PROCESSOR/CORAL STATION */
-.reef-face.active {
-    filter: brightness(1.5) drop-shadow(0 0 20px var(--algae)); /* Same glow as other buttons */
-    transform: scale(1.05); /* Same scale as other buttons */
-}
-
-/* Center hexagon outline */
-.reef::after {
-    content: '⬡';
-    position: absolute;
-    font-size: 180px;
-    color: var(--border-gray);
-    opacity: 0.08;
-    z-index: -1;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-}
-
-/* Processor */
-.processor {
-    position: absolute;
-    top: 80px;
-    right: 30px;
-    width: 180px;
-    height: 110px;
-    background: rgba(13, 13, 13, 0.95);
-    border: 4px solid var(--algae);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    font-weight: bold;
-    color: var(--algae);
-    text-align: center;
-    line-height: 1.3;
-    padding: 10px;
-    z-index: 10;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    user-select: none;
     -webkit-tap-highlight-color: transparent;
 }
 
-.processor:active {
-    transform: scale(0.95);
+/* ---- Markers overlaid on field image ---- */
+/* All markers are positioned absolute inside .field-container */
+
+/* Pending dot - shown after click, before confirm */
+.pending-dot {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid #000;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 20;
+    box-shadow: 0 0 8px rgba(255,255,255,0.8);
+    animation: dot-pulse 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes dot-pulse {
+    from { transform: translate(-50%, -50%) scale(1.0); }
+    to   { transform: translate(-50%, -50%) scale(1.3); }
+}
+
+/* Confirmed target markers */
+.target-marker {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 15;
+    border: 3px solid #000;
+}
+
+.marker-left {
     background: var(--algae);
-    color: var(--bg-black);
-    box-shadow: 0 0 20px var(--algae);
+    color: #000;
 }
 
-/* Coral Station */
-.coral-station {
-    position: absolute;
-    bottom: 80px;
-    right: 30px;
-    width: 180px;
-    height: 110px;
-    background: rgba(13, 13, 13, 0.95);
-    border: 4px solid var(--coral);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 15px;
-    font-weight: bold;
-    color: var(--coral);
-    text-align: center;
-    line-height: 1.3;
-    padding: 10px;
-    z-index: 10;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-}
-
-.coral-station:active {
-    transform: scale(0.95);
+.marker-right {
     background: var(--coral);
-    color: var(--bg-black);
-    box-shadow: 0 0 20px var(--coral);
+    color: #000;
 }
 
-/* Action Buttons */
+/* ---- Action buttons panel ---- */
 .action-container {
     position: absolute;
     top: 40px;
     right: 0;
-    width: 342px;
-    height: 510px;
+    width: 172px;
+    height: 492px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: space-around;
-    padding: 30px 15px;
+    padding: 20px 15px;
+    gap: 8px;
 }
 
 .action-button {
-    width: 180px;
-    height: 110px;
+    width: 152px;
+    height: 72px;
     background: var(--card-bg);
-    border: 5px solid var(--border-gray);
+    border: 4px solid var(--border-gray);
     color: var(--text-white);
-    font-size: 18px;
+    font-size: 15px;
     font-weight: bold;
     font-family: 'Courier New', monospace;
     text-align: center;
@@ -298,33 +192,38 @@ body {
     transition: all 0.15s ease;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    border-radius: 4px;
 }
 
-.action-button.primary {
+/* SET buttons - green accent */
+.set-btn {
     border-color: var(--algae);
     color: var(--algae);
 }
 
-.action-button.primary:active {
-    transform: scale(0.95);
+.set-btn:active,
+.set-btn.active {
     background: var(--algae);
     color: var(--bg-black);
-    box-shadow: 0 0 30px var(--algae);
+    box-shadow: 0 0 20px var(--algae);
+    transform: scale(0.97);
 }
 
-.action-button.secondary {
-    border-color: var(--coral);
-    color: var(--coral);
+/* RESET buttons - muted */
+.reset-btn {
+    border-color: var(--border-gray);
+    color: var(--text-white);
+    height: 52px;
+    font-size: 13px;
 }
 
-.action-button.secondary:active {
-    transform: scale(0.95);
-    background: var(--coral);
+.reset-btn:active {
+    background: var(--border-gray);
     color: var(--bg-black);
-    box-shadow: 0 0 30px var(--coral);
+    transform: scale(0.97);
 }
 
-/* Message Box */
+/* ---- Message box ---- */
 .message-box {
     position: absolute;
     bottom: 0;
@@ -336,129 +235,57 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 15px;
     font-weight: bold;
     color: var(--algae);
     text-align: center;
     padding: 0 20px;
+    font-family: 'Courier New', monospace;
 }
 
-/* Fullscreen Toggle Button */
+/* ---- Fullscreen toggle ---- */
 .fullscreen-toggle {
     position: absolute;
-    top: 40px;
+    top: 0;
     left: 0;
-    bottom: auto;
-    right: auto;
     width: 50px;
-    height: 50px;
+    height: 40px;
     background: var(--card-bg);
-    border: 2px solid var(--border-gray);
-    border-top: none;
-    border-left: none;
+    border: none;
+    border-right: 2px solid var(--border-gray);
+    border-bottom: 2px solid var(--border-gray);
     color: var(--text-white);
-    font-size: 24px;
+    font-size: 18px;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.fullscreen-toggle:hover {
-    background: var(--border-gray);
-    color: var(--algae);
+    z-index: 200;
 }
 
 .fullscreen-toggle:active {
     transform: scale(0.9);
+    background: var(--border-gray);
 }
 
-/* Pulsing animation for active commands */
-@keyframes command-pulse {
-    0%, 100% {
-        border-color: inherit;
-    }
-    50% {
-        border-color: var(--text-white);
-        box-shadow: 0 0 20px var(--algae);
-    }
-}
+/* ---- Calibration overlays (set display:none to hide once tuned) ---- */
 
-.field-element.active,
-.action-button.active {
-    animation: command-pulse 1s ease-in-out infinite;
-
-}
-/* =================================================================== */
-/* REEF CLICK ZONES - Circular hit areas (temporarily visible)         */
-/* =================================================================== */
-.reef-click-layer {
+/* Red outline = full clickable region defined by FIELD_IMG_* constants */
+.debug-field-bounds {
     position: absolute;
-    width: 254px;
-    height: 254px;
-    z-index: 12; /* Above triangles */
-    pointer-events: none; /* Only children clickable */
-}
-
-.reef-click-zone {
-    position: absolute;
-    width: 70px;
-    height: 70px;
-    border-radius: 50%;
-    background: transparent; /* CHANGED from rgba(255, 51, 51, 0.2) - now invisible */
-    border: none; /* CHANGED from 2px solid rgba(255, 51, 51, 0.5) - no border */
-    cursor: pointer;
-    pointer-events: auto;
-    transition: all 0.15s ease;
-    z-index: 1;
-}
-
-.reef-click-zone.disabled {
     pointer-events: none;
-    opacity: 0.3;
+    z-index: 30;
+    border: 3px solid rgba(255, 40, 40, 0.9);
+    box-sizing: border-box;
 }
 
-/* Visual feedback on press - NO visual feedback on circle itself */
-.reef-click-zone:active {
-    background: transparent; /* CHANGED - no circle highlight */
-    box-shadow: none; /* CHANGED - no glow */
-    transform: none; /* CHANGED - no scale */
+/* Yellow outline = safety-padded region where targets are actually placed */
+.debug-safe-bounds {
+    position: absolute;
+    pointer-events: none;
+    z-index: 30;
+    border: 2px dashed rgba(255, 220, 0, 0.9);
+    box-sizing: border-box;
 }
 
-/* Position click zones - PUSHED OUTWARD from center by ~10px */
-#click-21 {
-    top: 0px; /* MOVED UP from 10px (pushed even further toward top edge) */
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-#click-22 {
-    top: 45px;
-    left: calc(50% + 85px);
-    transform: translateX(-50%);
-}
-
-#click-17 {
-    top: 135px;
-    left: calc(50% + 85px);
-    transform: translateX(-50%);
-}
-
-#click-18 {
-    top: 180px; /* MOVED DOWN from 170px (pushed even further toward bottom edge) */
-    left: 50%;
-    transform: translateX(-50%);
-}
-
-#click-19 {
-    top: 135px;
-    left: calc(50% - 85px);
-    transform: translateX(-50%);
-}
-
-#click-20 {
-    top: 45px;
-    left: calc(50% - 85px);
-    transform: translateX(-50%);
-}

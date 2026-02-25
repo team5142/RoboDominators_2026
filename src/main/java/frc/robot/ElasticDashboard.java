@@ -70,6 +70,7 @@ public class ElasticDashboard {
   // Tracks how long the robot has been enabled (used when no FMS match time)
   private final Timer enabledTimer = new Timer();
   private boolean wasEnabled = false;
+  private int updateCounter = 0; // Used to throttle slow-changing fields to 10Hz
   
   public ElasticDashboard(
       RobotState robotState,
@@ -86,14 +87,6 @@ public class ElasticDashboard {
     
     // Create Elastic-specific table
     this.elasticTable = NetworkTableInstance.getDefault().getTable("Elastic");
-    
-    // Publish camera stream URLs (use mDNS hostname)
-    NetworkTable cameraTable = elasticTable.getSubTable("Cameras");
-    cameraTable.getEntry("Limelight/URL").setString("http://limelight-front.local:5800");
-    cameraTable.getEntry("Limelight/Name").setString("Limelight Front");
-    cameraTable.getEntry("Limelight/FPS").setInteger(30);
-    
-    SmartLogger.logConsole("Elastic Dashboard initialized - stream: http://limelight-front.local:5800");
 
     statusTable = elasticTable.getSubTable("Status");
     poseTable = elasticTable.getSubTable("Pose");
@@ -102,10 +95,15 @@ public class ElasticDashboard {
     driveTable = elasticTable.getSubTable("Drive");
     phaseTable = elasticTable.getSubTable("Phase");
 
-    // Publish QuestNav passthrough camera URL for Elastic Camera Stream widget
-    NetworkTable cameraTable2 = elasticTable.getSubTable("Cameras");
-    cameraTable2.getEntry("QuestNav/URL").setString("http://10.51.42.200:5801/video");
-    cameraTable2.getEntry("QuestNav/Name").setString("QuestNav Camera");
+    // Publish camera stream URLs once at startup (used by Elastic Camera Stream widgets)
+    NetworkTable cameraTable = elasticTable.getSubTable("Cameras");
+    cameraTable.getEntry("Limelight/URL").setString("http://limelight-front.local:5800");
+    cameraTable.getEntry("Limelight/Name").setString("Limelight Front");
+    cameraTable.getEntry("Limelight/FPS").setInteger(30);
+    cameraTable.getEntry("QuestNav/URL").setString("http://10.51.42.200:5801/video");
+    cameraTable.getEntry("QuestNav/Name").setString("QuestNav Camera");
+
+    SmartLogger.logConsole("Elastic Dashboard initialized", "Elastic");
 
     statusMode = statusTable.getEntry("Mode");
     statusEnabled = statusTable.getEntry("Enabled");
@@ -144,57 +142,57 @@ public class ElasticDashboard {
   
   // Update dashboard - call from Robot.robotPeriodic()
   public void update(double batteryVoltage) {
-    // Switch Elastic tab based on match phase
+    updateCounter++;
+
+    // Switch Elastic tab based on match phase (only write when it changes)
     String tab = computeTabName();
     if (!tab.equals(lastSelectedTab)) {
       selectedTab.setString(tab);
       lastSelectedTab = tab;
     }
 
-    // Robot status
-    statusMode.setString(robotState.getMode().toString());
-    statusEnabled.setBoolean(robotState.isEnabled());
     // Track enabled timer - reset on enable, stop on disable
     boolean enabled = robotState.isEnabled();
     if (enabled && !wasEnabled) enabledTimer.restart();
     else if (!enabled && wasEnabled) enabledTimer.stop();
     wasEnabled = enabled;
-    // Use DS match time when FMS is connected, else count up elapsed enabled time
-    double dsTime = DriverStation.getMatchTime();
-    statusMatchTime.setDouble(round(dsTime >= 0 ? dsTime : enabledTimer.get(), 1));
-    statusBatteryVoltage.setDouble(round(batteryVoltage, 2));
-    statusHubActive.setBoolean(robotState.isHubActive());
-    
-    // Pose estimation
+
+    // Status fields change slowly - publish at 10Hz (every 5 loops at 50Hz)
+    if (updateCounter % 5 == 0) {
+      statusMode.setString(robotState.getMode().toString());
+      statusEnabled.setBoolean(enabled);
+      double dsTime = DriverStation.getMatchTime();
+      statusMatchTime.setDouble(round(dsTime >= 0 ? dsTime : enabledTimer.get(), 1));
+      statusBatteryVoltage.setDouble(round(batteryVoltage, 2));
+      statusHubActive.setBoolean(robotState.isHubActive());
+      questConnected.setBoolean(questNav.isConnected());
+      questTracking.setBoolean(questNav.isTracking());
+      questBattery.setInteger(questNav.getBatteryPercent());
+      visionActiveCameras.setInteger(tagVision.getActiveCameraCount());
+      visionTotalCameras.setInteger(tagVision.getCameraCount());
+      visionHasPose.setBoolean(tagVision.hasRecentTagPose());
+      poseInitialized.setBoolean(poseEstimator.isInitialized());
+    }
+
+    // Pose, QuestNav position, and drive velocity change every loop - publish at full rate
     var pose = poseEstimator.getEstimatedPose();
     poseX.setDouble(round(pose.getX(), 2));
     poseY.setDouble(round(pose.getY(), 2));
     poseRotation.setDouble(round(pose.getRotation().getDegrees(), 1));
-    poseInitialized.setBoolean(poseEstimator.isInitialized());
-    
-    // QuestNav
-    questConnected.setBoolean(questNav.isConnected());
-    questTracking.setBoolean(questNav.isTracking());
-    questBattery.setInteger(questNav.getBatteryPercent());
-    
+
     questNav.getRobotPose().ifPresent(qPose -> {
       questX.setDouble(round(qPose.getX(), 2));
       questY.setDouble(round(qPose.getY(), 2));
       questRotation.setDouble(round(qPose.getRotation().getDegrees(), 1));
     });
-    
-    // Vision
-    visionActiveCameras.setInteger(tagVision.getActiveCameraCount());
-    visionTotalCameras.setInteger(tagVision.getCameraCount());
-    visionHasPose.setBoolean(tagVision.hasRecentTagPose());
-    
-    // Drive
+
+    // Drive velocity changes every loop
     var speeds = drive.getRobotRelativeSpeeds();
     driveVx.setDouble(round(speeds.vxMetersPerSecond, 2));
     driveVy.setDouble(round(speeds.vyMetersPerSecond, 2));
     driveOmega.setDouble(round(speeds.omegaRadiansPerSecond, 2));
 
-    // Shift phase detail for Teleop tab
+    // Shift phase detail for Teleop tab (countdown needs per-loop resolution)
     double secsUntilNext = robotState.getSecondsUntilPhaseEnd();
     phaseName.setString(robotState.getPhaseName());
     phaseHubStatus.setString(robotState.isHubActive() ? "ACTIVE" : "INACTIVE");

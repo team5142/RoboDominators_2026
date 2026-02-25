@@ -30,14 +30,16 @@ public class SmartLogger {
   
   public static void logConsole(String message, String sectionHeader, int equalsCount) {
     if (!s_consoleEnabled) return;
-    
-    String separator = "=".repeat(equalsCount) + " " + sectionHeader + " " + "=".repeat(equalsCount);
-    System.out.println(separator);
+    // Use chars array fill to avoid String.repeat() allocation on every call
+    char[] dashes = new char[equalsCount];
+    java.util.Arrays.fill(dashes, '=');
+    String eq = new String(dashes);
+    System.out.println(eq + " " + sectionHeader + " " + eq);
     System.out.println(message);
   }
   
   public static void logConsoleError(String message) {
-    if (s_consoleEnabled) System.err.println(message);
+    System.err.println(message); // Always print errors regardless of s_consoleEnabled
   }
   
   // Replay logging (ALWAYS logs to AdvantageKit - no flag check!)

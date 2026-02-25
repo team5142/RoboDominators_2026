@@ -61,7 +61,9 @@ public class LogSpaceMonitor {
         DriverStation.reportWarning(
             "WARNING: LOGS FULL - CLEAR OLD LOG FILES FROM ROBORIO", false);
       }
-      // Transition back to OK is silent
+      if (newState == DiskState.OK) {
+        SmartLogger.logConsole("Disk space recovered - logging healthy", "LogSpace");
+      }
       s_lastState = newState;
     }
 

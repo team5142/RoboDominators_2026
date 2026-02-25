@@ -12,6 +12,7 @@ import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.RobotState;
+import frc.robot.util.SmartLogger;
 import frc.robot.subsystems.vision.ObjectDetection;
 import frc.robot.subsystems.vision.ObjectDetection.ObjectType;
 import java.util.ArrayList;
@@ -46,19 +47,23 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     // Set pipeline to "FCalibratedTag" (pipeline 0 by default)
     camera.setPipelineIndex(0);  // Assumes "FCalibratedTag" is pipeline 0
     
-    System.out.println("ObjectVisionSubsystem initialized:");
-    System.out.println("  - Camera: " + OBJ_CAMERA_NAME);
-    System.out.println("  - Pipeline: FCalibratedTag");
-    System.out.println("  - FOV: " + OBJ_CAMERA_FOV_DEG + "°");
+    SmartLogger.logConsole("ObjectVisionSubsystem initialized - Camera: " + OBJ_CAMERA_NAME
+        + " Pipeline: FCalibratedTag FOV: " + OBJ_CAMERA_FOV_DEG + "deg", "ObjectVision");
   }
 
   @Override
   public void periodic() {
     try {
-      PhotonPipelineResult result = camera.getLatestResult();
-      
       detectedObjects.clear();
       closestTarget = Optional.empty();
+
+      List<PhotonPipelineResult> unread = camera.getAllUnreadResults();
+      if (unread.isEmpty()) {
+        Logger.recordOutput("ObjectVision/HasTargets", false);
+        Logger.recordOutput("ObjectVision/TargetCount", 0);
+        return;
+      }
+      PhotonPipelineResult result = unread.get(unread.size() - 1); // Use the newest frame
 
       if (!result.hasTargets()) {
         Logger.recordOutput("ObjectVision/HasTargets", false);
@@ -108,7 +113,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     } catch (Exception e) {
       // Camera disconnected or communication error
       if (!connectionWarningShown) {
-        System.err.println("[WARNING] Object detection camera error: " + e.getMessage());
+        SmartLogger.logConsoleError("Object detection camera error: " + e.getMessage());
         connectionWarningShown = true;
       }
       Logger.recordOutput("ObjectVision/ConnectionError", e.getMessage());
@@ -157,7 +162,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     double robotRelativeX = distance * yawFromCamera.getCos() + OBJ_CAMERA_X_METERS;
     double robotRelativeY = distance * yawFromCamera.getSin() + OBJ_CAMERA_Y_METERS;
     
-    // CRITICAL FIX: Check magnitude BEFORE creating any Rotation2d objects
+    // Check magnitude before creating Rotation2d - avoids undefined angle at robot center
     double magnitude = Math.hypot(robotRelativeX, robotRelativeY);
     
     if (magnitude < 0.01) { // Less than 1cm - too close to robot center
@@ -171,8 +176,7 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     Transform2d robotToTarget = new Transform2d(robotRelativePosition, new Rotation2d());
     Translation2d fieldPosition = robotPose.transformBy(robotToTarget).getTranslation();
 
-    // Calculate robot-relative angle for driver assistance
-    // NOW safe to create Rotation2d because we already checked magnitude > 0.01
+    // Magnitude already verified > 0.01 above, so Rotation2d(x, y) is safe here
     Rotation2d angleToTarget = new Rotation2d(robotRelativeX, robotRelativeY);
 
     return Optional.of(new ObjectDetection(
@@ -210,23 +214,17 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     }
   }
 
-  /**
-   * Get all detected objects in field coordinates
-   */
+  // Returns all detected objects in field coordinates
   public List<ObjectDetection> getDetectedObjects() {
     return new ArrayList<>(detectedObjects);
   }
 
-  /**
-   * Get the closest target (any type) in field coordinates
-   */
+  // Returns the closest detected target of any type
   public Optional<ObjectDetection> getClosestTarget() {
     return closestTarget;
   }
 
-  /**
-   * Get the closest target of a specific type in field coordinates
-   */
+  // Returns the closest detected target of the given type
   public Optional<ObjectDetection> getClosestTargetOfType(ObjectType type) {
     Pose2d robotPose = robotState.getRobotPose();
     return detectedObjects.stream()
@@ -246,16 +244,12 @@ public class ObjectVisionSubsystem extends SubsystemBase {
     return detectedObjects.stream().anyMatch(obj -> obj.getType() == type);
   }
 
-  /**
-   * Get field-relative Translation2d to the closest target
-   */
+  // Returns field-relative position of the closest target
   public Optional<Translation2d> getClosestTargetPosition() {
     return closestTarget.map(ObjectDetection::getPosition);
   }
 
-  /**
-   * Get robot-relative angle to closest target (for driver feedback)
-   */
+  // Returns robot-relative angle to the closest target (for driver feedback)
   public Optional<Rotation2d> getAngleToClosestTarget() {
     return closestTarget.map(ObjectDetection::getAngleToTarget);
   }

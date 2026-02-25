@@ -14,7 +14,6 @@ import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.RobotState;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.subsystems.DriveSubsystem;
-import frc.robot.subsystems.GyroSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.subsystems.QuestNavSubsystem;
 import java.util.EnumSet;
@@ -23,10 +22,9 @@ import java.util.Map;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
-import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import java.util.concurrent.Executors;
 
 // Touchscreen operator interface - subscribes to NetworkTables commands from HTML dashboard
@@ -62,7 +60,6 @@ public class TouchscreenInterface {
       RobotState robotState,
       DriveSubsystem driveSubsystem,
       PoseEstimatorSubsystem poseEstimator,
-      GyroSubsystem gyro,
       QuestNavSubsystem questNav) {
 
     this.robotState = robotState;
@@ -72,8 +69,6 @@ public class TouchscreenInterface {
   }
 
   public void configure() {
-
-
     // Keep existing boolean listeners for AdvantageScope/Shuffleboard compatibility
     NetworkTable opTable = ntInst.getTable("OperatorInterface");
     NetworkTable driveTable = opTable.getSubTable("DriveToPosition");
@@ -92,7 +87,7 @@ public class TouchscreenInterface {
           event -> onDriveTopicEvent(key, event));
     });
 
-    // NEW: Subscribe to HTML client command topic
+    // Subscribe to HTML client command topic
     NetworkTable operatorUiTable = ntInst.getTable("OperatorUI");
     StringTopic commandTopic = operatorUiTable.getStringTopic("Command");
     
@@ -101,7 +96,7 @@ public class TouchscreenInterface {
         EnumSet.of(NetworkTableEvent.Kind.kValueAll),
         event -> onHtmlCommandEvent(event));
 
-    // NEW: HTTP server for HTML commands
+    // HTTP server for HTML commands
     try {
       httpServer = HttpServer.create(new InetSocketAddress(5805), 0);
       httpServer.createContext("/command", this::handleHttpCommand);
@@ -226,8 +221,9 @@ public class TouchscreenInterface {
     if (activeOperatorDrive != null) {
       activeOperatorDrive.cancel();
       activeOperatorDrive = null;
+      robotState.setOperatorDriveLockout(false);
+      SmartLogger.logConsole("[Touchscreen] Driver override - canceled operator SmartDrive");
     }
     robotState.setOperatorDriveLockout(false);
-    SmartLogger.logConsole("[Touchscreen] Driver override - canceled operator SmartDrive");
   }
 }

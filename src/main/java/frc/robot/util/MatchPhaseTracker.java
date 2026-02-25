@@ -2,7 +2,6 @@ package frc.robot.util;
 
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
-import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import java.util.Optional;
 import org.littletonrobotics.junction.Logger;
 
@@ -462,10 +461,6 @@ public class MatchPhaseTracker {
     Logger.recordOutput("MatchPhase/HubActive", hubActive);
     Logger.recordOutput("MatchPhase/MatchTime", matchTime);
     Logger.recordOutput("MatchPhase/GameDataReceived", gameDataReceived);
-    SmartDashboard.putString("MatchPhase/Phase", currentPhase.toString());
-    SmartDashboard.putBoolean("MatchPhase/HubActive", hubActive);
-    SmartDashboard.putBoolean("MatchPhase/GameDataReceived", gameDataReceived);
-    SmartDashboard.putBoolean("MatchPhase/RedInactiveFirst", redInactiveFirst);
-    SmartDashboard.putNumber("MatchPhase/MatchTime", matchTime);
+    Logger.recordOutput("MatchPhase/RedInactiveFirst", redInactiveFirst);
   }
 }
