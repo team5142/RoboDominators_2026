@@ -109,7 +109,7 @@ public class RobotContainer {
     driveSubsystem = new DriveSubsystem(this.robotState, gyro);
     poseEstimator = new PoseEstimatorSubsystem(driveSubsystem, this.robotState, questNav);
     tagVisionSubsystem = new TagVisionSubsystem(poseEstimator);
-    ledSubsystem = new LEDSubsystem();
+    ledSubsystem = new LEDSubsystem(this.robotState);
     turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
     intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
     climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
