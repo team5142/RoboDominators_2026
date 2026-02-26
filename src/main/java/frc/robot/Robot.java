@@ -176,7 +176,14 @@ public class Robot extends LoggedRobot {
     matchActive = false;
     robotState.setEnabled(false);
     robotState.setMode(RobotState.Mode.DISABLED);
-    
+
+    // Explicitly stop all mechanism motors on disable (WPILib stops outputs automatically
+    // but this ensures our state tracking stays consistent with actual motor state).
+    if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
+    if (robotContainer.climberSubsystem    != null) robotContainer.climberSubsystem.stopAll();
+    if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
+    if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
+
     Logger.recordOutput("Robot/Mode", "DISABLED");
     SmartLogger.logConsole("Robot DISABLED");
   }

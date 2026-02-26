@@ -28,7 +28,7 @@ public class PhotonVisionCamera implements VisionCamera {
       String cameraName,
       String pipelineName, // Pipeline name in PhotonVision UI (e.g. "RLCalibratedAT")
       Transform3d robotToCamera, // Camera position/orientation relative to robot center
-      AprilTagFieldLayout fieldLayout) { // Official 2025 field tag locations
+      AprilTagFieldLayout fieldLayout) { // Field AprilTag layout for pose estimation
     this.name = cameraName;
     this.camera = new PhotonCamera(cameraName);
     

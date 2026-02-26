@@ -4,14 +4,13 @@ import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
 
 // Container for detected game pieces - used by ObjectVisionSubsystem (object detection camera)
-// Stores field-relative position of coral/algae for autonomous game piece pickup
-// Currently set up for 2025 Reefscape - update ObjectType enum for 2026 game
+// Stores field-relative position of game pieces for autonomous pickup
+// Update ObjectType enum once the 2026 NN pipeline is trained
 public class ObjectDetection {
-  // Game piece types - add 2026 game pieces here when game is revealed
+  // Game piece types - update once 2026 neural net pipeline is defined
   public enum ObjectType {
-    CORAL,    // 2025: Orange coral game piece
-    ALGAE,    // 2025: Green algae game piece
-    UNKNOWN   // Unrecognized/low confidence detection
+    GAME_PIECE, // Primary game piece (update name when 2026 game piece is named)
+    UNKNOWN     // Unrecognized/low confidence detection
   }
 
   private final ObjectType type; // What kind of game piece

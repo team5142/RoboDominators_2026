@@ -189,15 +189,12 @@ public class ObjectVisionSubsystem extends SubsystemBase {
   }
 
   private ObjectType classifyTarget(PhotonTrackedTarget target) {
-    // PhotonVision class IDs from neural network
-    // Class 0 = Coral, Class 1 = Algae (update based on your pipeline)
+    // PhotonVision class IDs from neural network (update class IDs when 2026 pipeline is trained)
     int classId = target.getFiducialId();  // Using getFiducialId as proxy for classId
     
     switch (classId) {
       case 0:
-        return ObjectType.CORAL;
-      case 1:
-        return ObjectType.ALGAE;
+        return ObjectType.GAME_PIECE;
       default:
         return ObjectType.UNKNOWN;
     }
@@ -205,10 +202,8 @@ public class ObjectVisionSubsystem extends SubsystemBase {
 
   private double getTargetHeight(ObjectType type) {
     switch (type) {
-      case CORAL:
-        return CORAL_HEIGHT_METERS;
-      case ALGAE:
-        return ALGAE_HEIGHT_METERS;
+      case GAME_PIECE:
+        return GAME_PIECE_HEIGHT_METERS;
       default:
         return 0.1; // Default small height
     }

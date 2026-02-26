@@ -5,8 +5,9 @@ package frc.robot.subsystems.turret;
 // Lower values (e.g. 0.3) give slower but safer response for first spin.
 public class TurretSetpointGenerator {
   // Scale factor: rotations of error * kP = percent output. Tune on robot.
-  private static final double TURRET_KP = 1.0;
-  private static final double HOOD_KP   = 1.0;
+  // Very conservative first-spin values - increase once direction + limits confirmed.
+  private static final double TURRET_KP = 0.15;
+  private static final double HOOD_KP   = 0.15;
 
   public void update(TurretState state, TurretAimGoal goal, TurretSetpoints setpoints) {
     if (!goal.enable) {

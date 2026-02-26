@@ -45,6 +45,8 @@ public class RobotContainer {
   private static final boolean ENABLE_TURRET = false;
   private static final boolean ENABLE_INTAKE = false;
   private static final boolean ENABLE_CLIMBER = false;
+  private static final boolean ENABLE_SPINDEXER = false;
+  private static final boolean ENABLE_SINGULATOR = false;
   private static final double AUTO_SEED_POS_TOL_METERS = 0.20;
   private static final double AUTO_SEED_ROT_TOL_DEG = 10.0;
 
@@ -52,6 +54,14 @@ public class RobotContainer {
 
   // Driver Xbox controller on USB port defined in Constants
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
+  // Operator Xbox controller on the next USB slot (port 1)
+  // Suppress unused warning - field is used when operator binding sections are uncommented
+  @SuppressWarnings("unused")
+  private final XboxController operatorController = new XboxController(Constants.OPERATOR_CONTROLLER_PORT);
+
+  // Flywheel warm-up toggle state (operator A button) - used when flywheel section is uncommented
+  @SuppressWarnings("unused")
+  private boolean flywheelOn = false;
 
   // Subsystems - order here matches initialization order in constructor
   final RobotState robotState;
@@ -64,6 +74,8 @@ public class RobotContainer {
   TurretSubsystem turretSubsystem;
   IntakeSubsystem intakeSubsystem;
   ClimberSubsystem climberSubsystem;
+  SpindexerSubsystem spindexerSubsystem;
+  SingulatorSubsystem singulatorSubsystem;
 
   // Autonomous chooser shown on dashboard; selection drives pose preview and auto init
   private final SendableChooser<Command> autoChooser;
@@ -101,6 +113,8 @@ public class RobotContainer {
     turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
     intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
     climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
+    spindexerSubsystem = ENABLE_SPINDEXER ? new SpindexerSubsystem(this.robotState) : null;
+    singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem(this.robotState) : null;
 
     if (!ENABLE_TURRET) {
       SmartLogger.logConsole("Turret disabled until hardware is ready", "Startup");
@@ -110,6 +124,12 @@ public class RobotContainer {
     }
     if (!ENABLE_CLIMBER) {
       SmartLogger.logConsole("Climber disabled until hardware is ready", "Startup");
+    }
+    if (!ENABLE_SPINDEXER) {
+      SmartLogger.logConsole("Spindexer disabled until hardware is ready", "Startup");
+    }
+    if (!ENABLE_SINGULATOR) {
+      SmartLogger.logConsole("Singulator disabled until hardware is ready", "Startup");
     }
 
     updateAllianceFromDriverStation();
@@ -236,6 +256,144 @@ public class RobotContainer {
         .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.RIGHT)));
 
     // ========== END NORMAL OPERATION BUTTONS ==========
+
+    // ========== OPERATOR CONTROLLER BINDINGS ==========
+    // Uncomment each section only after completing the corresponding commissioning checklist.
+    // Each section is independently gated - you can enable intake without enabling turret, etc.
+
+    // --- INTAKE (uncomment after IntakeSubsystem commissioning checklist is complete) ---
+    // Set ENABLE_INTAKE = true before uncommenting.
+    /*
+    // Y: toggle extend/retract
+    new JoystickButton(operatorController, XboxController.Button.kY.value)
+        .onTrue(Commands.runOnce(() -> {
+          if (intakeSubsystem == null) return;
+          if (intakeSubsystem.isExtended()) {
+            intakeSubsystem.retract();
+          } else {
+            intakeSubsystem.extend();
+          }
+        }));
+    // X (hold): spin rollers inward - only works when arm is fully extended
+    new JoystickButton(operatorController, XboxController.Button.kX.value)
+        .whileTrue(Commands.startEnd(
+          () -> { if (intakeSubsystem != null && intakeSubsystem.isExtended()) intakeSubsystem.spinIn(); },
+          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
+    // B (hold): spin rollers outward (eject) - only works when arm is fully extended
+    new JoystickButton(operatorController, XboxController.Button.kB.value)
+        .whileTrue(Commands.startEnd(
+          () -> { if (intakeSubsystem != null && intakeSubsystem.isExtended()) intakeSubsystem.spinOut(); },
+          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
+    */ // --- END INTAKE ---
+
+    // --- SINGULATOR (uncomment after SingulatorSubsystem commissioning checklist is complete) ---
+    // Set ENABLE_SINGULATOR = true before uncommenting.
+    /*
+    // Right trigger (hold): feed; release: pause
+    new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
+        .whileTrue(Commands.startEnd(
+          () -> { if (singulatorSubsystem != null) singulatorSubsystem.spinFeed(); },
+          () -> { if (singulatorSubsystem != null) singulatorSubsystem.pause(); }));
+    */ // --- END SINGULATOR ---
+
+    // --- SPINDEXER (uncomment after SpindexerSubsystem commissioning checklist is complete) ---
+    // Set ENABLE_SPINDEXER = true before uncommenting.
+    /*
+    // Start: toggle spindexer on (forward) / off
+    new JoystickButton(operatorController, XboxController.Button.kStart.value)
+        .onTrue(Commands.runOnce(() -> {
+          if (spindexerSubsystem == null) return;
+          if (robotState.getSpindexerState() == RobotState.SpindexerState.STOPPED) {
+            spindexerSubsystem.spinForward();
+          } else {
+            spindexerSubsystem.stop();
+          }
+        }));
+    // Back: toggle spindexer between forward and reverse (for manual unjams)
+    new JoystickButton(operatorController, XboxController.Button.kBack.value)
+        .onTrue(Commands.runOnce(() -> {
+          if (spindexerSubsystem == null) return;
+          if (robotState.getSpindexerState() == RobotState.SpindexerState.REVERSE) {
+            spindexerSubsystem.spinForward();
+          } else {
+            spindexerSubsystem.spinReverse();
+          }
+        }));
+    */ // --- END SPINDEXER ---
+
+    // --- TURRET HOOD (uncomment after HOOD CHECKLIST in TurretIOCTRE is complete) ---
+    // Set ENABLE_TURRET = true before uncommenting.
+    /*
+    // D-pad up (hold): nudge hood angle down (negative percent)
+    new Trigger(() -> operatorController.getPOV() == 0)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(-Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
+    // D-pad down (hold): nudge hood angle up (positive percent)
+    new Trigger(() -> operatorController.getPOV() == 180)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
+    */ // --- END TURRET HOOD ---
+
+    // --- TURRET ROTATION (uncomment after TURRET ROTATION CHECKLIST in TurretIOCTRE is complete) ---
+    // Set ENABLE_TURRET = true before uncommenting.
+    /*
+    // D-pad left (hold): nudge turret left
+    new Trigger(() -> operatorController.getPOV() == 270)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(-Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(0.0); }));
+    // D-pad right (hold): nudge turret right
+    new Trigger(() -> operatorController.getPOV() == 90)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(0.0); }));
+    */ // --- END TURRET ROTATION ---
+
+    // --- TURRET FLYWHEELS (uncomment after FLYWHEEL CHECKLIST in TurretIOCTRE is complete) ---
+    // Set ENABLE_TURRET = true before uncommenting.
+    /*
+    // A: toggle flywheels on/off at close-range warm-up speed
+    new JoystickButton(operatorController, XboxController.Button.kA.value)
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          flywheelOn = !flywheelOn;
+          turretSubsystem.setFlywheelPercent(flywheelOn ? Constants.Turret.SHOT_TABLE_FLYWHEEL_FRONT_PCT[0] : 0.0);
+        }));
+    */ // --- END TURRET FLYWHEELS ---
+
+    // --- CLIMBER (uncomment after CLIMBER COMMISSIONING CHECKLIST in ClimberSubsystem is complete) ---
+    // Set ENABLE_CLIMBER = true before uncommenting.
+    /*
+    // Left trigger (hold): run pull motor to climb
+    new Trigger(() -> operatorController.getLeftTriggerAxis() > 0.5)
+        .whileTrue(Commands.startEnd(
+          () -> { if (climberSubsystem != null) climberSubsystem.setPullPercent(Constants.Climber.PULL_SPEED); },
+          () -> { if (climberSubsystem != null) climberSubsystem.setPullPercent(0.0); }));
+    // Left bumper up (hold): pivot arm forward
+    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
+        .whileTrue(Commands.startEnd(
+          () -> { if (climberSubsystem != null) climberSubsystem.setRotationPercent(Constants.Climber.ROTATION_SPEED); },
+          () -> { if (climberSubsystem != null) climberSubsystem.setRotationPercent(0.0); }));
+    */ // --- END CLIMBER ---
+
+    // --- EMERGENCY STOP (uncomment once at least one mechanism section above is uncommented) ---
+    /*
+    // Right bumper: immediately stops all mechanism subsystems and disables fire interlock.
+    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
+        .onTrue(Commands.runOnce(() -> {
+          flywheelOn = false;
+          if (intakeSubsystem     != null) intakeSubsystem.stopAll();
+          if (singulatorSubsystem != null) singulatorSubsystem.stopAll();
+          if (spindexerSubsystem  != null) spindexerSubsystem.stopAll();
+          if (turretSubsystem     != null) turretSubsystem.stopAll();
+          if (climberSubsystem    != null) climberSubsystem.stopAll();
+          SmartLogger.logConsole("OPERATOR E-STOP triggered", "EStop");
+        }));
+    */ // --- END EMERGENCY STOP ---
+
+    // ========== END OPERATOR CONTROLLER BINDINGS ==========
 
     // Remove stick-movement cancel behavior (operator takes over until driver interrupts)
     // new Trigger(() ->

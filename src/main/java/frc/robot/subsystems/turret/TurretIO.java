@@ -10,5 +10,6 @@ public interface TurretIO {
 
   default void setTurretPercent(double percent) {}
 
-  default void setSingulatorPercent(double percent) {}
+  // Zeros the turret encoder position — called when homing completes at the left hall sensor
+  default void zeroTurretEncoder() {}
 }

@@ -6,7 +6,6 @@ public class TurretController {
     outputs.flywheelPercent = clamp(setpoints.flywheelPercent);
     outputs.hoodPercent = clamp(setpoints.hoodPercent);
     outputs.turretPercent = clamp(setpoints.turretPercent);
-    outputs.singulatorPercent = clamp(setpoints.singulatorPercent);
   }
 
   private double clamp(double value) {

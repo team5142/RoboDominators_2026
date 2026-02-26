@@ -326,6 +326,93 @@
               "true_icon": "None",
               "false_icon": "None"
             }
+          },
+          {
+            "title": "Turret Angle",
+            "x": 0.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/RotationDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Hood Angle",
+            "x": 192.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/HoodDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Flywheel RPM",
+            "x": 384.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/FlywheelRpm",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Ready to Shoot",
+            "x": 576.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/ReadyToShoot",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "Intake Position",
+            "x": 768.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Intake/Position",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Balls Fed",
+            "x": 960.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Singulator/BallsFed",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
           }
         ]
       }
@@ -529,6 +616,107 @@
               "true_icon": "None",
               "false_icon": "None"
             }
+          },
+          {
+            "title": "Turret Angle",
+            "x": 0.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/RotationDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Hood Angle",
+            "x": 192.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/HoodDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Flywheel RPM",
+            "x": 384.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/FlywheelRpm",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Ready to Shoot",
+            "x": 576.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Boolean Box",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/ReadyToShoot",
+              "period": 0.1,
+              "data_type": "boolean",
+              "true_color": 4278222848,
+              "false_color": 4294198070,
+              "true_icon": "None",
+              "false_icon": "None"
+            }
+          },
+          {
+            "title": "Intake Position",
+            "x": 768.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Intake/Position",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Balls Fed",
+            "x": 960.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Singulator/BallsFed",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Shot Rate/sec",
+            "x": 1152.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Singulator/ShotRatePerSec",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
           }
         ]
       }
@@ -662,6 +850,98 @@
             "properties": {
               "topic": "/FMSInfo",
               "period": 0.1
+            }
+          },
+          {
+            "title": "Turret Angle",
+            "x": 0.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/RotationDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Hood Angle",
+            "x": 192.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Turret/HoodDeg",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Intake Position",
+            "x": 384.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Intake/Position",
+              "period": 0.1,
+              "data_type": "string",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Balls Fed",
+            "x": 576.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Text Display",
+            "properties": {
+              "topic": "/SmartDashboard/Singulator/BallsFed",
+              "period": 0.1,
+              "data_type": "double",
+              "show_submit_button": false
+            }
+          },
+          {
+            "title": "Climber Pull %",
+            "x": 768.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/SmartDashboard/Climber/PullPercent",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 0.0,
+              "max_value": 1.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
+            }
+          },
+          {
+            "title": "Climber Rotation %",
+            "x": 960.0,
+            "y": 640.0,
+            "width": 192.0,
+            "height": 128.0,
+            "type": "Number Bar",
+            "properties": {
+              "topic": "/SmartDashboard/Climber/RotationPercent",
+              "period": 0.1,
+              "data_type": "double",
+              "min_value": 0.0,
+              "max_value": 1.0,
+              "divisions": 5,
+              "inverted": false,
+              "orientation": "horizontal"
             }
           }
         ]

@@ -11,6 +11,7 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StringTopic;
 import edu.wpi.first.networktables.StringSubscriber;
 import edu.wpi.first.wpilibj2.command.Command;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import frc.robot.RobotState;
 import frc.robot.commands.drive.SmartDriveToPosition;
 import frc.robot.subsystems.DriveSubsystem;
@@ -212,7 +213,7 @@ public class TouchscreenInterface {
         .finallyDo(interrupted -> robotState.setOperatorDriveLockout(false));
 
     activeOperatorDrive = cmd;
-    cmd.schedule();
+    CommandScheduler.getInstance().schedule(cmd);
 
     SmartLogger.logConsole("[Touchscreen] SmartDrive: " + key);
   }

@@ -21,7 +21,8 @@ public final class Constants {
   private Constants() {}
 
   public static final int TEAM_NUMBER = 5142;
-  public static final int DRIVER_CONTROLLER_PORT = 0;
+  public static final int DRIVER_CONTROLLER_PORT   = 0;
+  public static final int OPERATOR_CONTROLLER_PORT = 1; // Operator USB slot, one above driver
   public static final int BLINKIN_PWM_PORT = 0; // Change to your actual PWM port
 
   // Swerve drivetrain hardware config and PID tuning
@@ -206,9 +207,8 @@ public final class Constants {
     public static final double OBJ_CAMERA_YAW_DEG = 0.0;
     public static final double OBJ_CAMERA_FOV_DEG = 120.0;
     
-    // 2025 game piece heights (placeholders until 2026 game reveal)
-    public static final double CORAL_HEIGHT_METERS = Units.inchesToMeters(6.0);
-    public static final double ALGAE_HEIGHT_METERS = Units.inchesToMeters(3.0);
+    // Game piece height for object detection distance calculation (update when 2026 game piece is known)
+    public static final double GAME_PIECE_HEIGHT_METERS = Units.inchesToMeters(6.0);
     
     public static final double MIN_TARGET_AREA_PERCENT = 0.1;
     public static final double MAX_TARGET_DISTANCE_METERS = 5.0;
@@ -317,33 +317,151 @@ public final class Constants {
     public static final int SHOP_STABILITY_REQUIRED_CYCLES = 5; // 5 cycles of stability (100ms)
   }
 
-  // Turret mechanism hardware IDs
+  // Turret mechanism hardware IDs and tuning constants
   public static final class Turret {
     public static final int FLYWHEEL_FRONT_MOTOR_ID = 20;
     public static final int FLYWHEEL_BACK_MOTOR_ID = 21;
     public static final int HOOD_MOTOR_ID = 22;
     public static final int TURRET_MOTOR_ID = 23;
-    public static final int SINGULATOR_MOTOR_ID = 24;
 
     public static final int HOOD_CANCODER_ID = 25;
     public static final int TURRET_CANCODER_ID = 26;
 
-    public static final int SINGULATOR_BEAM_BREAK_DIO = 27;
-    public static final int HOOD_BEAM_BREAK_DIO = 28;
-    public static final int HALL_SENSOR_RIGHT_DIO = 29;
-    public static final int HALL_SENSOR_LEFT_DIO = 30;
+    public static final int HOOD_BEAM_BREAK_DIO = 2;   // TODO: confirm DIO port
+    public static final int HALL_SENSOR_LEFT_DIO = 4;  // left hard stop — primary home sensor
+    public static final int HALL_SENSOR_RIGHT_DIO = 3; // straight-forward mid-point sensor (optional)
+
+    // Motor inversion — TODO: confirm directions on hardware
+    public static final boolean TURRET_MOTOR_INVERTED   = false;
+    public static final boolean HOOD_MOTOR_INVERTED     = false;
+    public static final boolean FLYWHEEL_MOTOR_INVERTED = false; // both flywheels use this
+
+    // Turret homing: slow left until left hall sensor fires, then zero the encoder
+    public static final double TURRET_HOME_SPEED_PERCENT = 0.10; // slow creep for safety
+
+    // Phase-advance enablement — change to advance to the next phase
+    // PHASE_1: fixed/manual setpoint, fire interlock only
+    // PHASE_2: turret tracks target, robot must be near-stationary to fire
+    // PHASE_3: turret tracks while driving, fire only when chassis slows below threshold
+    // PHASE_4: stub — same behavior as PHASE_3 (velocity comp math not yet implemented)
+    public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
+
+    // Phase 3+: only allow firing when chassis is below this speed
+    public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 0.15; // TODO: tune
+
+    // "Ready to shoot" tolerances — all must pass for isReadyToShoot() to return true
+    public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
+    public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01; // TODO: tune in rotations
+    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint
+
+    // Shot lookup table — distance (meters) -> flywheel percent -> hood rotations
+    // Data from initial ChatGPT estimate with our flywheel build; tune each row on hardware.
+    // [ ] CLOSE row: measure actual distance + verify RPM/hood at ~1.2m from target
+    // [ ] MID   row: measure actual distance + verify RPM/hood at ~3.5m from target
+    // [ ] FAR   row: measure actual distance + verify RPM/hood at ~5.5m from target
+    // Max flywheel RPM assumed 5400 (Kraken X44 free speed ~6000, loaded ~90%) — adjust if wrong.
+    // Hood rotations are placeholder — measure with CANcoder at each distance and replace.
+    public static final double[] SHOT_TABLE_DISTANCES_M        = { 1.2,    3.5,    5.5   };
+    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // 2350/5400, 2950/5400, 3490/5400
+    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.465,  0.584,  0.683 }; // 2515/5400, 3155/5400, 3690/5400
+    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  0.139 }; // TODO: replace — 65/360, 55/360, 50/360 placeholder
   }
 
-  // Intake mechanism hardware IDs
+  // Singulator hardware IDs and tuning constants (feeds balls one at a time into flywheels)
+  public static final class Singulator {
+    public static final int MOTOR_ID = 24; // Kraken X44
+    public static final int BEAM_BREAK_DIO = 28; // beam break at ball staging point
+
+    // TODO: flip to true if motor runs backwards on first test
+    public static final boolean MOTOR_INVERTED = false;
+
+    public static final double FEED_SPEED    =  0.50; // TODO: tune on hardware
+    public static final double REVERSE_SPEED = -0.40;
+
+    public static final double STATOR_LIMIT_AMPS = 30.0;
+    public static final double SUPPLY_LIMIT_AMPS = 25.0;
+  }
+
+  // Spindexer hardware IDs and tuning constants (cone spinner that feeds balls into singulator)
+  public static final class Spindexer {
+    public static final int MOTOR_ID = 27; // Kraken X44
+
+    // TODO: flip to true if motor runs backwards on first test
+    public static final boolean MOTOR_INVERTED = false;
+
+    public static final double FORWARD_SPEED = 0.40; // normal feed speed - TODO: tune
+    public static final double REVERSE_SPEED = -0.30; // unjam pulse speed
+
+    // Agitator auto-reverse: if velocity stays below this for AGITATE_LOOP_THRESHOLD loops,
+    // fire a short reverse pulse to jostle stuck balls
+    public static final double STALL_VELOCITY_RPS     = 0.5;  // TODO: tune on hardware
+    public static final int    AGITATE_LOOP_THRESHOLD = 25;   // ~500ms at 50Hz
+    public static final int    AGITATE_PULSE_LOOPS    = 10;   // ~200ms reverse pulse
+
+    public static final double STATOR_LIMIT_AMPS = 30.0;
+    public static final double SUPPLY_LIMIT_AMPS = 25.0;
+  }
+
+  // Intake mechanism hardware IDs and tuning constants
   public static final class Intake {
-    public static final int INTAKE_MOTOR_ID = 40;
-    public static final int INTAKE_EXTENSION_MOTOR_ID = 41;
+    public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // Kraken X44 - roller spin
+    public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X44 - arm extend/retract
+
+    // TODO (checklist item 3/4): flip to true if motor runs backwards on first test
+    public static final boolean EXTENSION_MOTOR_INVERTED = false;
+    public static final boolean ROLLER_MOTOR_INVERTED    = false;
+
+    // RoboRIO DIO ports for retract limit switches (both must trip = fully retracted)
+    public static final int RETRACT_LIMIT_SWITCH_A_DIO = 0; // TODO: confirm DIO port
+    public static final int RETRACT_LIMIT_SWITCH_B_DIO = 1; // TODO: confirm DIO port
+
+    // Extension arm target in motor rotations (set via TunerX after gearing confirmed)
+    // Positive = extending out over bumper; 0 = fully retracted (limit switch home)
+    public static final double EXTENSION_TARGET_ROTATIONS = 10.0; // TODO: tune on hardware
+
+    // Duty cycle output limits for extension movement (no position control until gear ratio known)
+    public static final double EXTEND_SPEED  =  0.10; // positive = extending out
+    public static final double RETRACT_SPEED = -0.10; // negative = retracting in
+
+    // Roller duty cycle outputs
+    public static final double ROLLER_INTAKE_SPEED  =  0.60; // intaking
+    public static final double ROLLER_REVERSE_SPEED = -0.40; // ejecting
+
+    // Current limits - stator caps motor torque current (motor protection + stall detection)
+    // Supply caps current drawn from the battery (brownout and breaker protection).
+    // Extension is a slow positioning motor so limits are conservative.
+    // Roller sees brief high-current peaks on ball pickup, so stator is a bit higher.
+    public static final double EXTENSION_STATOR_LIMIT_AMPS = 20.0;
+    public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 15.0;
+    public static final double ROLLER_STATOR_LIMIT_AMPS    = 40.0;
+    public static final double ROLLER_SUPPLY_LIMIT_AMPS    = 30.0;
+
+    // Velocity threshold for stall detection on the extension motor (rotations per second).
+    // If the motor is commanded to move but velocity stays below this for ~200ms, it is stalled.
+    // Current-based detection is unreliable because the stator limit clamps current before
+    // it can distinguish a stall from normal load.
+    public static final double EXTENSION_STALL_VELOCITY_RPS = 0.5; // tune on hardware
   }
 
-  // Climber mechanism hardware IDs
+  // Climber mechanism hardware IDs and tuning
   public static final class Climber {
     public static final int PULL_MOTOR_ID = 50;
     public static final int ROTATION_MOTOR_ID = 51;
+
+    // Inversion - confirm on hardware before enabling
+    public static final boolean PULL_MOTOR_INVERTED     = false; // TODO: verify direction
+    public static final boolean ROTATION_MOTOR_INVERTED = false; // TODO: verify direction
+
+    // Current limits - conservative until mechanism is tested on robot
+    public static final double PULL_STATOR_LIMIT_AMPS     = 40.0; // tune up if motor stalls under load
+    public static final double PULL_SUPPLY_LIMIT_AMPS     = 30.0;
+    public static final double ROTATION_STATOR_LIMIT_AMPS = 30.0;
+    public static final double ROTATION_SUPPLY_LIMIT_AMPS = 25.0;
+
+    // Operator control speeds - start very slow, increase once direction is confirmed
+    public static final double PULL_SPEED     = 0.15; // tune on hardware
+    public static final double ROTATION_SPEED = 0.15; // tune on hardware
   }
 
   // Autonomous path following (PathPlanner PID tuning)

@@ -5,7 +5,7 @@ import frc.robot.Constants;
 
 // Fixed field targets for turret aim
 public enum TurretFixedTarget {
- REEF_TAG_17(Constants.TurretTargets.BLUE_PASS_TARGET_LEFT);
+  HUB_LEFT(Constants.TurretTargets.BLUE_PASS_TARGET_LEFT);
  
 
   private final Pose2d pose;

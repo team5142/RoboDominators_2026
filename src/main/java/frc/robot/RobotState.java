@@ -48,9 +48,19 @@ public class RobotState {
     ACTIVE
   }
 
-  public enum IntakeState {
-    IDLE,
-    ACTIVE
+  // Position of the intake arm (extension axis)
+  public enum IntakePosition {
+    RETRACTED,   // fully in, limit switches triggered
+    EXTENDING,   // moving outward
+    EXTENDED,    // at full extension target rotation
+    RETRACTING   // moving inward toward limit switches
+  }
+
+  // Spin direction of the intake rollers
+  public enum IntakeRollerState {
+    STOPPED,
+    INTAKING,
+    REVERSING
   }
 
   public enum ClimberState {
@@ -58,11 +68,31 @@ public class RobotState {
     ACTIVE
   }
 
-  private TurretState turretState = TurretState.IDLE;
-  private IntakeState intakeState = IntakeState.IDLE;
-  private ClimberState climberState = ClimberState.IDLE;
+  // Spin state of the spindexer cone
+  public enum SpindexerState {
+    STOPPED,
+    FORWARD,  // feeding balls toward singulator groove
+    REVERSE   // agitator/unjam pulse
+  }
 
-  private boolean turretSingulatorBeamBreakRaw = false;
+  // State of the singulator feed motor
+  public enum SingulatorState {
+    PAUSED,    // holding — do not feed
+    FEEDING,   // running toward flywheels
+    REVERSING  // reverse to clear a jam
+  }
+
+  private TurretState turretState = TurretState.IDLE;
+  private IntakePosition intakePosition = IntakePosition.RETRACTED;
+  private IntakeRollerState intakeRollerState = IntakeRollerState.STOPPED;
+  private ClimberState climberState = ClimberState.IDLE;
+  private SpindexerState spindexerState = SpindexerState.STOPPED;
+  private SingulatorState singulatorState = SingulatorState.PAUSED;
+  private boolean singulatorBeamBreak = false;
+  private int ballsFedCount = 0;
+  private boolean intakeLimitSwitchA = false;
+  private boolean intakeLimitSwitchB = false;
+
   private boolean turretHoodBeamBreakRaw = false;
   private boolean turretHallLeftRaw = false;
   private boolean turretHallRightRaw = false;
@@ -73,7 +103,6 @@ public class RobotState {
   private double turretFlywheelPercent = 0.0;
   private double turretHoodPercent = 0.0;
   private double turretRotationPercent = 0.0;
-  private double turretSingulatorPercent = 0.0;
   private double intakePercent = 0.0;
   private double intakeExtensionPercent = 0.0;
   private double climberPullPercent = 0.0;
@@ -162,15 +191,61 @@ public class RobotState {
 
   public TurretState getTurretState() { return turretState; }
 
-  public void setIntakeState(IntakeState intakeState) {
-    if (this.intakeState == intakeState) {
-      return;
-    }
-    this.intakeState = intakeState;
-    SmartLogger.logReplay("RobotState/IntakeState", intakeState.toString());
+  public void setIntakePosition(IntakePosition pos) {
+    if (intakePosition == pos) return;
+    intakePosition = pos;
+    SmartLogger.logReplay("RobotState/Intake/Position", pos.toString());
   }
 
-  public IntakeState getIntakeState() { return intakeState; }
+  public IntakePosition getIntakePosition() { return intakePosition; }
+
+  public void setIntakeRollerState(IntakeRollerState rollerState) {
+    if (intakeRollerState == rollerState) return;
+    intakeRollerState = rollerState;
+    SmartLogger.logReplay("RobotState/Intake/RollerState", rollerState.toString());
+  }
+
+  public IntakeRollerState getIntakeRollerState() { return intakeRollerState; }
+
+  public void setIntakeLimitSwitches(boolean a, boolean b) {
+    if (intakeLimitSwitchA == a && intakeLimitSwitchB == b) return;
+    intakeLimitSwitchA = a;
+    intakeLimitSwitchB = b;
+    SmartLogger.logReplay("RobotState/Intake/LimitA", a);
+    SmartLogger.logReplay("RobotState/Intake/LimitB", b);
+  }
+
+  // Both switches must be triggered to confirm fully retracted
+  public boolean isIntakeFullyRetracted() { return intakeLimitSwitchA && intakeLimitSwitchB; }
+
+  public void setSpindexerState(SpindexerState state) {
+    if (this.spindexerState == state) return;
+    this.spindexerState = state;
+    SmartLogger.logReplay("RobotState/SpindexerState", state.toString());
+  }
+  public SpindexerState getSpindexerState() { return spindexerState; }
+
+  public void setSingulatorState(SingulatorState state) {
+    if (this.singulatorState == state) return;
+    this.singulatorState = state;
+    SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
+  }
+  public SingulatorState getSingulatorState() { return singulatorState; }
+
+  // True when a ball is present at the singulator beam break sensor
+  public void setSingulatorBeamBreak(boolean value) {
+    if (this.singulatorBeamBreak == value) return;
+    this.singulatorBeamBreak = value;
+    SmartLogger.logReplay("RobotState/SingulatorBeamBreak", value);
+  }
+  public boolean getSingulatorBeamBreak() { return singulatorBeamBreak; }
+
+  // Incremented by SingulatorSubsystem each time a ball passes through; never resets during a match
+  public void incrementBallsFed() {
+    ballsFedCount++;
+    SmartLogger.logReplay("RobotState/BallsFedCount", ballsFedCount);
+  }
+  public int getBallsFedCount() { return ballsFedCount; }
 
   public void setClimberState(ClimberState climberState) {
     if (this.climberState == climberState) {
@@ -181,16 +256,6 @@ public class RobotState {
   }
 
   public ClimberState getClimberState() { return climberState; }
-
-  public void setTurretSingulatorBeamBreakRaw(boolean beamBreakRaw) {
-    if (turretSingulatorBeamBreakRaw == beamBreakRaw) {
-      return;
-    }
-    turretSingulatorBeamBreakRaw = beamBreakRaw;
-    SmartLogger.logReplay("RobotState/Turret/SingulatorBeamBreakRaw", beamBreakRaw);
-  }
-
-  public boolean getTurretSingulatorBeamBreakRaw() { return turretSingulatorBeamBreakRaw; }
 
   public void setTurretHoodBeamBreakRaw(boolean beamBreakRaw) {
     if (turretHoodBeamBreakRaw == beamBreakRaw) {
@@ -261,14 +326,6 @@ public class RobotState {
   }
 
   public double getTurretRotationPercent() { return turretRotationPercent; }
-
-  public void setTurretSingulatorPercent(double percent) {
-    if (Math.abs(turretSingulatorPercent - percent) < 0.001) return;
-    turretSingulatorPercent = percent;
-    SmartLogger.logReplay("RobotState/Turret/SingulatorPercent", percent);
-  }
-
-  public double getTurretSingulatorPercent() { return turretSingulatorPercent; }
 
   public void setIntakePercent(double percent) {
     if (Math.abs(intakePercent - percent) < 0.001) return;
