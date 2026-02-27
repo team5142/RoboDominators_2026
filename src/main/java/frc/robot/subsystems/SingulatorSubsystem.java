@@ -7,7 +7,7 @@
 // resets during a match — visible in AdvantageScope at RobotState/BallsFedCount.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [ ] 1. Confirm CAN ID: MOTOR_ID (24) appears in TunerX and responds.
+// [ ] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
 // [ ] 2. Confirm DIO port: BEAM_BREAK_DIO (28). In Test mode, block the sensor with your
 //        hand and verify Singulator/BallPresent toggles true in AdvantageScope.
 //        Note: beam break is normally-open — blocked = false from sensor = true in code.
@@ -21,12 +21,11 @@
 
 package frc.robot.subsystems;
 
-import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
-import com.ctre.phoenix6.configs.MotorOutputConfigs;
-import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.DutyCycleOut;
-import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.InvertedValue;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
@@ -35,41 +34,28 @@ import frc.robot.util.SmartLogger;
 
 public class SingulatorSubsystem extends SubsystemBase {
   private final RobotState robotState;
-  private final TalonFX motor;
+  private final SparkMax motor;
   private final DigitalInput beamBreak;
-  private final DutyCycleOut dutyCycle = new DutyCycleOut(0.0);
 
   // Track previous beam break state to detect falling edge (ball just passed)
   private boolean lastBeamBreakBlocked = false;
 
   // Rolling shot rate: track timestamps of the last few shots to compute balls/sec
-  private static final int RATE_WINDOW = 5; // average over this many recent shots
+  private static final int RATE_WINDOW = 5;
   private final double[] shotTimestamps = new double[RATE_WINDOW];
   private int shotTimestampIndex = 0;
-  private int shotsSeen = 0; // total shots recorded into the ring buffer
+  private int shotsSeen = 0;
 
   public SingulatorSubsystem(RobotState robotState) {
     this.robotState = robotState;
 
-    motor = new TalonFX(Constants.Singulator.MOTOR_ID);
+    motor = new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless);
     beamBreak = new DigitalInput(Constants.Singulator.BEAM_BREAK_DIO);
 
-    TalonFXConfiguration config = new TalonFXConfiguration();
-
-    CurrentLimitsConfigs currentLimits = new CurrentLimitsConfigs();
-    currentLimits.StatorCurrentLimit = Constants.Singulator.STATOR_LIMIT_AMPS;
-    currentLimits.StatorCurrentLimitEnable = true;
-    currentLimits.SupplyCurrentLimit = Constants.Singulator.SUPPLY_LIMIT_AMPS;
-    currentLimits.SupplyCurrentLimitEnable = true;
-    config.CurrentLimits = currentLimits;
-
-    MotorOutputConfigs motorOutput = new MotorOutputConfigs();
-    motorOutput.Inverted = Constants.Singulator.MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive
-        : InvertedValue.CounterClockwise_Positive;
-    config.MotorOutput = motorOutput;
-
-    motor.getConfigurator().apply(config);
+    SparkMaxConfig config = new SparkMaxConfig();
+    config.inverted(Constants.Singulator.MOTOR_INVERTED);
+    config.smartCurrentLimit(Constants.Singulator.CURRENT_LIMIT_AMPS);
+    motor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
     SmartLogger.logConsole("Singulator ready (CAN " + Constants.Singulator.MOTOR_ID + ")", "Singulator");
   }
@@ -77,26 +63,24 @@ public class SingulatorSubsystem extends SubsystemBase {
   // Start feeding balls toward the flywheels
   public void spinFeed() {
     if (robotState.getSingulatorState() == RobotState.SingulatorState.FEEDING) return;
-    motor.setControl(dutyCycle.withOutput(Constants.Singulator.FEED_SPEED));
+    motor.set(Constants.Singulator.FEED_SPEED);
     robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
   }
 
   // Pause feeding — hold position, don't run motor
   public void pause() {
     if (robotState.getSingulatorState() == RobotState.SingulatorState.PAUSED) return;
-    motor.setControl(dutyCycle.withOutput(0.0));
+    motor.set(0.0);
     robotState.setSingulatorState(RobotState.SingulatorState.PAUSED);
   }
 
   // Reverse to clear a jam
   public void spinReverse() {
-    motor.setControl(dutyCycle.withOutput(Constants.Singulator.REVERSE_SPEED));
+    motor.set(Constants.Singulator.REVERSE_SPEED);
     robotState.setSingulatorState(RobotState.SingulatorState.REVERSING);
   }
 
-  public void stopAll() {
-    pause();
-  }
+  public void stopAll() { pause(); }
 
   // True when a ball is blocking the beam break sensor
   public boolean isBallPresent() {
@@ -117,7 +101,7 @@ public class SingulatorSubsystem extends SubsystemBase {
     robotState.setSingulatorBeamBreak(ballBlocked);
 
     SmartLogger.logReplay("Singulator/BallPresent", ballBlocked);
-    SmartLogger.logReplay("Singulator/CurrentAmps", motor.getStatorCurrent().getValueAsDouble());
+    SmartLogger.logReplay("Singulator/CurrentAmps", motor.getOutputCurrent());
     SmartLogger.logReplay("Singulator/BallsFedCount", robotState.getBallsFedCount());
 
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
@@ -128,7 +112,6 @@ public class SingulatorSubsystem extends SubsystemBase {
         "Singulator/BallPresent", ballBlocked);
   }
 
-  // Records a shot timestamp into a fixed-size ring buffer
   private void recordShot() {
     shotTimestamps[shotTimestampIndex] = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
     shotTimestampIndex = (shotTimestampIndex + 1) % RATE_WINDOW;
@@ -136,13 +119,10 @@ public class SingulatorSubsystem extends SubsystemBase {
   }
 
   // Returns rolling average shots/sec over the last RATE_WINDOW shots.
-  // Returns 0 if fewer than 2 shots have been seen (not enough data).
   private double computeShotRate() {
     if (shotsSeen < 2) return 0.0;
     int filled = Math.min(shotsSeen, RATE_WINDOW);
-    // Oldest slot in the ring buffer
     int oldestIndex = (shotTimestampIndex - filled + RATE_WINDOW) % RATE_WINDOW;
-    // Newest slot is one behind the write head
     int newestIndex = (shotTimestampIndex - 1 + RATE_WINDOW) % RATE_WINDOW;
     double span = shotTimestamps[newestIndex] - shotTimestamps[oldestIndex];
     if (span <= 0.0) return 0.0;

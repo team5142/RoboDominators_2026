@@ -331,6 +331,22 @@ public final class Constants {
     public static final int HALL_SENSOR_LEFT_DIO = 4;  // left hard stop — primary home sensor
     public static final int HALL_SENSOR_RIGHT_DIO = 3; // straight-forward mid-point sensor (optional)
 
+    // Gear train: Kraken X44 (1:1) → 20T pinion → 200T turret ring
+    // Motor rotates 10x for every 1 turret rotation.
+    public static final double TURRET_GEAR_RATIO = 10.0; // motor rot / turret rot
+
+    // 350 degrees in 1 second = 0.972 turret rot/sec × 10 = 9.72 motor rot/sec.
+    // Kraken X44 free speed ~100 rot/sec so cruise is ~10% throttle — plenty of margin.
+    // Acceleration of 3× cruise gives ~0.33 sec to reach full speed from rest.
+    // TODO: restore after hall sensor and soft limits are verified on hardware
+    // public static final double TURRET_CRUISE_VELOCITY_RPS  = 9.72;  // motor rot/sec
+    // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
+
+    // Safety speed: 350 degrees in ~10 seconds for initial commissioning
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 0.972; // motor rot/sec — safety
+    public static final double TURRET_ACCELERATION_RPS2    = 3.0;   // motor rot/sec^2 — safety
+    public static final double TURRET_JERK_RPS3            = 0.0;   // 0 = disabled (tune later)
+
     // Motor inversion — TODO: confirm directions on hardware
     public static final boolean TURRET_MOTOR_INVERTED   = false;
     public static final boolean HOOD_MOTOR_INVERTED     = false;
@@ -355,7 +371,25 @@ public final class Constants {
     public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01; // TODO: tune in rotations
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint
 
+    // Shooter geometry:
+    // Two hex shafts (front roller and top/back roller) separated by a fixed distance.
+    // Front roller position is fixed relative to the turret plate.
+    // Top roller pivots around the front roller as the hood rotates — so the ball exit
+    // point shifts in both height and forward offset as the hood angle changes.
+    // Hood range: ~35 deg (pointing forward, long pass) to ~85 deg (steep lob, short range).
+    // The front roller is the effective origin for all distance/trajectory math.
+    // Hood angle bakes the exit-point offset into each shot table row implicitly —
+    // do NOT assume a fixed launch height when adding ballistic math later.
+    // TODO: measure HOOD_SHAFT_SEPARATION_M (distance between the two hex shaft centers)
+    //       and HOOD_FRONT_ROLLER_HEIGHT_M (height of front roller above ground) on hardware.
+    public static final double HOOD_SHAFT_SEPARATION_M    = 0.0; // TODO: measure (meters)
+    public static final double HOOD_FRONT_ROLLER_HEIGHT_M = 0.0; // TODO: measure (meters)
+    public static final double HOOD_ANGLE_MIN_DEG         = 35.0; // hood all the way forward
+    public static final double HOOD_ANGLE_MAX_DEG         = 85.0; // hood all the way back
+
     // Shot lookup table — distance (meters) -> flywheel percent -> hood rotations
+    // Distance is measured from the front roller (fixed turret origin) to the target.
+    // Hood rotations correspond to the CANcoder reading at the desired angle — measure on hardware.
     // Data from initial ChatGPT estimate with our flywheel build; tune each row on hardware.
     // [ ] CLOSE row: measure actual distance + verify RPM/hood at ~1.2m from target
     // [ ] MID   row: measure actual distance + verify RPM/hood at ~3.5m from target
@@ -370,7 +404,7 @@ public final class Constants {
 
   // Singulator hardware IDs and tuning constants (feeds balls one at a time into flywheels)
   public static final class Singulator {
-    public static final int MOTOR_ID = 24; // Kraken X44
+    public static final int MOTOR_ID = 24; // REV NEO on SparkMax
     public static final int BEAM_BREAK_DIO = 28; // beam break at ball staging point
 
     // TODO: flip to true if motor runs backwards on first test
@@ -379,13 +413,13 @@ public final class Constants {
     public static final double FEED_SPEED    =  0.50; // TODO: tune on hardware
     public static final double REVERSE_SPEED = -0.40;
 
-    public static final double STATOR_LIMIT_AMPS = 30.0;
-    public static final double SUPPLY_LIMIT_AMPS = 25.0;
+    // SparkMax smart current limit (stall protection)
+    public static final int CURRENT_LIMIT_AMPS = 30;
   }
 
   // Spindexer hardware IDs and tuning constants (cone spinner that feeds balls into singulator)
   public static final class Spindexer {
-    public static final int MOTOR_ID = 27; // Kraken X44
+    public static final int MOTOR_ID = 27; // REV NEO on SparkMax
 
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = false;
@@ -399,8 +433,8 @@ public final class Constants {
     public static final int    AGITATE_LOOP_THRESHOLD = 25;   // ~500ms at 50Hz
     public static final int    AGITATE_PULSE_LOOPS    = 10;   // ~200ms reverse pulse
 
-    public static final double STATOR_LIMIT_AMPS = 30.0;
-    public static final double SUPPLY_LIMIT_AMPS = 25.0;
+    // SparkMax smart current limit (stall protection)
+    public static final int CURRENT_LIMIT_AMPS = 30;
   }
 
   // Intake mechanism hardware IDs and tuning constants
@@ -428,14 +462,12 @@ public final class Constants {
     public static final double ROLLER_INTAKE_SPEED  =  0.60; // intaking
     public static final double ROLLER_REVERSE_SPEED = -0.40; // ejecting
 
-    // Current limits - stator caps motor torque current (motor protection + stall detection)
-    // Supply caps current drawn from the battery (brownout and breaker protection).
-    // Extension is a slow positioning motor so limits are conservative.
-    // Roller sees brief high-current peaks on ball pickup, so stator is a bit higher.
+    // Current limits
+    // Extension (Kraken): stator caps torque current; supply caps battery draw.
+    // Roller (NEO SparkMax): uses smart current limit only.
     public static final double EXTENSION_STATOR_LIMIT_AMPS = 20.0;
     public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 15.0;
-    public static final double ROLLER_STATOR_LIMIT_AMPS    = 40.0;
-    public static final double ROLLER_SUPPLY_LIMIT_AMPS    = 30.0;
+    public static final int    ROLLER_CURRENT_LIMIT_AMPS   = 40;
 
     // Velocity threshold for stall detection on the extension motor (rotations per second).
     // If the motor is commanded to move but velocity stays below this for ~200ms, it is stalled.

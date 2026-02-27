@@ -6,6 +6,11 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
@@ -23,8 +28,8 @@ import frc.robot.util.SmartLogger;
 // Clear by calling stopExtension(), then clear the flag with clearStall(), then re-command.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [ ] 1. Confirm CAN IDs: INTAKE_ROLLER_MOTOR_ID (40) and INTAKE_EXTENSION_MOTOR_ID (41)
-//        in TunerX - verify both motors appear and respond.
+// [ ] 1. Confirm CAN IDs: INTAKE_ROLLER_MOTOR_ID (40, SparkMax) in REV Hardware Client,
+//        INTAKE_EXTENSION_MOTOR_ID (41, Kraken) in TunerX - verify both appear and respond.
 // [ ] 2. Confirm DIO ports: RETRACT_LIMIT_SWITCH_A_DIO and _B_DIO (currently 0 and 1).
 //        In Test mode, manually trip each switch and verify the DigitalInput reads true.
 // [ ] 3. Check extension motor direction: command a small extend (hold test button).
@@ -46,13 +51,12 @@ public class IntakeSubsystem extends SubsystemBase {
   private final RobotState robotState;
 
   private final TalonFX extensionMotor;
-  private final TalonFX rollerMotor;
+  private final SparkMax rollerMotor; // REV NEO on SparkMax
 
   private final DigitalInput limitSwitchA;
   private final DigitalInput limitSwitchB;
 
   private final DutyCycleOut extensionOut = new DutyCycleOut(0.0);
-  private final DutyCycleOut rollerOut    = new DutyCycleOut(0.0);
 
   // Tracks whether a stall was detected so the caller can respond
   private boolean extensionStalled = false;
@@ -64,12 +68,8 @@ public class IntakeSubsystem extends SubsystemBase {
     this.robotState = robotState;
 
     extensionMotor = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID);
-    rollerMotor    = new TalonFX(Constants.Intake.INTAKE_ROLLER_MOTOR_ID);
 
-    // Stator limit caps motor torque current (prevents overheating and aids stall detection).
-    // Supply limit caps battery draw (primary brownout protection).
-    // Extension is a slow positioning motor - conservative limits are fine.
-    // Roller sees short current peaks on ball contact, so limits are a bit higher.
+    // Extension: Kraken X44 with CTRE stator + supply limits
     TalonFXConfiguration extensionConfig = new TalonFXConfiguration();
     CurrentLimitsConfigs extLimits = extensionConfig.CurrentLimits;
     extLimits.StatorCurrentLimit       = Constants.Intake.EXTENSION_STATOR_LIMIT_AMPS;
@@ -82,17 +82,12 @@ public class IntakeSubsystem extends SubsystemBase {
         : InvertedValue.CounterClockwise_Positive;
     extensionMotor.getConfigurator().apply(extensionConfig);
 
-    TalonFXConfiguration rollerConfig = new TalonFXConfiguration();
-    CurrentLimitsConfigs rollerLimits = rollerConfig.CurrentLimits;
-    rollerLimits.StatorCurrentLimit       = Constants.Intake.ROLLER_STATOR_LIMIT_AMPS;
-    rollerLimits.StatorCurrentLimitEnable = true;
-    rollerLimits.SupplyCurrentLimit       = Constants.Intake.ROLLER_SUPPLY_LIMIT_AMPS;
-    rollerLimits.SupplyCurrentLimitEnable = true;
-    MotorOutputConfigs rollerOutput = rollerConfig.MotorOutput;
-    rollerOutput.Inverted = Constants.Intake.ROLLER_MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive
-        : InvertedValue.CounterClockwise_Positive;
-    rollerMotor.getConfigurator().apply(rollerConfig);
+    // Roller: REV NEO on SparkMax - smart current limit only
+    rollerMotor = new SparkMax(Constants.Intake.INTAKE_ROLLER_MOTOR_ID, MotorType.kBrushless);
+    SparkMaxConfig rollerConfig = new SparkMaxConfig();
+    rollerConfig.inverted(Constants.Intake.ROLLER_MOTOR_INVERTED);
+    rollerConfig.smartCurrentLimit(Constants.Intake.ROLLER_CURRENT_LIMIT_AMPS);
+    rollerMotor.configure(rollerConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
     limitSwitchA = new DigitalInput(Constants.Intake.RETRACT_LIMIT_SWITCH_A_DIO);
     limitSwitchB = new DigitalInput(Constants.Intake.RETRACT_LIMIT_SWITCH_B_DIO);
@@ -127,18 +122,18 @@ public class IntakeSubsystem extends SubsystemBase {
 
   // Spin rollers to intake game pieces
   public void spinIn() {
-    rollerMotor.setControl(rollerOut.withOutput(Constants.Intake.ROLLER_INTAKE_SPEED));
+    rollerMotor.set(Constants.Intake.ROLLER_INTAKE_SPEED);
     robotState.setIntakeRollerState(IntakeRollerState.INTAKING);
   }
 
   // Reverse rollers to eject
   public void spinOut() {
-    rollerMotor.setControl(rollerOut.withOutput(Constants.Intake.ROLLER_REVERSE_SPEED));
+    rollerMotor.set(Constants.Intake.ROLLER_REVERSE_SPEED);
     robotState.setIntakeRollerState(IntakeRollerState.REVERSING);
   }
 
   public void stopRollers() {
-    rollerMotor.setControl(rollerOut.withOutput(0.0));
+    rollerMotor.set(0.0);
     robotState.setIntakeRollerState(IntakeRollerState.STOPPED);
   }
 

@@ -7,25 +7,24 @@
 // jostle stuck balls, then resumes forward. No command input needed.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [ ] 1. Confirm CAN ID: MOTOR_ID (27) appears in TunerX and responds.
+// [ ] 1. Confirm CAN ID: MOTOR_ID (27) appears in REV Hardware Client and responds.
 // [ ] 2. Check motor direction: run spinForward() at low speed, confirm balls move toward
 //        the singulator groove. If backwards, set MOTOR_INVERTED = true in Constants.
 // [ ] 3. Tune FORWARD_SPEED so balls feed consistently without jamming the singulator.
 // [ ] 4. Tune STALL_VELOCITY_RPS to a value that only fires when the cone is truly stuck
-//        (not during normal load variation). Watch Spindexer/VelocityRps in AdvantageScope.
+//        (not during normal load variation). Watch Spindexer/VelocityRpm in AdvantageScope.
 // [ ] 5. Tune AGITATE_LOOP_THRESHOLD and AGITATE_PULSE_LOOPS so the reverse pulse is
 //        long enough to free a stuck ball but short enough to not dump balls backward.
-// [ ] 6. Verify supply current limit is not tripping during normal operation — raise
-//        SUPPLY_LIMIT_AMPS if the motor cuts out under full ball load.
+// [ ] 6. Verify current limit is not tripping during normal operation — raise
+//        CURRENT_LIMIT_AMPS in Constants if the motor cuts out under full ball load.
 
 package frc.robot.subsystems;
 
-import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
-import com.ctre.phoenix6.configs.MotorOutputConfigs;
-import com.ctre.phoenix6.configs.TalonFXConfiguration;
-import com.ctre.phoenix6.controls.DutyCycleOut;
-import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.InvertedValue;
+import com.revrobotics.PersistMode;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
 import frc.robot.RobotState;
@@ -33,35 +32,25 @@ import frc.robot.util.SmartLogger;
 
 public class SpindexerSubsystem extends SubsystemBase {
   private final RobotState robotState;
-  private final TalonFX motor;
-  private final DutyCycleOut dutyCycle = new DutyCycleOut(0.0);
+  private final SparkMax motor;
 
   // Agitator state: counts loops where velocity is too low while FORWARD
   private int stallLoopCount = 0;
   // Counts down how many loops remain in the active agitator reverse pulse
   private int agitateLoopsRemaining = 0;
 
+  // SparkMax encoder reports RPM; convert threshold from RPS
+  private static final double STALL_VELOCITY_RPM = Constants.Spindexer.STALL_VELOCITY_RPS * 60.0;
+
   public SpindexerSubsystem(RobotState robotState) {
     this.robotState = robotState;
 
-    motor = new TalonFX(Constants.Spindexer.MOTOR_ID);
+    motor = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
 
-    TalonFXConfiguration config = new TalonFXConfiguration();
-
-    CurrentLimitsConfigs currentLimits = new CurrentLimitsConfigs();
-    currentLimits.StatorCurrentLimit = Constants.Spindexer.STATOR_LIMIT_AMPS;
-    currentLimits.StatorCurrentLimitEnable = true;
-    currentLimits.SupplyCurrentLimit = Constants.Spindexer.SUPPLY_LIMIT_AMPS;
-    currentLimits.SupplyCurrentLimitEnable = true;
-    config.CurrentLimits = currentLimits;
-
-    MotorOutputConfigs motorOutput = new MotorOutputConfigs();
-    motorOutput.Inverted = Constants.Spindexer.MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive
-        : InvertedValue.CounterClockwise_Positive;
-    config.MotorOutput = motorOutput;
-
-    motor.getConfigurator().apply(config);
+    SparkMaxConfig config = new SparkMaxConfig();
+    config.inverted(Constants.Spindexer.MOTOR_INVERTED);
+    config.smartCurrentLimit(Constants.Spindexer.CURRENT_LIMIT_AMPS);
+    motor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
 
     SmartLogger.logConsole("Spindexer ready (CAN " + Constants.Spindexer.MOTOR_ID + ")", "Spindexer");
   }
@@ -71,46 +60,43 @@ public class SpindexerSubsystem extends SubsystemBase {
     if (robotState.getSpindexerState() == RobotState.SpindexerState.FORWARD) return;
     stallLoopCount = 0;
     agitateLoopsRemaining = 0;
-    motor.setControl(dutyCycle.withOutput(Constants.Spindexer.FORWARD_SPEED));
+    motor.set(Constants.Spindexer.FORWARD_SPEED);
     robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
   }
 
   // Reverse the spindexer briefly to unjam a stuck ball manually
   public void spinReverse() {
     agitateLoopsRemaining = 0;
-    motor.setControl(dutyCycle.withOutput(Constants.Spindexer.REVERSE_SPEED));
+    motor.set(Constants.Spindexer.REVERSE_SPEED);
     robotState.setSpindexerState(RobotState.SpindexerState.REVERSE);
   }
 
   public void stop() {
     stallLoopCount = 0;
     agitateLoopsRemaining = 0;
-    motor.setControl(dutyCycle.withOutput(0.0));
+    motor.set(0.0);
     robotState.setSpindexerState(RobotState.SpindexerState.STOPPED);
   }
 
-  public void stopAll() {
-    stop();
-  }
+  public void stopAll() { stop(); }
 
   @Override
   public void periodic() {
-    double velocityRps = motor.getVelocity().getValueAsDouble();
+    double velocityRpm = motor.getEncoder().getVelocity(); // NEO encoder reports RPM
     RobotState.SpindexerState currentState = robotState.getSpindexerState();
 
     // Agitator auto-reverse: while FORWARD, watch for sustained low velocity (ball jam)
     if (currentState == RobotState.SpindexerState.FORWARD) {
-      if (Math.abs(velocityRps) < Constants.Spindexer.STALL_VELOCITY_RPS) {
+      if (Math.abs(velocityRpm) < STALL_VELOCITY_RPM) {
         stallLoopCount++;
       } else {
         stallLoopCount = 0;
       }
 
       if (stallLoopCount >= Constants.Spindexer.AGITATE_LOOP_THRESHOLD) {
-        // Kick off an agitator reverse pulse
         stallLoopCount = 0;
         agitateLoopsRemaining = Constants.Spindexer.AGITATE_PULSE_LOOPS;
-        motor.setControl(dutyCycle.withOutput(Constants.Spindexer.REVERSE_SPEED));
+        motor.set(Constants.Spindexer.REVERSE_SPEED);
         robotState.setSpindexerState(RobotState.SpindexerState.REVERSE);
       }
     }
@@ -119,13 +105,13 @@ public class SpindexerSubsystem extends SubsystemBase {
     if (currentState == RobotState.SpindexerState.REVERSE && agitateLoopsRemaining > 0) {
       agitateLoopsRemaining--;
       if (agitateLoopsRemaining == 0) {
-        motor.setControl(dutyCycle.withOutput(Constants.Spindexer.FORWARD_SPEED));
+        motor.set(Constants.Spindexer.FORWARD_SPEED);
         robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
       }
     }
 
-    SmartLogger.logReplay("Spindexer/VelocityRps", velocityRps);
-    SmartLogger.logReplay("Spindexer/CurrentAmps", motor.getStatorCurrent().getValueAsDouble());
+    SmartLogger.logReplay("Spindexer/VelocityRpm", velocityRpm);
+    SmartLogger.logReplay("Spindexer/CurrentAmps", motor.getOutputCurrent());
     SmartLogger.logReplay("Spindexer/StallLoopCount", stallLoopCount);
   }
 }
