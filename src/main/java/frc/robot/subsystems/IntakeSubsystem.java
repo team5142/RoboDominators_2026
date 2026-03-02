@@ -10,6 +10,7 @@ import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.controls.VoltageOut;
+import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -86,7 +87,7 @@ public class IntakeSubsystem extends SubsystemBase {
   public IntakeSubsystem(RobotState robotState) {
     this.robotState = robotState;
 
-    extensionMotor = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID, Constants.Swerve.CAN_BUS_NAME);
+    extensionMotor = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
 
     // Extension: Kraken X60 with 4:1 gear ratio, CTRE stator + supply limits
     TalonFXConfiguration extensionConfig = new TalonFXConfiguration();

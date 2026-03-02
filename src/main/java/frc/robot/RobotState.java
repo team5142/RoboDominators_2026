@@ -238,9 +238,13 @@ public class RobotState {
   }
   public boolean getSingulatorBeamBreak() { return singulatorBeamBreak; }
 
-  // Incremented by SingulatorSubsystem each time a ball passes through; never resets during a match
+  // Incremented when a ball exits toward the flywheels; decremented when one is pulled back.
   public void incrementBallsFed() {
     ballsFedCount++;
+    SmartLogger.logReplay("RobotState/BallsFedCount", ballsFedCount);
+  }
+  public void decrementBallsFed() {
+    if (ballsFedCount > 0) ballsFedCount--;
     SmartLogger.logReplay("RobotState/BallsFedCount", ballsFedCount);
   }
   public int getBallsFedCount() { return ballsFedCount; }

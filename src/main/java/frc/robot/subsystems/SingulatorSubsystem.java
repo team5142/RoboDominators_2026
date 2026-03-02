@@ -1,10 +1,11 @@
 // Singulator subsystem - feeds balls one at a time from the spindexer up through the turret
-// into the flywheels. A beam break at the staging point tells us when a ball is present.
-// Tracks total balls fed since boot via a falling-edge counter on the beam break.
+// into the flywheels. A LaserCAN at the staging point tells us when a ball is present.
+// Tracks total balls fed since boot via direction-aware edge detection on the sensor.
 //
-// BALL COUNTER: counts on the falling edge (beam break clears after being blocked), meaning
-// a ball has just exited the staging point heading toward the flywheels. The count never
-// resets during a match — visible in AdvantageScope at RobotState/BallsFedCount.
+// BALL COUNTER: increments on the falling edge only while FEEDING (ball exits toward flywheels).
+// Decrements on the rising edge only while REVERSING (ball pulled back past sensor).
+// This keeps the count accurate even when reverse-feeding to clear a jam.
+// Count is visible in AdvantageScope at RobotState/BallsFedCount.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
 // [x] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
@@ -126,11 +127,18 @@ public class SingulatorSubsystem extends SubsystemBase {
     }
 
     boolean ballBlocked = isBallPresent();
+    RobotState.SingulatorState singState = robotState.getSingulatorState();
 
-    // Falling edge: beam clears after being blocked — ball has just exited toward flywheels
-    if (!ballBlocked && lastBeamBreakBlocked) {
+    // Falling edge while feeding forward: ball just exited toward flywheels
+    if (!ballBlocked && lastBeamBreakBlocked
+        && singState == RobotState.SingulatorState.FEEDING) {
       robotState.incrementBallsFed();
       recordShot();
+    }
+    // Rising edge while reversing: ball pulled back past sensor, undo the count
+    if (ballBlocked && !lastBeamBreakBlocked
+        && singState == RobotState.SingulatorState.REVERSING) {
+      robotState.decrementBallsFed();
     }
     lastBeamBreakBlocked = ballBlocked;
 
