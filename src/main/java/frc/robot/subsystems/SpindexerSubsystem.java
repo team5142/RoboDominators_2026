@@ -7,7 +7,7 @@
 // jostle stuck balls, then resumes forward. No command input needed.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [ ] 1. Confirm CAN ID: MOTOR_ID (27) appears in REV Hardware Client and responds.
+// [x] 1. Confirm CAN ID: MOTOR_ID (27) appears in REV Hardware Client and responds.
 // [ ] 2. Check motor direction: run spinForward() at low speed, confirm balls move toward
 //        the singulator groove. If backwards, set MOTOR_INVERTED = true in Constants.
 // [ ] 3. Tune FORWARD_SPEED so balls feed consistently without jamming the singulator.

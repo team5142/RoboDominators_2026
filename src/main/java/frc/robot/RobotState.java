@@ -50,10 +50,12 @@ public class RobotState {
 
   // Position of the intake arm (extension axis)
   public enum IntakePosition {
-    RETRACTED,   // fully in, limit switches triggered
-    EXTENDING,   // moving outward
-    EXTENDED,    // at full extension target rotation
-    RETRACTING   // moving inward toward limit switches
+    HOMING,         // actively moving up to find limit switches on first enable
+    HOMING_FAILED,  // homing stalled without finding both switches — arm is blocked
+    RETRACTED,      // fully in, both limit switches triggered, encoder zeroed
+    EXTENDING,      // moving outward
+    EXTENDED,       // at full extension target rotation
+    RETRACTING      // moving inward toward limit switches
   }
 
   // Spin direction of the intake rollers
@@ -83,15 +85,14 @@ public class RobotState {
   }
 
   private TurretState turretState = TurretState.IDLE;
-  private IntakePosition intakePosition = IntakePosition.RETRACTED;
+  private IntakePosition intakePosition = IntakePosition.HOMING;
   private IntakeRollerState intakeRollerState = IntakeRollerState.STOPPED;
   private ClimberState climberState = ClimberState.IDLE;
   private SpindexerState spindexerState = SpindexerState.STOPPED;
   private SingulatorState singulatorState = SingulatorState.PAUSED;
   private boolean singulatorBeamBreak = false;
   private int ballsFedCount = 0;
-  private boolean intakeLimitSwitchA = false;
-  private boolean intakeLimitSwitchB = false;
+  private boolean intakeLimitSwitch = false;
 
   private boolean turretHoodBeamBreakRaw = false;
   private boolean turretHallLeftRaw = false;
@@ -207,16 +208,13 @@ public class RobotState {
 
   public IntakeRollerState getIntakeRollerState() { return intakeRollerState; }
 
-  public void setIntakeLimitSwitches(boolean a, boolean b) {
-    if (intakeLimitSwitchA == a && intakeLimitSwitchB == b) return;
-    intakeLimitSwitchA = a;
-    intakeLimitSwitchB = b;
-    SmartLogger.logReplay("RobotState/Intake/LimitA", a);
-    SmartLogger.logReplay("RobotState/Intake/LimitB", b);
+  public void setIntakeLimitSwitch(boolean pressed) {
+    if (intakeLimitSwitch == pressed) return;
+    intakeLimitSwitch = pressed;
+    SmartLogger.logReplay("RobotState/Intake/LimitSwitch", pressed);
   }
 
-  // Both switches must be triggered to confirm fully retracted
-  public boolean isIntakeFullyRetracted() { return intakeLimitSwitchA && intakeLimitSwitchB; }
+  public boolean isIntakeFullyRetracted() { return intakeLimitSwitch; }
 
   public void setSpindexerState(SpindexerState state) {
     if (this.spindexerState == state) return;
@@ -257,15 +255,13 @@ public class RobotState {
 
   public ClimberState getClimberState() { return climberState; }
 
-  public void setTurretHoodBeamBreakRaw(boolean beamBreakRaw) {
-    if (turretHoodBeamBreakRaw == beamBreakRaw) {
-      return;
-    }
-    turretHoodBeamBreakRaw = beamBreakRaw;
-    SmartLogger.logReplay("RobotState/Turret/HoodBeamBreakRaw", beamBreakRaw);
+  public void setTurretHoodLimitSwitchRaw(boolean limitRaw) {
+    if (turretHoodBeamBreakRaw == limitRaw) return;
+    turretHoodBeamBreakRaw = limitRaw;
+    SmartLogger.logReplay("RobotState/Turret/HoodLimitSwitchRaw", limitRaw);
   }
 
-  public boolean getTurretHoodBeamBreakRaw() { return turretHoodBeamBreakRaw; }
+  public boolean getTurretHoodLimitSwitchRaw() { return turretHoodBeamBreakRaw; }
 
   public void setTurretHallLeftRaw(boolean hallRaw) {
     if (turretHallLeftRaw == hallRaw) {
@@ -287,13 +283,13 @@ public class RobotState {
 
   public boolean getTurretHallRightRaw() { return turretHallRightRaw; }
 
-  public void setTurretHoodAbsolutePositionRotations(double rotations) {
+  public void setTurretHoodMotorPositionRotations(double rotations) {
     if (Math.abs(turretHoodAbsolutePositionRotations - rotations) < 0.0001) return;
     turretHoodAbsolutePositionRotations = rotations;
-    SmartLogger.logReplay("RobotState/Turret/HoodAbsRot", rotations);
+    SmartLogger.logReplay("RobotState/Turret/HoodMotorRot", rotations);
   }
 
-  public double getTurretHoodAbsolutePositionRotations() { return turretHoodAbsolutePositionRotations; }
+  public double getTurretHoodMotorPositionRotations() { return turretHoodAbsolutePositionRotations; }
 
   public void setTurretRotationAbsolutePositionRotations(double rotations) {
     if (Math.abs(turretRotationAbsolutePositionRotations - rotations) < 0.0001) return;

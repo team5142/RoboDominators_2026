@@ -42,11 +42,15 @@ public class RobotContainer {
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true;
   private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
-  private static final boolean ENABLE_TURRET = false;
-  private static final boolean ENABLE_INTAKE = false;
+  private static final boolean ENABLE_TURRET = false;  // checklist incomplete — see TurretIOCTRE.java
+  private static final boolean ENABLE_INTAKE = true;
+  // Homing runs on enable only when both the subsystem AND its homing flag are true.
+  // Enable the subsystem first to test motors manually, then enable homing once switches are verified.
+  static boolean ENABLE_INTAKE_HOMING = false; // set true after checklist items 2, 3, 6 verified
+  static boolean ENABLE_TURRET_HOMING = false; // set true after hall sensor + hood switch verified
   private static final boolean ENABLE_CLIMBER = false;
-  private static final boolean ENABLE_SPINDEXER = false;
-  private static final boolean ENABLE_SINGULATOR = false;
+  private static final boolean ENABLE_SPINDEXER = true;
+  private static final boolean ENABLE_SINGULATOR = true;
   private static final double AUTO_SEED_POS_TOL_METERS = 0.20;
   private static final double AUTO_SEED_ROT_TOL_DEG = 10.0;
 
@@ -263,7 +267,7 @@ public class RobotContainer {
 
     // --- INTAKE (uncomment after IntakeSubsystem commissioning checklist is complete) ---
     // Set ENABLE_INTAKE = true before uncommenting.
-    /*
+    
     // Y: toggle extend/retract
     new JoystickButton(operatorController, XboxController.Button.kY.value)
         .onTrue(Commands.runOnce(() -> {
@@ -284,21 +288,21 @@ public class RobotContainer {
         .whileTrue(Commands.startEnd(
           () -> { if (intakeSubsystem != null && intakeSubsystem.isExtended()) intakeSubsystem.spinOut(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    */ // --- END INTAKE ---
+    // --- END INTAKE ---
 
     // --- SINGULATOR (uncomment after SingulatorSubsystem commissioning checklist is complete) ---
     // Set ENABLE_SINGULATOR = true before uncommenting.
-    /*
-    // Right trigger (hold): feed; release: pause
+    
+    // Right trigger (hold): prime then feed; release: pause
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.startEnd(
-          () -> { if (singulatorSubsystem != null) singulatorSubsystem.spinFeed(); },
+          () -> { if (singulatorSubsystem != null) singulatorSubsystem.primeAndFeed(); },
           () -> { if (singulatorSubsystem != null) singulatorSubsystem.pause(); }));
-    */ // --- END SINGULATOR ---
+     // --- END SINGULATOR ---
 
     // --- SPINDEXER (uncomment after SpindexerSubsystem commissioning checklist is complete) ---
     // Set ENABLE_SPINDEXER = true before uncommenting.
-    /*
+    
     // Start: toggle spindexer on (forward) / off
     new JoystickButton(operatorController, XboxController.Button.kStart.value)
         .onTrue(Commands.runOnce(() -> {
@@ -319,7 +323,7 @@ public class RobotContainer {
             spindexerSubsystem.spinReverse();
           }
         }));
-    */ // --- END SPINDEXER ---
+    // --- END SPINDEXER ---
 
     // --- TURRET HOOD (uncomment after HOOD CHECKLIST in TurretIOCTRE is complete) ---
     // Set ENABLE_TURRET = true before uncommenting.
@@ -666,5 +670,18 @@ public class RobotContainer {
         .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
     new Trigger(() -> driverController.getPOV() == 270)
         .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+
+    // Operator Y/A/B/X: intake extension SysId (SignalLogger start/stop shared with driver bumpers above)
+    // Start arm at RETRACTED, then run: Y (quasi fwd) → A (quasi rev) → B (dyn fwd) → X (dyn rev)
+    if (intakeSubsystem != null) {
+      new JoystickButton(operatorController, XboxController.Button.kY.value)
+          .whileTrue(intakeSubsystem.sysIdQuasistatic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+      new JoystickButton(operatorController, XboxController.Button.kA.value)
+          .whileTrue(intakeSubsystem.sysIdQuasistatic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+      new JoystickButton(operatorController, XboxController.Button.kB.value)
+          .whileTrue(intakeSubsystem.sysIdDynamic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
+      new JoystickButton(operatorController, XboxController.Button.kX.value)
+          .whileTrue(intakeSubsystem.sysIdDynamic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
+    }
   }
 }

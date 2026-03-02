@@ -7,17 +7,17 @@
 // resets during a match — visible in AdvantageScope at RobotState/BallsFedCount.
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [ ] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
+// [x] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
 // [ ] 2. Confirm DIO port: BEAM_BREAK_DIO (28). In Test mode, block the sensor with your
 //        hand and verify Singulator/BallPresent toggles true in AdvantageScope.
 //        Note: beam break is normally-open — blocked = false from sensor = true in code.
-// [ ] 3. Check motor direction: run spinFeed() at low speed, confirm balls move toward
+// [x] 3. Check motor direction: run spinFeed() at low speed, confirm balls move toward
 //        the flywheels. If backwards, set MOTOR_INVERTED = true in Constants.
 // [ ] 4. Tune FEED_SPEED to match the flywheel acceptance rate — too fast risks double-
 //        feeding; too slow starves the shooter.
 // [ ] 5. Run several balls through end-to-end and verify the counter increments once per
 //        ball. Watch RobotState/BallsFedCount in AdvantageScope.
-// [ ] 6. Test spinReverse() with a stuck ball to confirm it clears cleanly.
+// [x] 6. Test spinReverse() with a stuck ball to confirm it clears cleanly.
 
 package frc.robot.subsystems;
 
@@ -27,6 +27,7 @@ import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import edu.wpi.first.wpilibj.DigitalInput;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
 import frc.robot.RobotState;
@@ -39,6 +40,10 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   // Track previous beam break state to detect falling edge (ball just passed)
   private boolean lastBeamBreakBlocked = false;
+
+  // Timer used by primeAndFeed() to hold the reverse pulse before switching to feed
+  private final Timer primeTimer = new Timer();
+  private boolean priming = false;
 
   // Rolling shot rate: track timestamps of the last few shots to compute balls/sec
   private static final int RATE_WINDOW = 5;
@@ -63,13 +68,27 @@ public class SingulatorSubsystem extends SubsystemBase {
   // Start feeding balls toward the flywheels
   public void spinFeed() {
     if (robotState.getSingulatorState() == RobotState.SingulatorState.FEEDING) return;
+    priming = false;
     motor.set(Constants.Singulator.FEED_SPEED);
     robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
+  }
+
+  // Reverse briefly to pull the ball back into compression, then transition to feed.
+  // Call this instead of spinFeed() for normal shooting — the deadzone at the turret
+  // plane means a ball sitting there won't have enough traction on a cold forward start.
+  // periodic() watches the primeTimer and calls spinFeed() once the pulse expires.
+  public void primeAndFeed() {
+    if (priming || robotState.getSingulatorState() == RobotState.SingulatorState.FEEDING) return;
+    priming = true;
+    primeTimer.restart();
+    motor.set(Constants.Singulator.REVERSE_SPEED);
+    robotState.setSingulatorState(RobotState.SingulatorState.REVERSING);
   }
 
   // Pause feeding — hold position, don't run motor
   public void pause() {
     if (robotState.getSingulatorState() == RobotState.SingulatorState.PAUSED) return;
+    priming = false;
     motor.set(0.0);
     robotState.setSingulatorState(RobotState.SingulatorState.PAUSED);
   }
@@ -89,6 +108,13 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    // If we're in the prime pulse, check if time has elapsed and transition to feed
+    if (priming && primeTimer.hasElapsed(Constants.Singulator.PRIME_REVERSE_SECS)) {
+      priming = false;
+      motor.set(Constants.Singulator.FEED_SPEED);
+      robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
+    }
+
     boolean ballBlocked = isBallPresent();
 
     // Falling edge: beam clears after being blocked — ball has just exited toward flywheels

@@ -322,13 +322,13 @@ public final class Constants {
     public static final int FLYWHEEL_FRONT_MOTOR_ID = 20;
     public static final int FLYWHEEL_BACK_MOTOR_ID = 21;
     public static final int HOOD_MOTOR_ID = 22;
-    public static final int TURRET_MOTOR_ID = 23;
+    public static final int TURRET_MOTOR_ID = 23; // Kraken x44
 
-    public static final int HOOD_CANCODER_ID = 25;
-    public static final int TURRET_CANCODER_ID = 26;
-
-    public static final int HOOD_BEAM_BREAK_DIO = 2;   // TODO: confirm DIO port
-    public static final int HALL_SENSOR_LEFT_DIO = 4;  // left hard stop — primary home sensor
+    // Hood uses a limit switch at the bottom stop (85 deg) instead of a CANcoder.
+    // A CANcoder can be retrofitted later — see TODO in TurretIOCTRE.java.
+    public static final int HOOD_LIMIT_SWITCH_DIO = 2; // confirmed
+    // TODO: if a CANcoder is added to the turret rotation axis later, add TURRET_CANCODER_ID here.
+    public static final int HALL_SENSOR_LEFT_DIO = 0;  // confirmed — left hard stop, primary home sensor
     public static final int HALL_SENSOR_RIGHT_DIO = 3; // straight-forward mid-point sensor (optional)
 
     // Gear train: Kraken X44 (1:1) → 20T pinion → 200T turret ring
@@ -354,6 +354,22 @@ public final class Constants {
 
     // Turret homing: slow left until left hall sensor fires, then zero the encoder
     public static final double TURRET_HOME_SPEED_PERCENT = 0.10; // slow creep for safety
+    // Stall detection during homing — if current stays above threshold for this many loops,
+    // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
+    // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
+    public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 18.0; // TODO: tune on hardware
+    public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
+    // Encoder counts from home (left stop = 0) to the right soft limit.
+    // Turret gear ratio is 10:1 so 350 deg = 9.72 motor rotations.
+    // TODO: measure on hardware by sweeping to the right hard stop and reading the encoder.
+    public static final double TURRET_SOFT_LIMIT_RIGHT_ROTATIONS = 9.72; // placeholder — measure at right hard stop
+
+    // Hood homing: slow downward until bottom limit switch fires, then zero the encoder.
+    // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
+    // HOOD_SOFT_LIMIT_TOP_ROTATIONS is a placeholder — measure on hardware at 35 deg and update.
+    public static final double HOOD_HOME_SPEED_PERCENT       = 0.08; // slow creep down for safety
+    public static final double HOOD_HOME_ROTATIONS           = 0.0;  // encoder value at bottom stop
+    public static final double HOOD_SOFT_LIMIT_TOP_ROTATIONS = 5.0;  // TODO: measure at 35 deg on hardware
 
     // Phase-advance enablement — change to advance to the next phase
     // PHASE_1: fixed/manual setpoint, fire interlock only
@@ -389,13 +405,13 @@ public final class Constants {
 
     // Shot lookup table — distance (meters) -> flywheel percent -> hood rotations
     // Distance is measured from the front roller (fixed turret origin) to the target.
-    // Hood rotations correspond to the CANcoder reading at the desired angle — measure on hardware.
+    // Hood rotations are motor encoder rotations from home (0 = 85 deg, positive = up toward 35 deg).
     // Data from initial ChatGPT estimate with our flywheel build; tune each row on hardware.
     // [ ] CLOSE row: measure actual distance + verify RPM/hood at ~1.2m from target
     // [ ] MID   row: measure actual distance + verify RPM/hood at ~3.5m from target
     // [ ] FAR   row: measure actual distance + verify RPM/hood at ~5.5m from target
-    // Max flywheel RPM assumed 5400 (Kraken X44 free speed ~6000, loaded ~90%) — adjust if wrong.
-    // Hood rotations are placeholder — measure with CANcoder at each distance and replace.
+    // Max flywheel RPM assumed 5400 (Kraken X60 free speed ~6000, loaded ~90%) — adjust if wrong.
+    // Hood rotations are placeholder — measure motor encoder value at each distance on hardware and replace.
     public static final double[] SHOT_TABLE_DISTANCES_M        = { 1.2,    3.5,    5.5   };
     public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // 2350/5400, 2950/5400, 3490/5400
     public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.465,  0.584,  0.683 }; // 2515/5400, 3155/5400, 3690/5400
@@ -408,10 +424,16 @@ public final class Constants {
     public static final int BEAM_BREAK_DIO = 28; // beam break at ball staging point
 
     // TODO: flip to true if motor runs backwards on first test
-    public static final boolean MOTOR_INVERTED = false;
+    public static final boolean MOTOR_INVERTED = true;
 
     public static final double FEED_SPEED    =  0.50; // TODO: tune on hardware
     public static final double REVERSE_SPEED = -0.40;
+
+    // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
+    // The ball sits in a deadzone at the turret plane where the wheel barely contacts it —
+    // reversing for ~0.1s pulls it back so the forward feed has traction from the start.
+    // TODO: tune PRIME_REVERSE_SECS on hardware (start at 0.10, raise if ball slips on feed)
+    public static final double PRIME_REVERSE_SECS = 0.10;
 
     // SparkMax smart current limit (stall protection)
     public static final int CURRENT_LIMIT_AMPS = 30;
@@ -439,24 +461,26 @@ public final class Constants {
 
   // Intake mechanism hardware IDs and tuning constants
   public static final class Intake {
-    public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // Kraken X44 - roller spin
-    public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X44 - arm extend/retract
+    public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // NEO 500 - roller spin
+    public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X60 - arm extend/retract, 4:1 gear ratio
 
     // TODO (checklist item 3/4): flip to true if motor runs backwards on first test
     public static final boolean EXTENSION_MOTOR_INVERTED = false;
     public static final boolean ROLLER_MOTOR_INVERTED    = false;
 
-    // RoboRIO DIO ports for retract limit switches (both must trip = fully retracted)
-    public static final int RETRACT_LIMIT_SWITCH_A_DIO = 0; // TODO: confirm DIO port
-    public static final int RETRACT_LIMIT_SWITCH_B_DIO = 1; // TODO: confirm DIO port
+    // RoboRIO DIO port for retract limit switch (single switch — confirmed DIO 1)
+    public static final int RETRACT_LIMIT_SWITCH_DIO = 1;
 
-    // Extension arm target in motor rotations (set via TunerX after gearing confirmed)
-    // Positive = extending out over bumper; 0 = fully retracted (limit switch home)
-    public static final double EXTENSION_TARGET_ROTATIONS = 10.0; // TODO: tune on hardware
+    // Extension arm soft limits — measured encoder positions, no hard stop or limit switches yet.
+    // EXTENSION_HOME_ROTATIONS: current physical rest position without hard stop ().
+    //   TODO: once hard stop + limit switch installed, change to -0.475 and re-zero encoder there.
+    // EXTENSION_TARGET_ROTATIONS: full out position (measured with arm manually extended).
+    public static final double EXTENSION_HOME_ROTATIONS   = 0.158; 
+    public static final double EXTENSION_TARGET_ROTATIONS =  12.95;
 
     // Duty cycle output limits for extension movement (no position control until gear ratio known)
-    public static final double EXTEND_SPEED  =  0.10; // positive = extending out
-    public static final double RETRACT_SPEED = -0.10; // negative = retracting in
+    public static final double EXTEND_SPEED  =  0.25; // positive = extending out
+    public static final double RETRACT_SPEED = -0.25; // negative = retracting in
 
     // Roller duty cycle outputs
     public static final double ROLLER_INTAKE_SPEED  =  0.60; // intaking
@@ -465,15 +489,17 @@ public final class Constants {
     // Current limits
     // Extension (Kraken): stator caps torque current; supply caps battery draw.
     // Roller (NEO SparkMax): uses smart current limit only.
-    public static final double EXTENSION_STATOR_LIMIT_AMPS = 20.0;
-    public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 15.0;
+    public static final double EXTENSION_STATOR_LIMIT_AMPS = 40.0;
+    public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 30.0;
     public static final int    ROLLER_CURRENT_LIMIT_AMPS   = 40;
 
-    // Velocity threshold for stall detection on the extension motor (rotations per second).
-    // If the motor is commanded to move but velocity stays below this for ~200ms, it is stalled.
-    // Current-based detection is unreliable because the stator limit clamps current before
-    // it can distinguish a stall from normal load.
-    public static final double EXTENSION_STALL_VELOCITY_RPS = 0.5; // tune on hardware
+    // Stall detection via sustained current spike — distinguishes a true hard stop from
+    // normal ball resistance. With 40-50 balls, the arm routinely draws 20-30A in travel.
+    // Threshold is set well above expected ball load but below a real physical blockage.
+    // Window is long enough (~600ms) to ignore momentary compression spikes.
+    // Raise threshold further if still false-triggering with a full ball load.
+    public static final double EXTENSION_STALL_CURRENT_AMPS  = 38.0; // just below 40A stator limit
+    public static final double EXTENSION_STALL_VELOCITY_RPS  = 0.5; // kept for future use
   }
 
   // Climber mechanism hardware IDs and tuning

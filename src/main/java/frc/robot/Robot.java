@@ -204,7 +204,14 @@ public class Robot extends LoggedRobot {
     SmartLogger.logConsole(">>> AUTONOMOUS MODE STARTED <<<", "Auto Start", 15);
     
     autonomousCommand = robotContainer.getAutonomousCommand();
-    
+
+    if (robotContainer.intakeSubsystem != null && RobotContainer.ENABLE_INTAKE_HOMING)
+      robotContainer.intakeSubsystem.startHoming();
+    if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
+      robotContainer.turretSubsystem.home();
+      robotContainer.turretSubsystem.hoodHome();
+    }
+
     if (autonomousCommand != null) {
       String autoName = autonomousCommand.getName();
       SmartLogger.logConsole("Running auto: " + autoName);
@@ -242,7 +249,14 @@ public class Robot extends LoggedRobot {
     robotState.setMode(RobotState.Mode.ENABLED_TELEOP);
     
     robotContainer.poseEstimator.onTeleopInit();
-    
+
+    if (robotContainer.intakeSubsystem != null && RobotContainer.ENABLE_INTAKE_HOMING)
+      robotContainer.intakeSubsystem.startHoming();
+    if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
+      robotContainer.turretSubsystem.home();
+      robotContainer.turretSubsystem.hoodHome();
+    }
+
     Logger.recordOutput("Robot/Mode", "TELEOP");
     double gyroYaw = robotContainer.driveSubsystem.getGyroRotation().getDegrees();
     var teleopStartPose = robotContainer.poseEstimator.getEstimatedPose();

@@ -12,4 +12,7 @@ public interface TurretIO {
 
   // Zeros the turret encoder position — called when homing completes at the left hall sensor
   default void zeroTurretEncoder() {}
+
+  // Zeros the hood motor encoder — called when homing completes at the bottom limit switch
+  default void zeroHoodEncoder() {}
 }

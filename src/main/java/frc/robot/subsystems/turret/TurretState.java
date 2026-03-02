@@ -2,19 +2,19 @@ package frc.robot.subsystems.turret;
 
 // Turret sensor snapshot for controller logic
 public class TurretState {
-  public boolean hoodBeamBreakRaw = false;
+  public boolean hoodLimitSwitchRaw = false;
   public boolean hallLeftRaw = false;
   public boolean hallRightRaw = false;
 
-  public double hoodAbsolutePositionRotations = 0.0;
+  public double hoodMotorPositionRotations = 0.0;
   public double turretAbsolutePositionRotations = 0.0;
 
   public void updateFromInputs(TurretIOInputs inputs) {
-    hoodBeamBreakRaw = inputs.hoodBeamBreakRaw;
+    hoodLimitSwitchRaw = inputs.hoodLimitSwitchRaw;
     hallLeftRaw = inputs.hallLeftRaw;
     hallRightRaw = inputs.hallRightRaw;
 
-    hoodAbsolutePositionRotations = inputs.hoodAbsolutePositionRotations;
+    hoodMotorPositionRotations = inputs.hoodMotorPositionRotations;
     turretAbsolutePositionRotations = inputs.turretAbsolutePositionRotations;
   }
 }

@@ -3,7 +3,6 @@ package frc.robot.subsystems.turret;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
-import com.ctre.phoenix6.hardware.CANcoder;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import edu.wpi.first.wpilibj.DigitalInput;
@@ -22,22 +21,33 @@ import frc.robot.Constants;
 // [ ] 4. Fire a test ball at close range. If ball does not clear, raise flywheel percents.
 //
 // TODO - HOOD CHECKLIST:
-// [ ] 1. HOOD motor (CAN 22) and HOOD_CANCODER (CAN 25) appear in TunerX.
-// [ ] 2. Manually move the hood and confirm CANcoder position changes in TunerX.
-//        Verify the reading is in rotations (not degrees) and increases in the expected direction.
-// [ ] 3. Command a small positive percent output to the hood motor (HOOD_KP is 0.15 - very slow).
-//        Confirm it moves in the expected direction. Set HOOD_MOTOR_INVERTED = true if backwards.
-// [ ] 4. Move hood to a known physical stop and record the CANcoder value.
-//        Use that to calibrate SHOT_TABLE_HOOD_ROTATIONS placeholder values in Constants.
+// [ ] 1. HOOD motor (CAN 22) appears in TunerX.
+// [ ] 2. Confirm DIO port HOOD_LIMIT_SWITCH_DIO (currently 2): go to Test mode, manually push the
+//        hood to its bottom stop and confirm Turret/HoodLimitRaw toggles in AdvantageScope.
+// [ ] 3. Command a small positive percent output. Confirm hood moves UP (away from bottom stop).
+//        If it moves down toward the stop, set HOOD_MOTOR_INVERTED = true in Constants.
+// [ ] 4. Run hoodHome() from TurretSubsystem. Hood should creep down, stop when limit switch fires,
+//        and Turret/HoodHomed should become true. Encoder should read near 0.
+// [ ] 5. Command hood to HOOD_SOFT_LIMIT_TOP_ROTATIONS. Observe where it stops physically.
+//        Measure the actual angle and update HOOD_SOFT_LIMIT_TOP_ROTATIONS in Constants.
+// [ ] 6. Update SHOT_TABLE_HOOD_ROTATIONS in Constants with measured motor encoder values at each
+//        shot distance. Replace the placeholder degree-derived values.
+// [ ] 7. Tune gravity feedforward (HOOD_KG): home the hood, command it to ~60 deg, let the P
+//        controller settle, then zero the P output and find the duty cycle that holds position.
+//        That value is the HOOD_KG seed. Add it to TurretSetpointGenerator as
+//        kG * Math.cos(hoodAngleRadians) on top of the P term. Hood is heavy + belt-driven
+//        so without this it will drift downward when the P error reaches zero.
+// TODO: when a CANcoder is available for the hood, re-add it here with absolute position feedback.
+//       Update TurretIOInputs, updateInputs(), zeroHoodEncoder(), and shot table accordingly.
 //
 // TODO - TURRET ROTATION CHECKLIST:
-// [ ] 1. TURRET motor (CAN 23) and TURRET_CANCODER (CAN 26) appear in TunerX.
+// [x] 1. TURRET motor (CAN 23) appears in TunerX.
 // [ ] 2. Physically locate the two hard stops. The LEFT hard stop is home (encoder zero).
 //        The hall sensor magnet should be mounted so it triggers just before the left hard stop.
 //        Confirm at least 5-10 degrees of clearance between sensor fire and the physical stop.
 //        If the magnet is on the right side instead, swap HALL_SENSOR_LEFT_DIO and
 //        HALL_SENSOR_RIGHT_DIO in Constants, or remount the magnet.
-// [ ] 3. Confirm DIO ports HALL_SENSOR_LEFT_DIO (4) and HALL_SENSOR_RIGHT_DIO (3):
+// [ ] 3. Confirm DIO ports HALL_SENSOR_LEFT_DIO (0) and HALL_SENSOR_RIGHT_DIO (3):
 //        go to Test mode, hold the magnet near each sensor and confirm
 //        Turret/HallLeftRaw and Turret/HallRightRaw toggle in AdvantageScope.
 //        Verify LEFT fires at the left physical stop and RIGHT fires at the right stop.
@@ -50,18 +60,17 @@ import frc.robot.Constants;
 //        and Turret/Homed should become true in AdvantageScope. Encoder should read near 0.
 //        If it creeps right instead, recheck step 5.
 // [ ] 7. Manually sweep the full rotation range end-to-end. Confirm the turret reaches both
-//        hard stops without the hall sensor failing to trigger, and that TURRET_CANCODER
-//        reads span the expected range (e.g. 0 to ~0.X rotations).
+//        hard stops without the hall sensor failing to trigger.
+// [ ] 8. Home the turret, then slowly drive it to the right hard stop. Read the motor encoder
+//        value from Turret/RotationDeg (divide by 360 to get rotations) and set
+//        TURRET_SOFT_LIMIT_RIGHT_ROTATIONS in Constants to ~95% of that value.
 public class TurretIOCTRE implements TurretIO {
   private final TalonFX flywheelFrontMotor;
   private final TalonFX flywheelBackMotor;
   private final TalonFX hoodMotor;
   private final TalonFX turretMotor;
 
-  private final CANcoder hoodEncoder;
-  private final CANcoder turretEncoder;
-
-  private final DigitalInput hoodBeamBreak;
+  private final DigitalInput hoodLimitSwitch; // fires at bottom stop (85 deg = position 0)
   private final DigitalInput hallRight;
   private final DigitalInput hallLeft;
 
@@ -74,7 +83,7 @@ public class TurretIOCTRE implements TurretIO {
     flywheelBackMotor  = new TalonFX(Constants.Turret.FLYWHEEL_BACK_MOTOR_ID);
 
     // Cap flywheel spinup current to reduce brownout risk when drive is also accelerating.
-    // 40A x 2 motors = 80A max flywheel draw. Raise to 60A if spinup feels too slow.
+    // X60 stall current is 483A — 40A limit keeps PDH headroom. Raise to 60A if spinup feels too slow.
     TalonFXConfiguration flywheelConfig = new TalonFXConfiguration();
     flywheelConfig.CurrentLimits.StatorCurrentLimit = 40.0;
     flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
@@ -108,22 +117,20 @@ public class TurretIOCTRE implements TurretIO {
     turretConfig.CurrentLimits.StatorCurrentLimitEnable = true;
     turretMotor.getConfigurator().apply(turretConfig);
 
-    hoodEncoder   = new CANcoder(Constants.Turret.HOOD_CANCODER_ID);
-    turretEncoder = new CANcoder(Constants.Turret.TURRET_CANCODER_ID);
-
-    hoodBeamBreak = new DigitalInput(Constants.Turret.HOOD_BEAM_BREAK_DIO);
-    hallRight     = new DigitalInput(Constants.Turret.HALL_SENSOR_RIGHT_DIO);
-    hallLeft      = new DigitalInput(Constants.Turret.HALL_SENSOR_LEFT_DIO);
+    hoodLimitSwitch = new DigitalInput(Constants.Turret.HOOD_LIMIT_SWITCH_DIO);
+    hallRight       = new DigitalInput(Constants.Turret.HALL_SENSOR_RIGHT_DIO);
+    hallLeft        = new DigitalInput(Constants.Turret.HALL_SENSOR_LEFT_DIO);
   }
 
   @Override
   public void updateInputs(TurretIOInputs inputs) {
-    inputs.hoodBeamBreakRaw = hoodBeamBreak.get();
-    inputs.hallRightRaw     = hallRight.get();
-    inputs.hallLeftRaw      = hallLeft.get();
+    inputs.hoodLimitSwitchRaw = !hoodLimitSwitch.get(); // active-low — true when switch is pressed
+    inputs.hallRightRaw       = hallRight.get();
+    inputs.hallLeftRaw        = hallLeft.get();
 
-    inputs.hoodAbsolutePositionRotations   = hoodEncoder.getAbsolutePosition().getValueAsDouble();
-    inputs.turretAbsolutePositionRotations = turretEncoder.getAbsolutePosition().getValueAsDouble();
+    inputs.hoodMotorPositionRotations      = hoodMotor.getPosition().getValueAsDouble();
+    inputs.turretAbsolutePositionRotations = turretMotor.getPosition().getValueAsDouble();
+    inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
     // Velocity is in rotations/sec from CTRE — convert to RPM for dashboard readability
     inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
   }
@@ -147,5 +154,10 @@ public class TurretIOCTRE implements TurretIO {
   @Override
   public void zeroTurretEncoder() {
     turretMotor.setPosition(0.0);
+  }
+
+  @Override
+  public void zeroHoodEncoder() {
+    hoodMotor.setPosition(Constants.Turret.HOOD_HOME_ROTATIONS);
   }
 }

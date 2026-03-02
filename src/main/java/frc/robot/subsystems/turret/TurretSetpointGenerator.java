@@ -15,7 +15,7 @@ public class TurretSetpointGenerator {
     }
 
     setpoints.turretPercent = clamp((goal.turretRotations - state.turretAbsolutePositionRotations) * TURRET_KP);
-    setpoints.hoodPercent   = clamp((goal.hoodRotations   - state.hoodAbsolutePositionRotations)   * HOOD_KP);
+    setpoints.hoodPercent   = clamp((goal.hoodRotations   - state.hoodMotorPositionRotations)       * HOOD_KP);
     setpoints.flywheelPercent = clamp(goal.flywheelPercent);
   }
 
