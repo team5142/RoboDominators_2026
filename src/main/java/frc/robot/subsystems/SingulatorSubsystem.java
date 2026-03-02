@@ -8,9 +8,9 @@
 //
 // TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
 // [x] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
-// [ ] 2. Confirm DIO port: BEAM_BREAK_DIO (28). In Test mode, block the sensor with your
-//        hand and verify Singulator/BallPresent toggles true in AdvantageScope.
-//        Note: beam break is normally-open — blocked = false from sensor = true in code.
+// [ ] 2. Confirm LaserCAN (CAN 28) appears on CAN bus and reports valid measurements.
+//        In Test mode, block the sensor with your hand and verify Singulator/BallPresent
+//        toggles true in AdvantageScope. Threshold is LASERCAN_THRESHOLD_MM in Constants.
 // [x] 3. Check motor direction: run spinFeed() at low speed, confirm balls move toward
 //        the flywheels. If backwards, set MOTOR_INVERTED = true in Constants.
 // [ ] 4. Tune FEED_SPEED to match the flywheel acceptance rate — too fast risks double-
@@ -26,7 +26,7 @@ import com.revrobotics.ResetMode;
 import com.revrobotics.spark.SparkMax;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.spark.config.SparkMaxConfig;
-import edu.wpi.first.wpilibj.DigitalInput;
+import au.grapplerobotics.LaserCan;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
@@ -36,7 +36,7 @@ import frc.robot.util.SmartLogger;
 public class SingulatorSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final SparkMax motor;
-  private final DigitalInput beamBreak;
+  private final LaserCan laserCan;
 
   // Track previous beam break state to detect falling edge (ball just passed)
   private boolean lastBeamBreakBlocked = false;
@@ -55,7 +55,14 @@ public class SingulatorSubsystem extends SubsystemBase {
     this.robotState = robotState;
 
     motor = new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless);
-    beamBreak = new DigitalInput(Constants.Singulator.BEAM_BREAK_DIO);
+
+    laserCan = new LaserCan(Constants.Singulator.LASERCAN_ID);
+    try {
+      laserCan.setRangingMode(LaserCan.RangingMode.SHORT);
+      laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
+    } catch (au.grapplerobotics.ConfigurationFailedException e) {
+      SmartLogger.logConsole("LaserCAN config failed: " + e.getMessage(), "Singulator");
+    }
 
     SparkMaxConfig config = new SparkMaxConfig();
     config.inverted(Constants.Singulator.MOTOR_INVERTED);
@@ -101,9 +108,12 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   public void stopAll() { pause(); }
 
-  // True when a ball is blocking the beam break sensor
+  // True when a ball is close enough to block the LaserCAN beam
   public boolean isBallPresent() {
-    return !beamBreak.get(); // beam break is normally-open: false = blocked = ball present
+    LaserCan.Measurement m = laserCan.getMeasurement();
+    return m != null
+        && m.status == LaserCan.LASERCAN_STATUS_VALID_MEASUREMENT
+        && m.distance_mm <= Constants.Singulator.LASERCAN_THRESHOLD_MM;
   }
 
   @Override

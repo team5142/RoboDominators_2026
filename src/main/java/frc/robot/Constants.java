@@ -421,7 +421,11 @@ public final class Constants {
   // Singulator hardware IDs and tuning constants (feeds balls one at a time into flywheels)
   public static final class Singulator {
     public static final int MOTOR_ID = 24; // REV NEO on SparkMax
-    public static final int BEAM_BREAK_DIO = 28; // beam break at ball staging point
+    public static final int LASERCAN_ID = 28; // Grapple LaserCAN on CAN bus — ball staging detection
+    // Ball is considered present when LaserCAN reads closer than this distance.
+    // Channel is ~7-8in wide, ball is 6in diameter. Sensor shoots across the channel (~200mm).
+    // 150mm catches the ball anywhere in the inner half without false-triggering on the far wall.
+    public static final int LASERCAN_THRESHOLD_MM = 150; // TODO: verify on hardware
 
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;

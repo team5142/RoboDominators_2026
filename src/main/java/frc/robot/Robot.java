@@ -12,6 +12,7 @@ import frc.robot.util.SmartLogger;
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.HttpCamera;
 import edu.wpi.first.cscore.MjpegServer;
+import au.grapplerobotics.CanBridge;
 import frc.robot.util.LogSpaceMonitor;
 
 // Main robot class - runs on boot, manages all modes (auto/teleop/test), 20ms loop
@@ -32,6 +33,7 @@ public class Robot extends LoggedRobot {
   // Runs ONCE at robot boot - setup logging and create subsystems
   @Override
   public void robotInit() {
+    CanBridge.runTCP(); // allows GrappleHook to connect for LaserCAN tuning
     String projectName = "RoboDominators_2026";
     String teamNumber = "5142";
     String robotName = "Osprey";
