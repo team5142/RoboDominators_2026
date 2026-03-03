@@ -1,10 +1,18 @@
 package frc.robot.subsystems.turret;
 
+import com.ctre.phoenix6.CANBus;
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
+import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
+import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.wpilibj.DigitalInput;
 import frc.robot.Constants;
 
@@ -45,12 +53,10 @@ import frc.robot.Constants;
 // [ ] 2. Physically locate the two hard stops. The LEFT hard stop is home (encoder zero).
 //        The hall sensor magnet should be mounted so it triggers just before the left hard stop.
 //        Confirm at least 5-10 degrees of clearance between sensor fire and the physical stop.
-//        If the magnet is on the right side instead, swap HALL_SENSOR_LEFT_DIO and
-//        HALL_SENSOR_RIGHT_DIO in Constants, or remount the magnet.
-// [ ] 3. Confirm DIO ports HALL_SENSOR_LEFT_DIO (0) and HALL_SENSOR_RIGHT_DIO (3):
-//        go to Test mode, hold the magnet near each sensor and confirm
-//        Turret/HallLeftRaw and Turret/HallRightRaw toggle in AdvantageScope.
-//        Verify LEFT fires at the left physical stop and RIGHT fires at the right stop.
+//        If the magnet is on the CW side instead, remount the magnet near the CCW hard stop.
+// [ ] 3. Confirm DIO port HALL_SENSOR_CCW_DIO (0):
+//        go to Test mode, hold the magnet near the sensor and confirm
+//        Turret/HallCCWRaw toggles in AdvantageScope.
 // [ ] 4. Before commanding any motor output, manually move the turret to the center of its range.
 //        This avoids slamming into a hard stop on first power-on.
 // [ ] 5. Command a small positive percent output (TURRET_KP is 0.15 - very slow).
@@ -71,78 +77,81 @@ public class TurretIOCTRE implements TurretIO {
   private final TalonFX turretMotor;
 
   private final DigitalInput hoodLimitSwitch; // fires at bottom stop (85 deg = position 0)
-  private final DigitalInput hallRight;
-  private final DigitalInput hallLeft;
+  private final DigitalInput hallCCW;
 
   private final DutyCycleOut flywheelDutyCycle = new DutyCycleOut(0.0);
   private final DutyCycleOut hoodDutyCycle     = new DutyCycleOut(0.0);
   private final DutyCycleOut turretDutyCycle   = new DutyCycleOut(0.0);
+  private final VoltageOut   turretVoltageOut  = new VoltageOut(0.0);
+  private final MotionMagicVoltage turretMotionMagic = new MotionMagicVoltage(0.0).withSlot(0);
 
   public TurretIOCTRE() {
-    flywheelFrontMotor = new TalonFX(Constants.Turret.FLYWHEEL_FRONT_MOTOR_ID);
-    flywheelBackMotor  = new TalonFX(Constants.Turret.FLYWHEEL_BACK_MOTOR_ID);
+    // Flywheel and hood motors not wired yet — stubbed out until hardware is ready.
+    // setFlywheelPercent() and setHoodPercent() are no-ops until these are restored.
+    flywheelFrontMotor = null;
+    flywheelBackMotor  = null;
+    hoodMotor          = null;
 
-    // Cap flywheel spinup current to reduce brownout risk when drive is also accelerating.
-    // X60 stall current is 483A — 40A limit keeps PDH headroom. Raise to 60A if spinup feels too slow.
-    TalonFXConfiguration flywheelConfig = new TalonFXConfiguration();
-    flywheelConfig.CurrentLimits.StatorCurrentLimit = 40.0;
-    flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
-    flywheelConfig.CurrentLimits.SupplyCurrentLimit = 40.0;
-    flywheelConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
-    MotorOutputConfigs flywheelOutput = new MotorOutputConfigs();
-    flywheelOutput.Inverted = Constants.Turret.FLYWHEEL_MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
-    flywheelConfig.MotorOutput = flywheelOutput;
-    flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
-    flywheelBackMotor.getConfigurator().apply(flywheelConfig);
-
-    hoodMotor   = new TalonFX(Constants.Turret.HOOD_MOTOR_ID);
-    turretMotor = new TalonFX(Constants.Turret.TURRET_MOTOR_ID);
-
-    TalonFXConfiguration hoodConfig = new TalonFXConfiguration();
-    MotorOutputConfigs hoodOutput = new MotorOutputConfigs();
-    hoodOutput.Inverted = Constants.Turret.HOOD_MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
-    hoodConfig.MotorOutput = hoodOutput;
-    hoodConfig.CurrentLimits.StatorCurrentLimit = 20.0;
-    hoodConfig.CurrentLimits.StatorCurrentLimitEnable = true;
-    hoodMotor.getConfigurator().apply(hoodConfig);
-
+    turretMotor = new TalonFX(Constants.Turret.TURRET_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
     TalonFXConfiguration turretConfig = new TalonFXConfiguration();
     MotorOutputConfigs turretOutput = new MotorOutputConfigs();
     turretOutput.Inverted = Constants.Turret.TURRET_MOTOR_INVERTED
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
+    turretOutput.NeutralMode = NeutralModeValue.Brake;
     turretConfig.MotorOutput = turretOutput;
     turretConfig.CurrentLimits.StatorCurrentLimit = 20.0;
     turretConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+
+    // Slot 0: MotionMagic PID + feedforward gains — tune kP in AdvantageScope
+    Slot0Configs slot0 = new Slot0Configs();
+    slot0.kS = Constants.Turret.TURRET_KS;
+    slot0.kV = Constants.Turret.TURRET_KV;
+    slot0.kP = Constants.Turret.TURRET_KP;
+    slot0.kD = Constants.Turret.TURRET_KD;
+    turretConfig.Slot0 = slot0;
+
+    // MotionMagic profile — safety speeds for commissioning; raise in Constants once confirmed
+    MotionMagicConfigs mm = new MotionMagicConfigs();
+    mm.MotionMagicCruiseVelocity = Constants.Turret.TURRET_CRUISE_VELOCITY_RPS;
+    mm.MotionMagicAcceleration   = Constants.Turret.TURRET_ACCELERATION_RPS2;
+    mm.MotionMagicJerk           = Constants.Turret.TURRET_JERK_RPS3;
+    turretConfig.MotionMagic = mm;
+
     turretMotor.getConfigurator().apply(turretConfig);
 
+    // Raise position and velocity signal rates for SysId data quality
+    BaseStatusSignal.setUpdateFrequencyForAll(100,
+        turretMotor.getPosition(), turretMotor.getVelocity());
+    turretMotor.optimizeBusUtilization();
+
     hoodLimitSwitch = new DigitalInput(Constants.Turret.HOOD_LIMIT_SWITCH_DIO);
-    hallRight       = new DigitalInput(Constants.Turret.HALL_SENSOR_RIGHT_DIO);
-    hallLeft        = new DigitalInput(Constants.Turret.HALL_SENSOR_LEFT_DIO);
+    hallCCW         = new DigitalInput(Constants.Turret.HALL_SENSOR_CCW_DIO);
   }
 
   @Override
   public void updateInputs(TurretIOInputs inputs) {
     inputs.hoodLimitSwitchRaw = !hoodLimitSwitch.get(); // active-low — true when switch is pressed
-    inputs.hallRightRaw       = hallRight.get();
-    inputs.hallLeftRaw        = hallLeft.get();
+    inputs.hallCCWRaw         = !hallCCW.get();          // active-low — true when magnet is sensed
 
-    inputs.hoodMotorPositionRotations      = hoodMotor.getPosition().getValueAsDouble();
+    if (hoodMotor != null)
+      inputs.hoodMotorPositionRotations = hoodMotor.getPosition().getValueAsDouble();
     inputs.turretAbsolutePositionRotations = turretMotor.getPosition().getValueAsDouble();
+    inputs.turretVelocityRps               = turretMotor.getVelocity().getValueAsDouble();
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
-    // Velocity is in rotations/sec from CTRE — convert to RPM for dashboard readability
-    inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
+    if (flywheelFrontMotor != null)
+      inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
   }
 
   @Override
   public void setFlywheelPercent(double percent) {
+    if (flywheelFrontMotor == null) return;
     flywheelFrontMotor.setControl(flywheelDutyCycle.withOutput(percent));
     flywheelBackMotor.setControl(flywheelDutyCycle.withOutput(percent));
   }
 
   @Override
   public void setHoodPercent(double percent) {
+    if (hoodMotor == null) return;
     hoodMotor.setControl(hoodDutyCycle.withOutput(percent));
   }
 
@@ -152,12 +161,35 @@ public class TurretIOCTRE implements TurretIO {
   }
 
   @Override
+  public void setTurretVoltage(double volts) {
+    turretMotor.setControl(turretVoltageOut.withOutput(volts));
+  }
+
+  @Override
+  public void setTurretPosition(double motorRotations) {
+    turretMotor.setControl(turretMotionMagic.withPosition(motorRotations));
+  }
+
+  // During SysId the normal 20A stator limit would clamp the motor before it can accelerate
+  // freely, corrupting kA. Raise it to 60A for the duration of the test, then restore.
+  @Override
+  public void setSysIdActive(boolean active) {
+    CurrentLimitsConfigs limits = new CurrentLimitsConfigs();
+    limits.StatorCurrentLimit       = active ? 60.0 : 20.0;
+    limits.StatorCurrentLimitEnable = true;
+    turretMotor.getConfigurator().apply(limits);
+  }
+
+  @Override
   public void zeroTurretEncoder() {
-    turretMotor.setPosition(0.0);
+    // Set to the hall sensor offset so the encoder reads 0 at the CCW hard stop.
+    // When mechanical relocates the sensor to the CCW stop, set TURRET_HALL_OFFSET_MOTOR_ROT = 0.
+    turretMotor.setPosition(Constants.Turret.TURRET_HALL_OFFSET_MOTOR_ROT);
   }
 
   @Override
   public void zeroHoodEncoder() {
+    if (hoodMotor == null) return;
     hoodMotor.setPosition(Constants.Turret.HOOD_HOME_ROTATIONS);
   }
 }

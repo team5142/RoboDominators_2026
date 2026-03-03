@@ -15,6 +15,7 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.units.measure.Angle;
+import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
@@ -44,13 +45,13 @@ import frc.robot.util.SmartLogger;
 //
 // COMMISSIONING CHECKLIST:
 // [x] 1. Confirm CAN IDs: INTAKE_ROLLER_MOTOR_ID (40, SparkMax), INTAKE_EXTENSION_MOTOR_ID (41, Kraken/Canivore)
-// [ ] 2. Confirm DIO port: RETRACT_LIMIT_SWITCH_DIO (confirmed DIO 1).
+// [x] 2. Confirm DIO port: RETRACT_LIMIT_SWITCH_DIO (confirmed DIO 1).
 //        In Test mode, manually trip the switch and verify Intake/LimitSwitch reads true in AdvantageScope.
 // [x] 3. Extension motor direction confirmed (EXTENSION_MOTOR_INVERTED = false).
 //        Re-verify before SysId: positive voltage must = arm extending (away from home). If reversed, forward test hits home limit immediately.
 // [x] 4. Roller motor direction confirmed (ROLLER_MOTOR_INVERTED = false)
 // [x] 5. Position readings: HOME: 0.158  OUT: 12.95
-// [ ] 6. Confirm limit switch trips cleanly at full retract — watch Intake/LimitSwitch in AdvantageScope
+// [x] 6. Confirm limit switch trips cleanly at full retract — watch Intake/LimitSwitch in AdvantageScope
 // [ ] 7. Run a full home + extend + retract cycle. Confirm encoder zeroes on home.
 // [ ] 8. Confirm stall detection fires when arm is manually blocked mid-travel (must be done in normal teleop mode, not SysId mode — stall is bypassed during SysId).
 // [ ] 9. Tune EXTEND_SPEED and RETRACT_SPEED for smooth travel without belt slip or slamming.
@@ -71,6 +72,7 @@ public class IntakeSubsystem extends SubsystemBase {
   // Pre-subscribed signals — avoids blocking CAN reads in periodic()
   private final StatusSignal<Angle> positionSignal;
   private final StatusSignal<Current> currentSignal;
+  private final StatusSignal<AngularVelocity> velocitySignal;
 
   // SysId routine — characterizes kS, kV, kA for the extension motor.
   // Run before switching to MotionMagic. Results feed into Constants.Intake EXTENSION_kS/kV/kA.
@@ -106,7 +108,8 @@ public class IntakeSubsystem extends SubsystemBase {
     // Pre-subscribe signals at 50Hz so periodic() reads cached values without blocking CAN
     positionSignal = extensionMotor.getPosition();
     currentSignal  = extensionMotor.getStatorCurrent();
-    BaseStatusSignal.setUpdateFrequencyForAll(50, positionSignal, currentSignal);
+    velocitySignal = extensionMotor.getVelocity();
+    BaseStatusSignal.setUpdateFrequencyForAll(50, positionSignal, currentSignal, velocitySignal);
     extensionMotor.optimizeBusUtilization();
 
     // SysId: ramps 0→4V over 2s, logs state to CTRE SignalLogger (same format as drivetrain)
@@ -138,23 +141,23 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logConsole("IntakeSubsystem initialized - call startHoming() on enable", "Intake");
   }
 
-  // Begin homing sequence - creeps upward until the limit switch trips.
-  // Safe to call if already RETRACTED (no-op) or HOMING_FAILED (retries).
+  // Begin homing sequence - always runs regardless of current state.
+  // If the limit switch is already pressed (arm is up), zero immediately.
+  // Otherwise retract until the switch trips.
   public void startHoming() {
-    IntakePosition pos = robotState.getIntakePosition();
-    if (pos == IntakePosition.RETRACTED) return;
-    if (!limitSwitch.get()) {
-      // Already at home - just zero and mark retracted
+    if (limitSwitch.get()) {
+      // Switch pressed (true = pressed) - arm is at home, zero and mark retracted
       extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
       robotState.setIntakePosition(IntakePosition.RETRACTED);
       SmartLogger.logConsole("Intake already at home on enable - zeroed", "Intake");
       return;
     }
+    // Switch not pressed - arm is out (or unknown), retract until switch trips
     extensionStalled = false;
     stallLoopCount = 0;
     extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
     robotState.setIntakePosition(IntakePosition.HOMING);
-    SmartLogger.logConsole("Intake homing started - moving to limit switch", "Intake");
+    SmartLogger.logConsole("Intake homing started - retracting to limit switch", "Intake");
   }
 
   // Extend the intake arm out over the bumper.
@@ -249,11 +252,12 @@ public class IntakeSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    BaseStatusSignal.refreshAll(positionSignal, currentSignal);
+    BaseStatusSignal.refreshAll(positionSignal, currentSignal, velocitySignal);
     double rotations   = positionSignal.getValueAsDouble();
     double currentAmps = currentSignal.getValueAsDouble();
+    double velocityRps = velocitySignal.getValueAsDouble();
 
-    boolean atHome = !limitSwitch.get(); // active-low — true when switch is pressed
+    boolean atHome = limitSwitch.get(); // true when switch is pressed (arm fully retracted)
     robotState.setIntakeLimitSwitch(atHome);
 
     IntakePosition pos = robotState.getIntakePosition();
@@ -268,19 +272,27 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     }
 
-    // Normal retract: limit switch trips OR soft limit reached
+    // Normal retract: slow zone near home, then stop at limit switch or soft limit
     if (pos == IntakePosition.RETRACTING) {
+      double distToHome = rotations - Constants.Intake.EXTENSION_HOME_ROTATIONS;
       if (atHome || rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS) {
         stopExtension();
         extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
         robotState.setIntakePosition(IntakePosition.RETRACTED);
+      } else if (distToHome <= Constants.Intake.RETRACT_SLOW_ZONE_ROTATIONS) {
+        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SLOW_SPEED));
       }
     }
 
-    // Soft limit: stop extending at target position
-    if (pos == IntakePosition.EXTENDING && rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
-      stopExtension();
-      robotState.setIntakePosition(IntakePosition.EXTENDED);
+    // Extend: slow zone near target, then stop at soft limit
+    if (pos == IntakePosition.EXTENDING) {
+      double distToTarget = Constants.Intake.EXTENSION_TARGET_ROTATIONS - rotations;
+      if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
+        stopExtension();
+        robotState.setIntakePosition(IntakePosition.EXTENDED);
+      } else if (distToTarget <= Constants.Intake.EXTEND_SLOW_ZONE_ROTATIONS) {
+        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SLOW_SPEED));
+      }
     }
 
     // Current-based stall detection — skipped during SysId (high current is expected there)
@@ -305,16 +317,17 @@ public class IntakeSubsystem extends SubsystemBase {
       stallLoopCount = 0;
     }
 
-    SmartLogger.logReplay("Intake/ExtensionRotations", rotations);
-    SmartLogger.logReplay("Intake/ExtensionCurrentAmps", currentAmps);
+    // AScope logging — position and target on the same axis for direct comparison
+    double target = (pos == IntakePosition.EXTENDING || pos == IntakePosition.EXTENDED)
+        ? Constants.Intake.EXTENSION_TARGET_ROTATIONS
+        : Constants.Intake.EXTENSION_HOME_ROTATIONS;
+    SmartLogger.logReplay("Intake/PositionRotations", rotations);
+    SmartLogger.logReplay("Intake/TargetRotations", target);
+    SmartLogger.logReplay("Intake/VelocityRps", velocityRps);
+    SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
     SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
-    SmartLogger.logReplay("Intake/Homed", isHomed());
-
-    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber("Intake/ExtensionRotations", rotations);
-    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putString("Intake/Position", pos.toString());
-    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean("Intake/Stalled", extensionStalled);
-    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean("Intake/Homed", isHomed());
+    SmartLogger.logReplay("Intake/State", pos.toString());
   }
 }
 

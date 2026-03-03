@@ -6,9 +6,15 @@ public class TurretOutput {
   public double hoodPercent = 0.0;
   public double turretPercent = 0.0;
 
+  // When true, turretPositionMotorRotations drives MotionMagic instead of turretPercent
+  public boolean useTurretPosition = false;
+  public double turretPositionMotorRotations = 0.0;
+
   public void clear() {
     flywheelPercent = 0.0;
     hoodPercent = 0.0;
     turretPercent = 0.0;
+    useTurretPosition = false;
+    turretPositionMotorRotations = 0.0;
   }
 }

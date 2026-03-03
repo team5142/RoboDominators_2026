@@ -31,6 +31,9 @@ import frc.robot.commands.util.SetStartingPoseCommand;
 import frc.robot.subsystems.*;
 import frc.robot.subsystems.turret.TurretIOCTRE;
 import frc.robot.subsystems.turret.TurretSubsystem;
+import frc.robot.subsystems.turret.TurretAimPipeline;
+import frc.robot.subsystems.turret.TurretAimSolver;
+import frc.robot.subsystems.turret.TurretTargetSelector;
 import frc.robot.util.SmartLogger;
 import frc.robot.util.TouchscreenInterface;
 
@@ -42,12 +45,12 @@ public class RobotContainer {
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
   private static final boolean USE_TOUCHSCREEN_OPERATOR = true;
   private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
-  private static final boolean ENABLE_TURRET = false;  // checklist incomplete — see TurretIOCTRE.java
+  private static final boolean ENABLE_TURRET = true;   // rotation + hall sensor testing — hood/flywheel bindings remain commented out
   private static final boolean ENABLE_INTAKE = true;
   // Homing runs on enable only when both the subsystem AND its homing flag are true.
   // Enable the subsystem first to test motors manually, then enable homing once switches are verified.
-  static boolean ENABLE_INTAKE_HOMING = false; // set true after checklist items 2, 3, 6 verified
-  static boolean ENABLE_TURRET_HOMING = false; // set true after hall sensor + hood switch verified
+  static boolean ENABLE_INTAKE_HOMING = true; // limit switch confirmed DIO 1, direction confirmed
+  static boolean ENABLE_TURRET_HOMING = true; // hall sensor verified 2026-03-02
   private static final boolean ENABLE_CLIMBER = false;
   private static final boolean ENABLE_SPINDEXER = true;
   private static final boolean ENABLE_SINGULATOR = true;
@@ -116,6 +119,20 @@ public class RobotContainer {
     ledSubsystem = new LEDSubsystem(this.robotState);
     turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
     intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
+
+    // Wire pose-based tracking as the turret's default command (active in PHASE_2+).
+    // While no higher-priority command holds the turret, it continuously solves bearing to target.
+    // The aim goal only enables when phase >= PHASE_2 and pose is initialized.
+    if (turretSubsystem != null) {
+      TurretAimPipeline aimPipeline = new TurretAimPipeline(
+          poseEstimator,
+          driveSubsystem,
+          new TurretTargetSelector(poseEstimator),
+          new TurretAimSolver());
+      turretSubsystem.setDefaultCommand(
+          Commands.run(() -> turretSubsystem.updateAimFromProvider(aimPipeline), turretSubsystem)
+              .withName("TurretTrackingDefault"));
+    }
     climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
     spindexerSubsystem = ENABLE_SPINDEXER ? new SpindexerSubsystem(this.robotState) : null;
     singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem(this.robotState) : null;
@@ -236,10 +253,13 @@ public class RobotContainer {
         .whileTrue(Commands.deferredProxy(this::createSmartSweepCommand));
 
     // LEFT/RIGHT BUMPER: Dynamic bump traversal
+    // COMMENTED OUT during SysId — bumpers are used for SignalLogger start/stop
+    /*
     new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
     new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
+    */
 
     // BOTH TRIGGERS: Dynamic heading snap - picks heading based on field position
     Trigger bothTriggers = new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
@@ -248,6 +268,24 @@ public class RobotContainer {
         poseEstimator, driveSubsystem,
         () -> -driverController.getLeftY(),
         () -> -driverController.getLeftX()));
+
+    // LEFT TRIGGER (alone): Hub auto-aim — turret tracks hub using pose while held.
+    // Uses the same hubPipeline logic as operator right bumper but on the driver controller.
+    // Only activates when right trigger is NOT also held (bothTriggers takes priority).
+    if (turretSubsystem != null) {
+      TurretAimPipeline driverHubPipeline = new TurretAimPipeline(
+          poseEstimator,
+          driveSubsystem,
+          () -> cachedAlliance == edu.wpi.first.wpilibj.DriverStation.Alliance.Red
+              ? Constants.HubCenters.RED_HUB_CENTER
+              : Constants.HubCenters.BLUE_HUB_CENTER,
+          new TurretAimSolver());
+      new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
+          .and(new Trigger(() -> driverController.getRightTriggerAxis() <= 0.5))
+          .whileTrue(Commands.run(
+              () -> turretSubsystem.updateAimFromProvider(driverHubPipeline), turretSubsystem)
+              .withName("DriverHubAim"));
+    }
 
     // D-PAD: Wall traversal commands (Up=Far, Down=Near, Left=Left wall, Right=Right wall)
     new Trigger(() -> driverController.getPOV() == 0)
@@ -304,6 +342,8 @@ public class RobotContainer {
     // Set ENABLE_SPINDEXER = true before uncommenting.
     
     // Start: toggle spindexer on (forward) / off
+    // COMMENTED OUT — Start is used for turret homing (Operator Start hold)
+    /*
     new JoystickButton(operatorController, XboxController.Button.kStart.value)
         .onTrue(Commands.runOnce(() -> {
           if (spindexerSubsystem == null) return;
@@ -313,6 +353,7 @@ public class RobotContainer {
             spindexerSubsystem.stop();
           }
         }));
+    */
     // Back: toggle spindexer between forward and reverse (for manual unjams)
     new JoystickButton(operatorController, XboxController.Button.kBack.value)
         .onTrue(Commands.runOnce(() -> {
@@ -340,20 +381,43 @@ public class RobotContainer {
           () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
     */ // --- END TURRET HOOD ---
 
-    // --- TURRET ROTATION (uncomment after TURRET ROTATION CHECKLIST in TurretIOCTRE is complete) ---
-    // Set ENABLE_TURRET = true before uncommenting.
-    /*
-    // D-pad left (hold): nudge turret left
+    // --- TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
+    // Start (hold): home the turret (CCW until hall fires, then zeros encoder).
+    // D-pad up:    MotionMagic to CW soft limit (TURRET_SOFT_LIMIT_RIGHT). Snapshot encoder to console.
+    // D-pad down:  MotionMagic to CCW soft limit (TURRET_SOFT_LIMIT_LEFT).  Snapshot encoder to console.
+    // D-pad left:  snapshot encoder when turret is manually pointed robot-LEFT  (for TURRET_FORWARD_MOTOR_ROT cal)
+    // D-pad right: snapshot encoder when turret is manually pointed robot-RIGHT (for TURRET_FORWARD_MOTOR_ROT cal)
+    new Trigger(() -> operatorController.getPOV() == 0)
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT);
+          double v = turretSubsystem.getTurretMotorRotations();
+          SmartLogger.logConsole("ACTUAL ANGLES: FORWARD=" + String.format("%.3f", v), "TurretCal");
+          SmartLogger.logReplay("TurretCal/Forward", v);
+        }));
+    new Trigger(() -> operatorController.getPOV() == 180)
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT);
+          double v = turretSubsystem.getTurretMotorRotations();
+          SmartLogger.logConsole("ACTUAL ANGLES: BACKWARD=" + String.format("%.3f", v), "TurretCal");
+          SmartLogger.logReplay("TurretCal/Backward", v);
+        }));
     new Trigger(() -> operatorController.getPOV() == 270)
-        .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(-Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
-          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(0.0); }));
-    // D-pad right (hold): nudge turret right
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          double v = turretSubsystem.getTurretMotorRotations();
+          SmartLogger.logConsole("ACTUAL ANGLES: LEFT=" + String.format("%.3f", v), "TurretCal");
+          SmartLogger.logReplay("TurretCal/Left", v);
+        }));
     new Trigger(() -> operatorController.getPOV() == 90)
-        .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
-          () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(0.0); }));
-    */ // --- END TURRET ROTATION ---
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          double v = turretSubsystem.getTurretMotorRotations();
+          SmartLogger.logConsole("ACTUAL ANGLES: RIGHT=" + String.format("%.3f", v), "TurretCal");
+          SmartLogger.logReplay("TurretCal/Right", v);
+        }));
+    // --- END TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
 
     // --- TURRET FLYWHEELS (uncomment after FLYWHEEL CHECKLIST in TurretIOCTRE is complete) ---
     // Set ENABLE_TURRET = true before uncommenting.
@@ -382,9 +446,10 @@ public class RobotContainer {
           () -> { if (climberSubsystem != null) climberSubsystem.setRotationPercent(0.0); }));
     */ // --- END CLIMBER ---
 
-    // --- EMERGENCY STOP (uncomment once at least one mechanism section above is uncommented) ---
-    /*
+    // --- EMERGENCY STOP ---
     // Right bumper: immediately stops all mechanism subsystems and disables fire interlock.
+    // COMMENTED OUT during SysId — right bumper is used for SignalLogger stop
+    /*
     new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
         .onTrue(Commands.runOnce(() -> {
           flywheelOn = false;
@@ -410,8 +475,33 @@ public class RobotContainer {
     //       }
     //     }));
 
-    // To run SysId: comment out normal buttons above and uncomment configureSysIdBindings() below
-    // configureSysIdBindings();
+    // Operator Start (hold): home the turret — drive CCW until hall sensor fires, then zero encoder
+    if (turretSubsystem != null) {
+      new JoystickButton(operatorController, XboxController.Button.kStart.value)
+          .whileTrue(Commands.startEnd(
+            () -> turretSubsystem.home(),
+            () -> turretSubsystem.cancelHoming()));
+    }
+
+    // --- TURRET HUB TARGETING ---
+    // Right bumper (hold): force turret to aim at hub regardless of field position.
+    // The default command (TurretTrackingDefault) normally auto-selects hub vs pass target
+    // based on robot position. This overrides it to always aim at the hub.
+    // Requires turret to be homed first (Operator Start).
+    if (turretSubsystem != null) {
+      TurretAimPipeline hubPipeline = new TurretAimPipeline(
+          poseEstimator,
+          driveSubsystem,
+          () -> cachedAlliance == edu.wpi.first.wpilibj.DriverStation.Alliance.Red
+              ? Constants.HubCenters.RED_HUB_CENTER
+              : Constants.HubCenters.BLUE_HUB_CENTER,
+          new TurretAimSolver());
+      new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
+          .whileTrue(Commands.run(
+              () -> turretSubsystem.updateAimFromProvider(hubPipeline), turretSubsystem)
+              .withName("TurretHubTracking"));
+    }
+    // --- END TURRET HUB TARGETING ---
   }
 
   // HTML touchscreen interface
@@ -637,51 +727,5 @@ public class RobotContainer {
     // On a full competition field use the mirrored far corner.
     // On the practice field use the dedicated Red seed pose instead.
     return COMPETITION_MODE ? RED_REBUILT_RIGHT_CORNER : RED_PRACTICE_SEED;
-  }
-
-  // SysId characterization bindings - swap in for normal buttons when characterizing.
-  // Before running: comment out configureButtonBindings() normal buttons and call this instead.
-  // For STEER tests: set STEER_FEEDBACK_TYPE = RemoteCANcoder in Constants.java first.
-  // Run all 4 tests (quasistatic fwd/rev, dynamic fwd/rev) in one session.
-  @SuppressWarnings("unused")
-  private void configureSysIdBindings() {
-    // Left/Right bumper: start/stop SignalLogger
-    new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
-        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.start()));
-    new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
-        .onTrue(Commands.runOnce(() -> com.ctre.phoenix6.SignalLogger.stop()));
-
-    // Y/A/B/X: translation tests (drive motors)
-    new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new JoystickButton(driverController, XboxController.Button.kA.value)
-        .whileTrue(driveSubsystem.sysIdQuasistaticTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .whileTrue(driveSubsystem.sysIdDynamicTranslation(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-
-    // D-Pad: steer tests (module steering motors)
-    new Trigger(() -> driverController.getPOV() == 0)
-        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new Trigger(() -> driverController.getPOV() == 180)
-        .whileTrue(driveSubsystem.sysIdQuasistaticSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    new Trigger(() -> driverController.getPOV() == 90)
-        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-    new Trigger(() -> driverController.getPOV() == 270)
-        .whileTrue(driveSubsystem.sysIdDynamicSteer(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-
-    // Operator Y/A/B/X: intake extension SysId (SignalLogger start/stop shared with driver bumpers above)
-    // Start arm at RETRACTED, then run: Y (quasi fwd) → A (quasi rev) → B (dyn fwd) → X (dyn rev)
-    if (intakeSubsystem != null) {
-      new JoystickButton(operatorController, XboxController.Button.kY.value)
-          .whileTrue(intakeSubsystem.sysIdQuasistatic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-      new JoystickButton(operatorController, XboxController.Button.kA.value)
-          .whileTrue(intakeSubsystem.sysIdQuasistatic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-      new JoystickButton(operatorController, XboxController.Button.kB.value)
-          .whileTrue(intakeSubsystem.sysIdDynamic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kForward));
-      new JoystickButton(operatorController, XboxController.Button.kX.value)
-          .whileTrue(intakeSubsystem.sysIdDynamic(edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction.kReverse));
-    }
   }
 }

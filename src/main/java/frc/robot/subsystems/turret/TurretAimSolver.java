@@ -33,15 +33,24 @@ public class TurretAimSolver {
     double dy = inputs.targetPose.getY() - inputs.robotPose.getY();
     double targetBearingRad = Math.atan2(dy, dx);
 
-    // Convert field-relative bearing to turret-relative rotation:
-    // subtract the robot's heading so the turret knows where to point relative to itself
+    // Convert field-relative bearing to turret-relative rotation.
+    // Negate because WPILib heading is CCW-positive but the turret encoder is CW-positive.
     double robotHeadingRad = inputs.robotPose.getRotation().getRadians();
-    double turretRelativeRad = targetBearingRad - robotHeadingRad;
+    double turretRelativeRad = -(targetBearingRad - robotHeadingRad);
     // Normalize to [-pi, pi]
     turretRelativeRad = Rotation2d.fromRadians(turretRelativeRad).getRadians();
 
     // Convert radians to rotations for the CANcoder/TalonFX position target
     double turretTargetRotations = turretRelativeRad / (2.0 * Math.PI);
+
+    // Check if the target falls within the physical travel range before applying gear ratio offset.
+    // Motor position = turretTargetRotations * GEAR_RATIO + FORWARD_OFFSET.
+    double motorTarget = turretTargetRotations * Constants.Turret.TURRET_GEAR_RATIO
+        + Constants.Turret.TURRET_FORWARD_MOTOR_ROT;
+    goal.targetReachable = motorTarget >= Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT
+        && motorTarget <= Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT;
+    SmartLogger.logReplay("Turret/AimSolver/TargetReachable", goal.targetReachable);
+    SmartLogger.logReplay("Turret/AimSolver/MotorTarget", motorTarget);
 
     // Compute distance for shot table lookup
     double distance = Math.hypot(dx, dy);

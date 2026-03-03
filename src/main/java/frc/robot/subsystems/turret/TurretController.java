@@ -1,20 +1,17 @@
 package frc.robot.subsystems.turret;
 
-// Simple controller stub for turret outputs
+// Routes setpoints to outputs. Turret uses MotionMagic position when useTurretPosition is set,
+// otherwise falls back to open-loop percent (used during homing).
 public class TurretController {
   public void update(TurretState state, TurretSetpoints setpoints, TurretOutput outputs) {
-    outputs.flywheelPercent = clamp(setpoints.flywheelPercent);
-    outputs.hoodPercent = clamp(setpoints.hoodPercent);
-    outputs.turretPercent = clamp(setpoints.turretPercent);
+    outputs.flywheelPercent      = clamp(setpoints.flywheelPercent);
+    outputs.hoodPercent          = clamp(setpoints.hoodPercent);
+    outputs.turretPercent        = clamp(setpoints.turretPercent);
+    outputs.useTurretPosition    = setpoints.useTurretPosition;
+    outputs.turretPositionMotorRotations = setpoints.turretPositionMotorRotations;
   }
 
   private double clamp(double value) {
-    if (value > 1.0) {
-      return 1.0;
-    }
-    if (value < -1.0) {
-      return -1.0;
-    }
-    return value;
+    return Math.max(-1.0, Math.min(1.0, value));
   }
 }

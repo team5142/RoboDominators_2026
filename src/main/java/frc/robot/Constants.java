@@ -216,9 +216,10 @@ public final class Constants {
 
   // QuestNav SLAM sensor (USB/Ethernet connected IMU with visual odometry)
   public static final class QuestNav {
-    public static final double QUEST_X_METERS = Units.inchesToMeters(-11.38);
-    public static final double QUEST_Y_METERS = Units.inchesToMeters(1.56);
-    public static final double QUEST_Z_METERS = Units.inchesToMeters(13.75);
+    // Measured 2026-03-02: 10.79in back, 11.88in left, 20.28in up. Facing backward (yaw 180).
+    public static final double QUEST_X_METERS = Units.inchesToMeters(-10.79);
+    public static final double QUEST_Y_METERS = Units.inchesToMeters(11.88);
+    public static final double QUEST_Z_METERS = Units.inchesToMeters(20.28);
     public static final double QUEST_YAW_DEG = 180.0;
 
     // Failover timing (switch to Pigeon if QuestNav disconnects)
@@ -328,12 +329,17 @@ public final class Constants {
     // A CANcoder can be retrofitted later — see TODO in TurretIOCTRE.java.
     public static final int HOOD_LIMIT_SWITCH_DIO = 2; // confirmed
     // TODO: if a CANcoder is added to the turret rotation axis later, add TURRET_CANCODER_ID here.
-    public static final int HALL_SENSOR_LEFT_DIO = 0;  // confirmed — left hard stop, primary home sensor
-    public static final int HALL_SENSOR_RIGHT_DIO = 3; // straight-forward mid-point sensor (optional)
+    public static final int HALL_SENSOR_CCW_DIO = 0;  // confirmed — CCW hard stop, primary home sensor
 
     // Gear train: Kraken X44 (1:1) → 20T pinion → 200T turret ring
     // Motor rotates 10x for every 1 turret rotation.
     public static final double TURRET_GEAR_RATIO = 10.0; // motor rot / turret rot
+
+    // Turret pivot offset from robot center — used to compute accurate bearing to target.
+    // Positive X = forward, positive Y = left (WPILib convention).
+    // Measured: 4.94 in back, 7.44 in right of robot center.
+    public static final double TURRET_PIVOT_OFFSET_X_METERS = Units.inchesToMeters(-4.94);
+    public static final double TURRET_PIVOT_OFFSET_Y_METERS = Units.inchesToMeters(-7.44);
 
     // 350 degrees in 1 second = 0.972 turret rot/sec × 10 = 9.72 motor rot/sec.
     // Kraken X44 free speed ~100 rot/sec so cruise is ~10% throttle — plenty of margin.
@@ -342,10 +348,20 @@ public final class Constants {
     // public static final double TURRET_CRUISE_VELOCITY_RPS  = 9.72;  // motor rot/sec
     // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
 
-    // Safety speed: 350 degrees in ~10 seconds for initial commissioning
-    public static final double TURRET_CRUISE_VELOCITY_RPS  = 0.972; // motor rot/sec — safety
-    public static final double TURRET_ACCELERATION_RPS2    = 3.0;   // motor rot/sec^2 — safety
-    public static final double TURRET_JERK_RPS3            = 0.0;   // 0 = disabled (tune later)
+    // ~350 deg in ~0.7 sec. Back off cruise/accel if motion feels violent.
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 10.0; // motor rot/sec
+    public static final double TURRET_ACCELERATION_RPS2    = 40.0; // motor rot/sec^2
+    public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
+
+    // MotionMagic slot 0 gains (voltage control mode):
+    // kS: static friction kick — raises output just enough to start moving. Tune first.
+    // kV: voltage per rot/sec of setpoint velocity (~12V / 100 rot/s free speed = 0.12).
+    // kP: voltage per rotation of position error. Tuned to 2.5 — balances settling vs. peak velocity.
+    // kD: damping — opposes velocity during the move to reduce overshoot. Tuned to 0.3.
+    public static final double TURRET_KS = 0.25;
+    public static final double TURRET_KV = 0.12;
+    public static final double TURRET_KP = 2.5;
+    public static final double TURRET_KD = 0.3;
 
     // Motor inversion — TODO: confirm directions on hardware
     public static final boolean TURRET_MOTOR_INVERTED   = false;
@@ -353,16 +369,34 @@ public final class Constants {
     public static final boolean FLYWHEEL_MOTOR_INVERTED = false; // both flywheels use this
 
     // Turret homing: slow left until left hall sensor fires, then zero the encoder
-    public static final double TURRET_HOME_SPEED_PERCENT = 0.10; // slow creep for safety
+    public static final double TURRET_HOME_SPEED_PERCENT = 0.05; // slow creep for safety
     // Stall detection during homing — if current stays above threshold for this many loops,
     // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
     // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
     public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 18.0; // TODO: tune on hardware
     public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
-    // Encoder counts from home (left stop = 0) to the right soft limit.
-    // Turret gear ratio is 10:1 so 350 deg = 9.72 motor rotations.
-    // TODO: measure on hardware by sweeping to the right hard stop and reading the encoder.
-    public static final double TURRET_SOFT_LIMIT_RIGHT_ROTATIONS = 9.72; // placeholder — measure at right hard stop
+
+    // Hall sensor is now at the CCW hard stop after magnet relocation (2026-03-02).
+    // When homing fires, encoder is set to 0.0 so that 0 = hall sensor position.
+    // CCW hard stop measured at TunerX -7.119 motor rot (AScope -2562 deg), hall fires at -6.14 (AScope -2233 deg).
+    // So the physical CCW stop is 0.979 motor rot past the hall in the CCW direction.
+    public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // hall is now at the CCW end
+
+    // CCW soft limit: hall fires at TunerX -6.14, CCW safe stop at -7.119 → 0.979 motor rot past hall.
+    // CW soft limit: CW safe stop at TunerX +2.22 → (2.22 - (-6.14)) = 8.36 motor rot from hall. 95% = 7.94.
+    // Both raw TunerX values were read before homing, so they are relative to the pre-home encoder position.
+    public static final double TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  = -0.5; // CCW limit, ~0.48 rot from physical stop
+    public static final double TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT =  8.3; // CW limit — adjusted 2026-03-02
+
+    // MotionMagic tuning targets — kept 1 motor rot inside the soft limits so MM never commands
+    // into the limit zone. Adjust outward once MM tracking is confirmed good.
+    public static final double TURRET_MM_TARGET_LEFT_MOTOR_ROT  = TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  + 1.0; // ~0.4 motor rot
+    public static final double TURRET_MM_TARGET_RIGHT_MOTOR_ROT = TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT - 1.0; // ~5.5 motor rot
+
+    // Motor encoder value when the turret is pointing straight toward the front of the robot.
+    // The aim solver outputs 0.0 for "robot forward" — this offset maps that to the real encoder position.
+    // TODO: re-measure after first home with new magnet position. Old value was 8.316 (different zero reference).
+    public static final double TURRET_FORWARD_MOTOR_ROT = 7.66; // measured 2026-03-02: robot-forward position after homing
 
     // Hood homing: slow downward until bottom limit switch fires, then zero the encoder.
     // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
@@ -377,7 +411,9 @@ public final class Constants {
     // PHASE_3: turret tracks while driving, fire only when chassis slows below threshold
     // PHASE_4: stub — same behavior as PHASE_3 (velocity comp math not yet implemented)
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
+    // PHASE_2: turret tracks continuously; aim goal only enables when robot is near-stationary.
+    // Requires homing to be completed first (ENABLE_TURRET_HOMING = true in RobotContainer).
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_3_DECEL_SHOOT;
 
     // Phase 3+: only allow firing when chassis is below this speed
     public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 0.15; // TODO: tune
@@ -480,15 +516,26 @@ public final class Constants {
     //   TODO: once hard stop + limit switch installed, change to -0.475 and re-zero encoder there.
     // EXTENSION_TARGET_ROTATIONS: full out position (measured with arm manually extended).
     public static final double EXTENSION_HOME_ROTATIONS   = 0.158; 
-    public static final double EXTENSION_TARGET_ROTATIONS =  12.95;
+    public static final double EXTENSION_TARGET_ROTATIONS =  10;
 
     // Duty cycle output limits for extension movement (no position control until gear ratio known)
-    public static final double EXTEND_SPEED  =  0.25; // positive = extending out
+    public static final double EXTEND_SPEED  =  0.18; // positive = extending out
     public static final double RETRACT_SPEED = -0.25; // negative = retracting in
 
+    // Two-speed approach: slow down when within this many rotations of the target.
+    // Prevents the arm from slamming into the hard stop at full speed.
+    // EXTEND: arm slows from EXTEND_SPEED to EXTEND_SLOW_SPEED for the last 2 rotations.
+    // RETRACT: arm slows from RETRACT_SPEED to RETRACT_SLOW_SPEED for the last 2 rotations.
+    // Tune SLOW_SPEED first (lower = softer landing), then adjust SLOW_ZONE if the
+    // slow zone starts too early (arm crawls too long) or too late (still hits hard).
+    public static final double EXTEND_SLOW_SPEED           =  0.08; // slow crawl near full extension
+    public static final double EXTEND_SLOW_ZONE_ROTATIONS  =  2.0;  // start slowing this many rot before target
+    public static final double RETRACT_SLOW_SPEED          = -0.08; // slow crawl near home
+    public static final double RETRACT_SLOW_ZONE_ROTATIONS =  2.0;  // start slowing this many rot before home
+
     // Roller duty cycle outputs
-    public static final double ROLLER_INTAKE_SPEED  =  0.60; // intaking
-    public static final double ROLLER_REVERSE_SPEED = -0.40; // ejecting
+    public static final double ROLLER_INTAKE_SPEED  =  1.00; // intaking
+    public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
 
     // Current limits
     // Extension (Kraken): stator caps torque current; supply caps battery draw.

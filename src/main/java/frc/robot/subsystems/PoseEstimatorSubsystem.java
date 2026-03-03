@@ -356,7 +356,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       }
     }
     
-    if (initializer.isInitialized()) {
+    // Only fuse QuestNav while enabled - Quest pose can drift during disabled and would corrupt odometry
+    if (initializer.isInitialized() && robotState.getMode() != RobotState.Mode.DISABLED) {
       questNavFusion.processFrames(); // Will skip if paused
     }
     

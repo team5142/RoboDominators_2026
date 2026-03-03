@@ -85,7 +85,8 @@ public class RobotState {
   }
 
   private TurretState turretState = TurretState.IDLE;
-  private IntakePosition intakePosition = IntakePosition.HOMING;
+  // Default to RETRACTED so extend/retract work when homing is disabled (ENABLE_INTAKE_HOMING = false).
+  private IntakePosition intakePosition = IntakePosition.RETRACTED;
   private IntakeRollerState intakeRollerState = IntakeRollerState.STOPPED;
   private ClimberState climberState = ClimberState.IDLE;
   private SpindexerState spindexerState = SpindexerState.STOPPED;
@@ -95,8 +96,7 @@ public class RobotState {
   private boolean intakeLimitSwitch = false;
 
   private boolean turretHoodBeamBreakRaw = false;
-  private boolean turretHallLeftRaw = false;
-  private boolean turretHallRightRaw = false;
+  private boolean turretHallCCWRaw = false;
 
   private double turretHoodAbsolutePositionRotations = 0.0;
   private double turretRotationAbsolutePositionRotations = 0.0;
@@ -267,25 +267,15 @@ public class RobotState {
 
   public boolean getTurretHoodLimitSwitchRaw() { return turretHoodBeamBreakRaw; }
 
-  public void setTurretHallLeftRaw(boolean hallRaw) {
-    if (turretHallLeftRaw == hallRaw) {
+  public void setTurretHallCCWRaw(boolean hallRaw) {
+    if (turretHallCCWRaw == hallRaw) {
       return;
     }
-    turretHallLeftRaw = hallRaw;
-    SmartLogger.logReplay("RobotState/Turret/HallLeftRaw", hallRaw);
+    turretHallCCWRaw = hallRaw;
+    SmartLogger.logReplay("RobotState/Turret/HallCCWRaw", hallRaw);
   }
 
-  public boolean getTurretHallLeftRaw() { return turretHallLeftRaw; }
-
-  public void setTurretHallRightRaw(boolean hallRaw) {
-    if (turretHallRightRaw == hallRaw) {
-      return;
-    }
-    turretHallRightRaw = hallRaw;
-    SmartLogger.logReplay("RobotState/Turret/HallRightRaw", hallRaw);
-  }
-
-  public boolean getTurretHallRightRaw() { return turretHallRightRaw; }
+  public boolean getTurretHallCCWRaw() { return turretHallCCWRaw; }
 
   public void setTurretHoodMotorPositionRotations(double rotations) {
     if (Math.abs(turretHoodAbsolutePositionRotations - rotations) < 0.0001) return;
