@@ -164,15 +164,18 @@ public class PoseInitializer {
   public Pose2d getStartPoseForAutoName(String autoName) {
     if (autoName == null || autoName.isEmpty()) return null;
 
-    // Return cached result if same auto is requested again (avoids file I/O every loop)
-    if (autoName.equals(cachedAutoName)) return cachedAutoStartPose;
+    // Return cached result if same auto and same alliance is requested again (avoids file I/O every loop)
+    boolean isRedNow = DriverStation.getAlliance()
+        .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+    String cacheKey = autoName + (isRedNow ? "_red" : "_blue");
+    if (cacheKey.equals(cachedAutoName)) return cachedAutoStartPose;
 
     try {
       // Read the .auto file to find first path name
       File autoFile = new File(Filesystem.getDeployDirectory(), "pathplanner/autos/" + autoName + ".auto");
       if (!autoFile.exists()) {
         Logger.recordOutput("PoseInitializer/UnknownAuto", autoName);
-        cachedAutoName = autoName;
+        cachedAutoName = cacheKey;
         cachedAutoStartPose = null;
         return null;
       }
@@ -182,7 +185,7 @@ public class PoseInitializer {
       String firstPathName = findFirstPathName(autoJson);
       if (firstPathName == null) {
         Logger.recordOutput("PoseInitializer/AutoNoPath", autoName);
-        cachedAutoName = autoName;
+        cachedAutoName = cacheKey;
         cachedAutoStartPose = null;
         return null;
       }
@@ -191,7 +194,7 @@ public class PoseInitializer {
       File pathFile = new File(Filesystem.getDeployDirectory(), "pathplanner/paths/" + firstPathName + ".path");
       if (!pathFile.exists()) {
         Logger.recordOutput("PoseInitializer/PathNotFound", firstPathName);
-        cachedAutoName = autoName;
+        cachedAutoName = cacheKey;
         cachedAutoStartPose = null;
         return null;
       }
@@ -216,13 +219,23 @@ public class PoseInitializer {
       }
 
       Pose2d pose = new Pose2d(x, y, Rotation2d.fromDegrees(rotDeg));
+
+      // Paths are authored on blue side. Rotate 180 deg around field center for red.
+      if (isRedNow) {
+        pose = new Pose2d(
+            FIELD_LENGTH_METERS - x,
+            FIELD_WIDTH_METERS - y,
+            Rotation2d.fromDegrees(rotDeg + 180.0));
+      }
+
       Logger.recordOutput("PoseInitializer/AutoStartPose", pose);
-      cachedAutoName = autoName;
+      Logger.recordOutput("PoseInitializer/AutoStartPoseFlipped", isRedNow);
+      cachedAutoName = cacheKey;
       cachedAutoStartPose = pose;
       return pose;
     } catch (Exception e) {
       Logger.recordOutput("PoseInitializer/AutoStartPoseError", e.getMessage());
-      cachedAutoName = autoName;
+      cachedAutoName = cacheKey;
       cachedAutoStartPose = null;
       return null;
     }

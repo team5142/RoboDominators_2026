@@ -6,6 +6,10 @@ public interface TurretIO {
 
   default void setFlywheelPercent(double percent) {}
 
+  // Drive each flywheel independently — use during commissioning to verify each motor separately
+  default void setFlywheelFrontPercent(double percent) {}
+  default void setFlywheelBackPercent(double percent) {}
+
   default void setHoodPercent(double percent) {}
 
   default void setTurretPercent(double percent) {}
@@ -22,6 +26,9 @@ public interface TurretIO {
   // Sets encoder to the hall sensor offset so 0 = CCW hard stop.
   // Called when homing completes at the hall sensor.
   default void zeroTurretEncoder() {}
+
+  // Restores the encoder to a previously saved position — called after a mid-match motor reboot.
+  default void restoreTurretEncoder(double motorRotations) {}
 
   // Zeros the hood motor encoder — called when homing completes at the bottom limit switch
   default void zeroHoodEncoder() {}

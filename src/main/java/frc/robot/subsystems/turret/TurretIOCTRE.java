@@ -79,18 +79,39 @@ public class TurretIOCTRE implements TurretIO {
   private final DigitalInput hoodLimitSwitch; // fires at bottom stop (85 deg = position 0)
   private final DigitalInput hallCCW;
 
-  private final DutyCycleOut flywheelDutyCycle = new DutyCycleOut(0.0);
-  private final DutyCycleOut hoodDutyCycle     = new DutyCycleOut(0.0);
-  private final DutyCycleOut turretDutyCycle   = new DutyCycleOut(0.0);
+  private final DutyCycleOut flywheelFrontDutyCycle = new DutyCycleOut(0.0);
+  private final DutyCycleOut flywheelBackDutyCycle  = new DutyCycleOut(0.0);
+  private final DutyCycleOut hoodDutyCycle          = new DutyCycleOut(0.0);
+  private final DutyCycleOut turretDutyCycle        = new DutyCycleOut(0.0);
   private final VoltageOut   turretVoltageOut  = new VoltageOut(0.0);
   private final MotionMagicVoltage turretMotionMagic = new MotionMagicVoltage(0.0).withSlot(0);
 
+  // Pre-subscribed sticky fault — latches true when motor boots while robot is enabled
+  private com.ctre.phoenix6.StatusSignal<Boolean> bootDuringEnSignal;
+
   public TurretIOCTRE() {
-    // Flywheel and hood motors not wired yet — stubbed out until hardware is ready.
-    // setFlywheelPercent() and setHoodPercent() are no-ops until these are restored.
-    flywheelFrontMotor = null;
-    flywheelBackMotor  = null;
-    hoodMotor          = null;
+    flywheelFrontMotor = new TalonFX(Constants.Turret.FLYWHEEL_FRONT_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
+    flywheelBackMotor  = new TalonFX(Constants.Turret.FLYWHEEL_BACK_MOTOR_ID,  new CANBus(Constants.Swerve.CAN_BUS_NAME));
+    hoodMotor          = new TalonFX(Constants.Turret.HOOD_MOTOR_ID,           new CANBus(Constants.Swerve.CAN_BUS_NAME));
+
+    // Flywheel motors: voltage control, brake mode, shared inversion flag (flip both if needed)
+    TalonFXConfiguration flywheelConfig = new TalonFXConfiguration();
+    flywheelConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+    flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_MOTOR_INVERTED
+        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
+    flywheelConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
+    flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
+    flywheelBackMotor.getConfigurator().apply(flywheelConfig);
+
+    // Hood motor: duty cycle, brake mode
+    TalonFXConfiguration hoodConfig = new TalonFXConfiguration();
+    hoodConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    hoodConfig.MotorOutput.Inverted = Constants.Turret.HOOD_MOTOR_INVERTED
+        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
+    hoodConfig.CurrentLimits.StatorCurrentLimit       = 20.0;
+    hoodConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    hoodMotor.getConfigurator().apply(hoodConfig);
 
     turretMotor = new TalonFX(Constants.Turret.TURRET_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
     TalonFXConfiguration turretConfig = new TalonFXConfiguration();
@@ -124,6 +145,10 @@ public class TurretIOCTRE implements TurretIO {
         turretMotor.getPosition(), turretMotor.getVelocity());
     turretMotor.optimizeBusUtilization();
 
+    // Subscribe sticky fault at 50Hz — checked each loop to detect mid-match motor reboot
+    bootDuringEnSignal = turretMotor.getStickyFault_BootDuringEnable();
+    bootDuringEnSignal.setUpdateFrequency(50);
+
     hoodLimitSwitch = new DigitalInput(Constants.Turret.HOOD_LIMIT_SWITCH_DIO);
     hallCCW         = new DigitalInput(Constants.Turret.HALL_SENSOR_CCW_DIO);
   }
@@ -140,18 +165,32 @@ public class TurretIOCTRE implements TurretIO {
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
     if (flywheelFrontMotor != null)
       inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
+    // Read and immediately clear the sticky fault so it fires for exactly one loop
+    bootDuringEnSignal.refresh();
+    inputs.turretBootDuringEn = bootDuringEnSignal.getValue();
+    if (inputs.turretBootDuringEn) {
+      turretMotor.clearStickyFault_BootDuringEnable();
+    }
   }
 
   @Override
   public void setFlywheelPercent(double percent) {
-    if (flywheelFrontMotor == null) return;
-    flywheelFrontMotor.setControl(flywheelDutyCycle.withOutput(percent));
-    flywheelBackMotor.setControl(flywheelDutyCycle.withOutput(percent));
+    flywheelFrontMotor.setControl(flywheelFrontDutyCycle.withOutput(percent));
+    flywheelBackMotor.setControl(flywheelBackDutyCycle.withOutput(percent));
+  }
+
+  @Override
+  public void setFlywheelFrontPercent(double percent) {
+    flywheelFrontMotor.setControl(flywheelFrontDutyCycle.withOutput(percent));
+  }
+
+  @Override
+  public void setFlywheelBackPercent(double percent) {
+    flywheelBackMotor.setControl(flywheelBackDutyCycle.withOutput(percent));
   }
 
   @Override
   public void setHoodPercent(double percent) {
-    if (hoodMotor == null) return;
     hoodMotor.setControl(hoodDutyCycle.withOutput(percent));
   }
 
@@ -185,6 +224,11 @@ public class TurretIOCTRE implements TurretIO {
     // Set to the hall sensor offset so the encoder reads 0 at the CCW hard stop.
     // When mechanical relocates the sensor to the CCW stop, set TURRET_HALL_OFFSET_MOTOR_ROT = 0.
     turretMotor.setPosition(Constants.Turret.TURRET_HALL_OFFSET_MOTOR_ROT);
+  }
+
+  @Override
+  public void restoreTurretEncoder(double motorRotations) {
+    turretMotor.setPosition(motorRotations);
   }
 
   @Override

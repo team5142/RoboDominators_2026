@@ -19,6 +19,7 @@ import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
+import frc.robot.commands.auto.AutoCommands;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
 import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
@@ -164,6 +165,7 @@ public class RobotContainer {
     SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav); // Static config for SmartDrive commands
 
     configurePathPlanner();
+    AutoCommands.register(intakeSubsystem, turretSubsystem, spindexerSubsystem, singulatorSubsystem, climberSubsystem);
     configureDefaultCommands();
     configureButtonBindings();
     
@@ -366,20 +368,21 @@ public class RobotContainer {
         }));
     // --- END SPINDEXER ---
 
-    // --- TURRET HOOD (uncomment after HOOD CHECKLIST in TurretIOCTRE is complete) ---
-    // Set ENABLE_TURRET = true before uncommenting.
-    /*
-    // D-pad up (hold): nudge hood angle down (negative percent)
+    // --- TURRET HOOD TEST (commissioning — remove after HOOD CHECKLIST is complete) ---
+    // D-pad up (hold): move hood up (away from bottom stop)
     new Trigger(() -> operatorController.getPOV() == 0)
         .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(-Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(Constants.Turret.HOOD_HOME_SPEED_PERCENT); },
           () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
-    // D-pad down (hold): nudge hood angle up (positive percent)
+    // D-pad down (hold): move hood down (toward bottom stop)
     new Trigger(() -> operatorController.getPOV() == 180)
         .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(Constants.Turret.TURRET_HOME_SPEED_PERCENT); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(-Constants.Turret.HOOD_HOME_SPEED_PERCENT); },
           () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
-    */ // --- END TURRET HOOD ---
+    // Operator A: run hood home sequence (creep down until limit switch fires)
+    new JoystickButton(operatorController, XboxController.Button.kA.value)
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodHome(); }));
+    // --- END TURRET HOOD TEST ---
 
     // --- TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
     // Start (hold): home the turret (CCW until hall fires, then zeros encoder).
@@ -419,17 +422,18 @@ public class RobotContainer {
         }));
     // --- END TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
 
-    // --- TURRET FLYWHEELS (uncomment after FLYWHEEL CHECKLIST in TurretIOCTRE is complete) ---
-    // Set ENABLE_TURRET = true before uncommenting.
-    /*
-    // A: toggle flywheels on/off at close-range warm-up speed
-    new JoystickButton(operatorController, XboxController.Button.kA.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          flywheelOn = !flywheelOn;
-          turretSubsystem.setFlywheelPercent(flywheelOn ? Constants.Turret.SHOT_TABLE_FLYWHEEL_FRONT_PCT[0] : 0.0);
-        }));
-    */ // --- END TURRET FLYWHEELS ---
+    // --- TURRET FLYWHEELS TEST (commissioning — tune direction/RPM per FLYWHEEL CHECKLIST) ---
+    // Left bumper (hold): spin FRONT flywheel only — verify direction and RPM in TunerX/AdvantageScope
+    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setFlywheelFrontPercent(Constants.Turret.SHOT_TABLE_FLYWHEEL_FRONT_PCT[0]); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setFlywheelFrontPercent(0.0); }));
+    // Right bumper (hold): spin BACK flywheel only — verify direction and RPM in TunerX/AdvantageScope
+    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
+        .whileTrue(Commands.startEnd(
+          () -> { if (turretSubsystem != null) turretSubsystem.setFlywheelBackPercent(Constants.Turret.SHOT_TABLE_FLYWHEEL_BACK_PCT[0]); },
+          () -> { if (turretSubsystem != null) turretSubsystem.setFlywheelBackPercent(0.0); }));
+    // --- END TURRET FLYWHEELS TEST ---
 
     // --- CLIMBER (uncomment after CLIMBER COMMISSIONING CHECKLIST in ClimberSubsystem is complete) ---
     // Set ENABLE_CLIMBER = true before uncommenting.
@@ -447,8 +451,8 @@ public class RobotContainer {
     */ // --- END CLIMBER ---
 
     // --- EMERGENCY STOP ---
-    // Right bumper: immediately stops all mechanism subsystems and disables fire interlock.
-    // COMMENTED OUT during SysId — right bumper is used for SignalLogger stop
+    // Right bumper is currently used for flywheel back commissioning test.
+    // Re-enable this block (and remove the flywheel test section above) once commissioning is done.
     /*
     new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
         .onTrue(Commands.runOnce(() -> {

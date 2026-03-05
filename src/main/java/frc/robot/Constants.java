@@ -37,10 +37,10 @@ public final class Constants {
     public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 4.0;
 
     // Driver speed modes (multiply by max speed)
-    public static final double NORMAL_SPEED_SCALE = 0.6;
-    public static final double PRECISION_SPEED_SCALE = 0.3;
-    public static final double FAST_SPEED_SCALE = 1.0;
-    public static final double JOYSTICK_DEADBAND = 0.10;
+    public static final double NORMAL_SPEED_SCALE    = 0.40; // 5.21 * 0.40 = ~2.1 m/s
+    public static final double PRECISION_SPEED_SCALE = 0.20; // 5.21 * 0.20 = ~1.0 m/s
+    public static final double FAST_SPEED_SCALE      = 1.0;
+    public static final double JOYSTICK_DEADBAND     = 0.12; // slightly larger to reduce touchiness
 
     // Module positions on robot frame (meters from center)
     public static final Translation2d FRONT_LEFT_LOCATION = new Translation2d(WHEEL_BASE_METERS / 2.0, TRACK_WIDTH_METERS / 2.0);
@@ -121,11 +121,12 @@ public final class Constants {
       config.Slot0.kV = DriveGains.kV;
       config.Slot0.kA = DriveGains.kA;
       config.ClosedLoopGeneral.ContinuousWrap = false;
-      // Limits peak torque current per drive motor to prevent battery voltage sag
-      // during hard acceleration. 4 motors x 60A = 240A max drive draw.
-      // Tune down to 40-50A if brownouts still occur at competition.
+      // Stator limit caps torque/heat inside the motor.
+      // Supply limit caps battery draw — 4 motors x 40A = 160A max drive draw.
       config.CurrentLimits.StatorCurrentLimit = 60.0;
       config.CurrentLimits.StatorCurrentLimitEnable = true;
+      config.CurrentLimits.SupplyCurrentLimit = 40.0;
+      config.CurrentLimits.SupplyCurrentLimitEnable = true;
       return config;
     }
 
@@ -368,8 +369,15 @@ public final class Constants {
     public static final boolean HOOD_MOTOR_INVERTED     = false;
     public static final boolean FLYWHEEL_MOTOR_INVERTED = false; // both flywheels use this
 
-    // Turret homing: slow left until left hall sensor fires, then zero the encoder
-    public static final double TURRET_HOME_SPEED_PERCENT = 0.05; // slow creep for safety
+    // Turret homing: two-phase sweep to find the trailing edge of the hall sensor magnet.
+    // Phase 1 (fast): sweeps CCW quickly until the hall sensor first fires (leading edge).
+    // Phase 2 (slow): continues CCW slowly until the sensor releases (trailing edge) — zero there.
+    // This gives a repeatable reference at a fixed point on the magnet rather than a variable leading edge.
+    public static final double TURRET_HOME_SPEED_FAST_PERCENT = 0.12; // fast approach to find sensor
+    public static final double TURRET_HOME_SPEED_SLOW_PERCENT = 0.03; // slow creep to trailing edge
+    // Hall debounce: require this many consecutive loops of the same reading before accepting.
+    // At 20ms/loop, 3 loops = 60ms — filters noise without meaningful delay.
+    public static final int    TURRET_HALL_DEBOUNCE_LOOPS = 3;
     // Stall detection during homing — if current stays above threshold for this many loops,
     // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
     // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
@@ -377,7 +385,7 @@ public final class Constants {
     public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
 
     // Hall sensor is now at the CCW hard stop after magnet relocation (2026-03-02).
-    // When homing fires, encoder is set to 0.0 so that 0 = hall sensor position.
+    // When homing fires, encoder is set to 0.0 so that 0 = hall sensor trailing edge position.
     // CCW hard stop measured at TunerX -7.119 motor rot (AScope -2562 deg), hall fires at -6.14 (AScope -2233 deg).
     // So the physical CCW stop is 0.979 motor rot past the hall in the CCW direction.
     public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // hall is now at the CCW end
@@ -413,7 +421,7 @@ public final class Constants {
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
     // PHASE_2: turret tracks continuously; aim goal only enables when robot is near-stationary.
     // Requires homing to be completed first (ENABLE_TURRET_HOMING = true in RobotContainer).
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_3_DECEL_SHOOT;
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
 
     // Phase 3+: only allow firing when chassis is below this speed
     public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 0.15; // TODO: tune
@@ -533,6 +541,10 @@ public final class Constants {
     public static final double RETRACT_SLOW_SPEED          = -0.08; // slow crawl near home
     public static final double RETRACT_SLOW_ZONE_ROTATIONS =  2.0;  // start slowing this many rot before home
 
+    // Limit switch sanity window — only trust the switch if the encoder is within this many
+    // rotations of home. Ignores a stuck-ON switch when the arm is clearly still extended.
+    public static final double LIMIT_SWITCH_VALID_WINDOW_ROTATIONS = 1.5;
+
     // Roller duty cycle outputs
     public static final double ROLLER_INTAKE_SPEED  =  1.00; // intaking
     public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
@@ -585,7 +597,7 @@ public final class Constants {
     public static final double ROTATION_KI = 0.0;
     public static final double ROTATION_KD = 0.0;
     
-    public static final double MAX_MODULE_SPEED_MPS = Swerve.MAX_TRANSLATION_SPEED_MPS;
+    public static final double MAX_MODULE_SPEED_MPS = 3.5; // PathPlanner cap — independent of teleop max
     
     // Starting pose validation (how close robot must be to expected start)
     public static final double STARTING_POSE_TOLERANCE_METERS = 0.15;
@@ -611,31 +623,31 @@ public final class Constants {
     public static final Pose2d BLUE_LEFTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 5.39, Rotation2d.fromDegrees(45.0));
     public static final Pose2d BLUE_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(9.596, 2.35, Rotation2d.fromDegrees(45.0));
 
-    // Red alliance mirrored poses (X_red = FIELD_LENGTH - X_blue, rotation + 180 deg)
+    // Red alliance mirrored poses (rotational symmetry: X = FIELD_LENGTH-X, Y = FIELD_WIDTH-Y, rot+180)
     public static final Pose2d RED_LEFTBUMP_ALLIANCE_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_ALLIANCE_STAGING.getX(),
-        BLUE_LEFTBUMP_ALLIANCE_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_LEFTBUMP_ALLIANCE_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
     public static final Pose2d RED_LEFTBUMP_NEUTRAL_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_NEUTRAL_STAGING.getX(),
-        BLUE_LEFTBUMP_NEUTRAL_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_LEFTBUMP_NEUTRAL_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
     public static final Pose2d RED_LEFTBUMP_OPPONENT_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_LEFTBUMP_OPPONENT_STAGING.getX(),
-        BLUE_LEFTBUMP_OPPONENT_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_LEFTBUMP_OPPONENT_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
 
     public static final Pose2d RED_RIGHTBUMP_ALLIANCE_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_ALLIANCE_STAGING.getX(),
-        BLUE_RIGHTBUMP_ALLIANCE_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_RIGHTBUMP_ALLIANCE_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
     public static final Pose2d RED_RIGHTBUMP_NEUTRAL_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_NEUTRAL_STAGING.getX(),
-        BLUE_RIGHTBUMP_NEUTRAL_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_RIGHTBUMP_NEUTRAL_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
     public static final Pose2d RED_RIGHTBUMP_OPPONENT_STAGING = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_RIGHTBUMP_OPPONENT_STAGING.getX(),
-        BLUE_RIGHTBUMP_OPPONENT_STAGING.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_RIGHTBUMP_OPPONENT_STAGING.getY(),
         Rotation2d.fromDegrees(225.0));
   }
 
@@ -682,7 +694,7 @@ public final class Constants {
     public static final Pose2d BLUE_HUB_CENTER = new Pose2d(4.612, 4.022, Rotation2d.fromDegrees(0.0));
     public static final Pose2d RED_HUB_CENTER = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_HUB_CENTER.getX(),
-        BLUE_HUB_CENTER.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_HUB_CENTER.getY(),
         Rotation2d.fromDegrees(180.0));
   }
 
@@ -712,11 +724,11 @@ public final class Constants {
 
     public static final Pose2d RED_PASS_TARGET_LEFT = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_LEFT.getX(),
-        BLUE_PASS_TARGET_LEFT.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_PASS_TARGET_LEFT.getY(),
         Rotation2d.fromDegrees(180.0));
     public static final Pose2d RED_PASS_TARGET_RIGHT = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_RIGHT.getX(),
-        BLUE_PASS_TARGET_RIGHT.getY(),
+        Field.FIELD_WIDTH_METERS  - BLUE_PASS_TARGET_RIGHT.getY(),
         Rotation2d.fromDegrees(180.0));
   }
 

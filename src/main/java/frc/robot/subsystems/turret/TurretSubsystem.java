@@ -39,7 +39,13 @@ public class TurretSubsystem extends SubsystemBase {
   // Turret homing state — turret must home before Phase 2+ aim solve is trusted
   private boolean homed = false;
   private boolean homing = false;
+  // Two-phase homing: FAST sweeps to find the sensor, SLOW creeps to the trailing edge
+  private enum HomingPhase { FAST, SLOW }
+  private HomingPhase homingPhase = HomingPhase.FAST;
   private int homingStallLoopCount = 0;
+  // Debounce counters for hall sensor — require N consecutive matching reads before acting
+  private int hallHighCount = 0;
+  private int hallLowCount  = 0;
 
   // Hood homing state — hood creeps down until bottom limit switch fires, then zeroes encoder
   private boolean hoodHomed  = false;
@@ -47,6 +53,11 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Edge detection for hall sensor — log once on rising edge for console visibility
   private boolean lastHallCCW = false;
+
+  // Last known encoder position — updated each loop after homing, used to restore encoder
+  // if the motor controller reboots mid-match (brownout/power loss) while the RIO stays up.
+  private double lastKnownPosition = 0.0;
+  private static final double POSITION_SAVE_THRESHOLD = 0.05; // only update if moved this many motor rotations
 
   public TurretSubsystem(RobotState robotState, TurretIO io) {
     this.robotState = robotState;
@@ -121,7 +132,9 @@ public class TurretSubsystem extends SubsystemBase {
   public void home() {
     if (homed) return;
     homing = true;
-    setpoints.turretPercent = -Constants.Turret.TURRET_HOME_SPEED_PERCENT;
+    homingPhase = HomingPhase.FAST;
+    hallHighCount = 0;
+    hallLowCount  = 0;
     SmartLogger.logConsole("Turret homing started", "Turret");
   }
 
@@ -149,6 +162,9 @@ public class TurretSubsystem extends SubsystemBase {
   // ---- Open loop / manual setpoints ----
 
   public void setFlywheelPercent(double percent)  { setpoints.flywheelPercent = percent; }
+  // Drive each flywheel independently — for commissioning: verify each motor's direction and RPM separately
+  public void setFlywheelFrontPercent(double percent) { io.setFlywheelFrontPercent(percent); }
+  public void setFlywheelBackPercent(double percent)  { io.setFlywheelBackPercent(percent); }
   public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; }
   public void setTurretPercent(double percent)     { setpoints.turretPercent = percent; }
 
@@ -211,21 +227,58 @@ public class TurretSubsystem extends SubsystemBase {
     io.updateInputs(inputs);
     state.updateFromInputs(inputs);
 
-    // Log hall sensor rising edges to console for live hardware verification
-    boolean hallRisingEdge = inputs.hallCCWRaw && !lastHallCCW;
-    if (hallRisingEdge)
-      SmartLogger.logConsole("HallCCW TRIGGERED — rotations: " + String.format("%.3f", inputs.turretAbsolutePositionRotations), "Turret");
-    lastHallCCW = inputs.hallCCWRaw;
+    // If the motor rebooted mid-match (brownout), restore the encoder from our saved position.
+    // The sticky fault fires for exactly one loop then is cleared by TurretIOCTRE.
+    // Also patch inputs so the rest of this loop uses the correct position, not the reset zero.
+    if (homed && inputs.turretBootDuringEn) {
+      io.restoreTurretEncoder(lastKnownPosition);
+      inputs.turretAbsolutePositionRotations = lastKnownPosition;
+      SmartLogger.logConsole("Turret motor reboot detected — encoder restored to " +
+          String.format("%.3f", lastKnownPosition) + " rot", "Turret");
+    }
 
-    // Complete turret homing only on the rising edge — prevents instant completion if turret
-    // starts the deploy already sitting on the hall sensor.
-    if (homing && hallRisingEdge) {
-      homing = false;
-      homed  = true;
-      homingStallLoopCount = 0;
-      setpoints.turretPercent = 0.0;
-      io.zeroTurretEncoder();
-      SmartLogger.logConsole("Turret homed — encoder zeroed", "Turret");
+    // Save position each loop after homing, but only if it changed meaningfully
+    if (homed && Math.abs(inputs.turretAbsolutePositionRotations - lastKnownPosition) > POSITION_SAVE_THRESHOLD) {
+      lastKnownPosition = inputs.turretAbsolutePositionRotations;
+    }
+
+    // Debounce the hall sensor — require TURRET_HALL_DEBOUNCE_LOOPS consecutive matching reads.
+    if (inputs.hallCCWRaw) {
+      hallHighCount = Math.min(hallHighCount + 1, Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS);
+      hallLowCount  = 0;
+    } else {
+      hallLowCount  = Math.min(hallLowCount  + 1, Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS);
+      hallHighCount = 0;
+    }
+    boolean hallDebounced    = hallHighCount >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
+    boolean hallOffDebounced = hallLowCount  >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
+
+    // Log transitions on debounced signal for console visibility
+    boolean hallRisingEdge  = hallDebounced    && !lastHallCCW;
+    boolean hallFallingEdge = hallOffDebounced && lastHallCCW;
+    if (hallRisingEdge)
+      SmartLogger.logConsole("HallCCW ON  — rotations: " + String.format("%.3f", inputs.turretAbsolutePositionRotations), "Turret");
+    if (hallFallingEdge)
+      SmartLogger.logConsole("HallCCW OFF — rotations: " + String.format("%.3f", inputs.turretAbsolutePositionRotations), "Turret");
+    lastHallCCW = hallDebounced;
+
+    if (homing) {
+      if (homingPhase == HomingPhase.FAST) {
+        // Phase 1: fast sweep CCW — switch to slow on the debounced rising edge
+        if (hallRisingEdge) {
+          homingPhase = HomingPhase.SLOW;
+          SmartLogger.logConsole("Homing: sensor found, switching to slow creep", "Turret");
+        }
+      } else {
+        // Phase 2: slow creep CCW — zero on the debounced falling edge (trailing edge of magnet)
+        if (hallFallingEdge) {
+          homing = false;
+          homed  = true;
+          homingStallLoopCount = 0;
+          io.zeroTurretEncoder();
+          SmartLogger.logConsole("Turret homed — encoder zeroed at trailing edge of hall sensor", "Turret");
+        }
+      }
     }
 
     // Stall abort: if turret hits the hard stop before the hall sensor fires, current spikes.
@@ -293,7 +346,10 @@ public class TurretSubsystem extends SubsystemBase {
     // Homing uses open-loop percent. After homing, MotionMagic takes over when a position
     // target is active, otherwise open-loop percent is used (e.g. manual joystick).
     if (homing) {
-      io.setTurretPercent(-Constants.Turret.TURRET_HOME_SPEED_PERCENT);
+      double homeSpeed = (homingPhase == HomingPhase.FAST)
+          ? Constants.Turret.TURRET_HOME_SPEED_FAST_PERCENT
+          : Constants.Turret.TURRET_HOME_SPEED_SLOW_PERCENT;
+      io.setTurretPercent(-homeSpeed);
     } else if (outputs.useTurretPosition) {
       io.setTurretPosition(outputs.turretPositionMotorRotations);
     } else {

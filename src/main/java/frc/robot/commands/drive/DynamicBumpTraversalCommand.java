@@ -227,24 +227,25 @@ public class DynamicBumpTraversalCommand extends Command {
     Pose2d midPose = new Pose2d(bumpMidX, bumpCenterY, midHeading);
     Pose2d exitPose = new Pose2d(exitX, bumpCenterY, exitHeading);
 
-    return applyAllianceMirroring(new TraversalPlan(stagingPose, midPose, exitPose), fieldLength); // Flip for red.
+    return applyAllianceMirroring(new TraversalPlan(stagingPose, midPose, exitPose), fieldLength, fieldWidth); // Flip for red.
   }
 
-  private static TraversalPlan applyAllianceMirroring(TraversalPlan plan, double fieldLengthMeters) {
+  private static TraversalPlan applyAllianceMirroring(TraversalPlan plan, double fieldLengthMeters, double fieldWidthMeters) {
     if (!RobotContainer.isRedAlliance()) {
       return plan; // Blue frame is the default.
     }
 
-    Pose2d staging = mirrorPoseForRed(plan.stagingPose, fieldLengthMeters);
-    Pose2d mid = mirrorPoseForRed(plan.midPose, fieldLengthMeters);
-    Pose2d exit = mirrorPoseForRed(plan.exitPose, fieldLengthMeters);
+    Pose2d staging = mirrorPoseForRed(plan.stagingPose, fieldLengthMeters, fieldWidthMeters);
+    Pose2d mid = mirrorPoseForRed(plan.midPose, fieldLengthMeters, fieldWidthMeters);
+    Pose2d exit = mirrorPoseForRed(plan.exitPose, fieldLengthMeters, fieldWidthMeters);
     return new TraversalPlan(staging, mid, exit);
   }
 
-  private static Pose2d mirrorPoseForRed(Pose2d bluePose, double fieldLengthMeters) {
-    double mirroredX = fieldLengthMeters - bluePose.getX(); // Flip across field length.
-    Rotation2d mirroredRotation = bluePose.getRotation().rotateBy(Rotation2d.fromDegrees(180.0)); // Face downfield.
-    return new Pose2d(mirroredX, bluePose.getY(), mirroredRotation);
+  private static Pose2d mirrorPoseForRed(Pose2d bluePose, double fieldLengthMeters, double fieldWidthMeters) {
+    double mirroredX = fieldLengthMeters - bluePose.getX();
+    double mirroredY = fieldWidthMeters - bluePose.getY(); // Rotational symmetry requires Y flip too.
+    Rotation2d mirroredRotation = bluePose.getRotation().rotateBy(Rotation2d.fromDegrees(180.0));
+    return new Pose2d(mirroredX, mirroredY, mirroredRotation);
   }
 
   private boolean hasPitchFlipped() {

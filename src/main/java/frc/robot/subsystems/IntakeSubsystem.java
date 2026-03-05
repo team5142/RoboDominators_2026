@@ -145,7 +145,11 @@ public class IntakeSubsystem extends SubsystemBase {
   // If the limit switch is already pressed (arm is up), zero immediately.
   // Otherwise retract until the switch trips.
   public void startHoming() {
-    if (limitSwitch.get()) {
+    double rotations = positionSignal.refresh().getValueAsDouble();
+    boolean switchRaw = limitSwitch.get();
+    boolean atHome = switchRaw
+        && (rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS);
+    if (atHome) {
       // Switch pressed (true = pressed) - arm is at home, zero and mark retracted
       extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
       robotState.setIntakePosition(IntakePosition.RETRACTED);
@@ -257,7 +261,10 @@ public class IntakeSubsystem extends SubsystemBase {
     double currentAmps = currentSignal.getValueAsDouble();
     double velocityRps = velocitySignal.getValueAsDouble();
 
-    boolean atHome = limitSwitch.get(); // true when switch is pressed (arm fully retracted)
+    boolean switchRaw = limitSwitch.get();
+    // Only trust the switch if the encoder agrees the arm is near home — guards against stuck-ON failure
+    boolean atHome = switchRaw
+        && (rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS);
     robotState.setIntakeLimitSwitch(atHome);
 
     IntakePosition pos = robotState.getIntakePosition();
