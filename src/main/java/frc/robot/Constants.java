@@ -409,7 +409,7 @@ public final class Constants {
     // Hood homing: slow downward until bottom limit switch fires, then zero the encoder.
     // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
     // HOOD_SOFT_LIMIT_TOP_ROTATIONS is a placeholder — measure on hardware at 35 deg and update.
-    public static final double HOOD_HOME_SPEED_PERCENT       = 0.08; // slow creep down for safety
+    public static final double HOOD_HOME_SPEED_PERCENT       = 0.03; // very slow — small hood, 1:1 gear, ~40 teeth
     public static final double HOOD_HOME_ROTATIONS           = 0.0;  // encoder value at bottom stop
     public static final double HOOD_SOFT_LIMIT_TOP_ROTATIONS = 5.0;  // TODO: measure at 35 deg on hardware
 
@@ -444,22 +444,23 @@ public final class Constants {
     //       and HOOD_FRONT_ROLLER_HEIGHT_M (height of front roller above ground) on hardware.
     public static final double HOOD_SHAFT_SEPARATION_M    = 0.0; // TODO: measure (meters)
     public static final double HOOD_FRONT_ROLLER_HEIGHT_M = 0.0; // TODO: measure (meters)
-    public static final double HOOD_ANGLE_MIN_DEG         = 35.0; // hood all the way forward
-    public static final double HOOD_ANGLE_MAX_DEG         = 85.0; // hood all the way back
+    public static final double HOOD_ANGLE_MIN_DEG         = 35.0; // hood all the way open — back roller forward, shallow launch angle, long range
+    public static final double HOOD_ANGLE_MAX_DEG         = 85.0; // hood home position — back roller nearly above front roller, steep lob, short range
 
     // Shot lookup table — distance (meters) -> flywheel percent -> hood rotations
-    // Distance is measured from the front roller (fixed turret origin) to the target.
-    // Hood rotations are motor encoder rotations from home (0 = 85 deg, positive = up toward 35 deg).
-    // Data from initial ChatGPT estimate with our flywheel build; tune each row on hardware.
-    // [ ] CLOSE row: measure actual distance + verify RPM/hood at ~1.2m from target
-    // [ ] MID   row: measure actual distance + verify RPM/hood at ~3.5m from target
-    // [ ] FAR   row: measure actual distance + verify RPM/hood at ~5.5m from target
-    // Max flywheel RPM assumed 5400 (Kraken X60 free speed ~6000, loaded ~90%) — adjust if wrong.
-    // Hood rotations are placeholder — measure motor encoder value at each distance on hardware and replace.
-    public static final double[] SHOT_TABLE_DISTANCES_M        = { 1.2,    3.5,    5.5   };
-    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // 2350/5400, 2950/5400, 3490/5400
-    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.465,  0.584,  0.683 }; // 2515/5400, 3155/5400, 3690/5400
-    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  0.139 }; // TODO: replace — 65/360, 55/360, 50/360 placeholder
+    // Distances are turret-pivot to hub opening center.
+    // CLOSE: robot bumper pressed against the hub face (~0.6m — robot half-length + hub clearance)
+    // MID:   halfway between close and far corners (~3.1m)
+    // FAR:   robot in the far corner near (0,0), farthest shot in blue alliance zone (~5.5m)
+    // Flywheel percents are initial estimates (Kraken X60 ~5400 RPM loaded max) — tune on hardware.
+    // Hood rotations are placeholder — measure motor encoder value at each distance and replace.
+    // [ ] CLOSE row: robot against hub, verify RPM and hood, fire test balls
+    // [ ] MID   row: ~3.1m from hub, verify RPM and hood, fire test balls
+    // [ ] FAR   row: far corner (~0,0), verify RPM and hood, fire test balls
+    public static final double[] SHOT_TABLE_DISTANCES_M        = { 0.6,    3.1,    5.5   };
+    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // 2350/5400, 2950/5400, 3490/5400 — tune on hardware
+    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.465,  0.584,  0.683 }; // 2515/5400, 3155/5400, 3690/5400 — tune on hardware
+    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  0.139 }; // TODO: replace with measured encoder values at each distance
   }
 
   // Singulator hardware IDs and tuning constants (feeds balls one at a time into flywheels)

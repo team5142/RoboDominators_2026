@@ -211,7 +211,7 @@ public class Robot extends LoggedRobot {
       robotContainer.intakeSubsystem.startHoming();
     if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
       robotContainer.turretSubsystem.home();
-      robotContainer.turretSubsystem.hoodHome();
+      // Hood homing is manual only — operator A button — until limit switch is verified on hardware
     }
 
     if (autonomousCommand != null) {
@@ -256,7 +256,7 @@ public class Robot extends LoggedRobot {
       robotContainer.intakeSubsystem.startHoming();
     if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
       robotContainer.turretSubsystem.home();
-      robotContainer.turretSubsystem.hoodHome();
+      // Hood homing is manual only — operator A button — until limit switch is verified on hardware
     }
 
     Logger.recordOutput("Robot/Mode", "TELEOP");

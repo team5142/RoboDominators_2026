@@ -28,15 +28,26 @@ public class TurretAimSolver {
       return;
     }
 
-    // Compute bearing angle from robot to target in field-relative radians
-    double dx = inputs.targetPose.getX() - inputs.robotPose.getX();
-    double dy = inputs.targetPose.getY() - inputs.robotPose.getY();
+    // Compute turret pivot position in field frame by rotating the robot-relative offset
+    // by the robot's current heading and adding it to the robot center pose.
+    double headingRad = inputs.robotPose.getRotation().getRadians();
+    double cosH = Math.cos(headingRad);
+    double sinH = Math.sin(headingRad);
+    double pivotFieldX = inputs.robotPose.getX()
+        + cosH * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
+        - sinH * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+    double pivotFieldY = inputs.robotPose.getY()
+        + sinH * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
+        + cosH * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+
+    // Bearing and distance from turret pivot (not robot center) to target
+    double dx = inputs.targetPose.getX() - pivotFieldX;
+    double dy = inputs.targetPose.getY() - pivotFieldY;
     double targetBearingRad = Math.atan2(dy, dx);
 
     // Convert field-relative bearing to turret-relative rotation.
     // Negate because WPILib heading is CCW-positive but the turret encoder is CW-positive.
-    double robotHeadingRad = inputs.robotPose.getRotation().getRadians();
-    double turretRelativeRad = -(targetBearingRad - robotHeadingRad);
+    double turretRelativeRad = -(targetBearingRad - headingRad);
     // Normalize to [-pi, pi]
     turretRelativeRad = Rotation2d.fromRadians(turretRelativeRad).getRadians();
 

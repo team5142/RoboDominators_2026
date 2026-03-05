@@ -389,7 +389,9 @@ public class TurretSubsystem extends SubsystemBase {
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Turret/HallCCW", inputs.hallCCWRaw);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
-        "Turret/FlywheelRpm", inputs.flywheelVelocityRpm);
+        "Turret/FlywheelFrontRpm", inputs.flywheelVelocityRpm);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelBackRpm", inputs.flywheelBackVelocityRpm);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Turret/ReadyToShoot", isReadyToShoot());
     SmartLogger.logReplay("Turret/TargetReachable", aimGoal.targetReachable);

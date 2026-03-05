@@ -165,6 +165,8 @@ public class TurretIOCTRE implements TurretIO {
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
     if (flywheelFrontMotor != null)
       inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
+    if (flywheelBackMotor != null)
+      inputs.flywheelBackVelocityRpm = flywheelBackMotor.getVelocity().getValueAsDouble() * 60.0;
     // Read and immediately clear the sticky fault so it fires for exactly one loop
     bootDuringEnSignal.refresh();
     inputs.turretBootDuringEn = bootDuringEnSignal.getValue();

@@ -131,7 +131,13 @@ public class RobotContainer {
           new TurretTargetSelector(poseEstimator),
           new TurretAimSolver());
       turretSubsystem.setDefaultCommand(
-          Commands.run(() -> turretSubsystem.updateAimFromProvider(aimPipeline), turretSubsystem)
+          Commands.run(() -> {
+            turretSubsystem.updateAimFromProvider(aimPipeline);
+            // Right joystick Y: jog hood up/down (deadband 0.1, capped at HOOD_HOME_SPEED_PERCENT)
+            double hoodAxis = -operatorController.getRightY();
+            if (Math.abs(hoodAxis) < 0.1) hoodAxis = 0.0;
+            if (hoodAxis != 0.0) turretSubsystem.setHoodPercent(hoodAxis * Constants.Turret.HOOD_HOME_SPEED_PERCENT);
+          }, turretSubsystem)
               .withName("TurretTrackingDefault"));
     }
     climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
@@ -382,30 +388,13 @@ public class RobotContainer {
     // Operator A: run hood home sequence (creep down until limit switch fires)
     new JoystickButton(operatorController, XboxController.Button.kA.value)
         .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodHome(); }));
+    // D-pad up/down also jog hood (coarse, fixed speed) — right joystick Y jogs continuously
+    // (joystick jog is handled in the turret default command in the constructor)
     // --- END TURRET HOOD TEST ---
 
     // --- TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
-    // Start (hold): home the turret (CCW until hall fires, then zeros encoder).
-    // D-pad up:    MotionMagic to CW soft limit (TURRET_SOFT_LIMIT_RIGHT). Snapshot encoder to console.
-    // D-pad down:  MotionMagic to CCW soft limit (TURRET_SOFT_LIMIT_LEFT).  Snapshot encoder to console.
     // D-pad left:  snapshot encoder when turret is manually pointed robot-LEFT  (for TURRET_FORWARD_MOTOR_ROT cal)
     // D-pad right: snapshot encoder when turret is manually pointed robot-RIGHT (for TURRET_FORWARD_MOTOR_ROT cal)
-    new Trigger(() -> operatorController.getPOV() == 0)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT);
-          double v = turretSubsystem.getTurretMotorRotations();
-          SmartLogger.logConsole("ACTUAL ANGLES: FORWARD=" + String.format("%.3f", v), "TurretCal");
-          SmartLogger.logReplay("TurretCal/Forward", v);
-        }));
-    new Trigger(() -> operatorController.getPOV() == 180)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT);
-          double v = turretSubsystem.getTurretMotorRotations();
-          SmartLogger.logConsole("ACTUAL ANGLES: BACKWARD=" + String.format("%.3f", v), "TurretCal");
-          SmartLogger.logReplay("TurretCal/Backward", v);
-        }));
     new Trigger(() -> operatorController.getPOV() == 270)
         .onTrue(Commands.runOnce(() -> {
           if (turretSubsystem == null) return;
