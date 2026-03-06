@@ -36,9 +36,28 @@ public class TurretSubsystem extends SubsystemBase {
   // Fire interlock — must be explicitly enabled by operator each match
   private boolean fireEnabled = false;
 
+  // Hood step positions: 10% increments of travel (0%, 10%, 20%, ... 100%)
+  private static final double[] HOOD_STEPS = {
+    0.0,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.10,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.20,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.30,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.40,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.50,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.60,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.70,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.80,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.90,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS
+  };
+  // Up button ping-pongs 0→1→2→3→2→1→0... Down button toggles 0↔3
+  private int hoodStepIndex = 0;
+  private boolean hoodStepDirectionUp = true;
+
   // Turret homing state — turret must home before Phase 2+ aim solve is trusted
   private boolean homed = false;
   private boolean homing = false;
+  private boolean manualPositionOverride = false; // when true, skip aim pipeline and hold setpoints.turretPositionMotorRotations
   // Two-phase homing: FAST sweeps to find the sensor, SLOW creeps to the trailing edge
   private enum HomingPhase { FAST, SLOW }
   private HomingPhase homingPhase = HomingPhase.FAST;
@@ -47,9 +66,10 @@ public class TurretSubsystem extends SubsystemBase {
   private int hallHighCount = 0;
   private int hallLowCount  = 0;
 
-  // Hood homing state — hood creeps down until bottom limit switch fires, then zeroes encoder
+  // Hood homing state — hood creeps down until stall is detected at the hard stop, then zeroes encoder
   private boolean hoodHomed  = false;
   private boolean hoodHoming = false;
+  private int hoodHomingStallLoopCount = 0;
 
   // Edge detection for hall sensor — log once on rising edge for console visibility
   private boolean lastHallCCW = false;
@@ -130,7 +150,7 @@ public class TurretSubsystem extends SubsystemBase {
   // Starts turret homing sweep — drives slowly CCW until CCW hall sensor fires.
   // Required before Phase 2+ aim solve is trusted. Safe to call in Phase 1 (encoder only).
   public void home() {
-    if (homed) return;
+    if (homed || homing) return;
     homing = true;
     homingPhase = HomingPhase.FAST;
     hallHighCount = 0;
@@ -147,13 +167,15 @@ public class TurretSubsystem extends SubsystemBase {
     SmartLogger.logConsole("Turret homing cancelled", "Turret");
   }
 
-  // Starts hood homing — creeps downward until the bottom limit switch fires, then zeroes encoder.
+  // Starts hood homing — creeps downward until stall current is detected at the hard stop, then zeroes encoder.
+  // When the limit switch is wired, replace the stall check in periodic() with hoodLimitSwitchRaw.
   // Safe to call if already homed (no-op).
   public void hoodHome() {
     if (hoodHomed) return;
     hoodHoming = true;
+    hoodHomingStallLoopCount = 0;
     setpoints.hoodPercent = -Constants.Turret.HOOD_HOME_SPEED_PERCENT;
-    SmartLogger.logConsole("Hood homing started - moving to bottom limit switch", "Turret");
+    SmartLogger.logConsole("Hood homing started - creeping to hard stop", "Turret");
   }
 
   public boolean isHomed()     { return homed; }
@@ -161,11 +183,47 @@ public class TurretSubsystem extends SubsystemBase {
 
   // ---- Open loop / manual setpoints ----
 
-  public void setFlywheelPercent(double percent)  { setpoints.flywheelPercent = percent; }
+  public void setFlywheelPercent(double percent)  {
+    setpoints.flywheelPercent = percent;
+    setpoints.useIndependentFlywheel = false;
+  }
   // Drive each flywheel independently — for commissioning: verify each motor's direction and RPM separately
-  public void setFlywheelFrontPercent(double percent) { io.setFlywheelFrontPercent(percent); }
-  public void setFlywheelBackPercent(double percent)  { io.setFlywheelBackPercent(percent); }
-  public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; }
+  public void setFlywheelFrontPercent(double percent) {
+    setpoints.useIndependentFlywheel = true;
+    setpoints.flywheelFrontPercent = percent;
+  }
+  public void setFlywheelBackPercent(double percent)  {
+    setpoints.useIndependentFlywheel = true;
+    setpoints.flywheelBackPercent = percent;
+  }
+  public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; setpoints.useHoodPosition = false; }
+
+  // Commands hood to a specific position. Requires hoodHomed. Clamps to soft limits.
+  public void setHoodPositionTarget(double motorRotations) {
+    if (!hoodHomed) return;
+    double clamped = Math.max(0.0, Math.min(motorRotations, Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS));
+    setpoints.useHoodPosition = true;
+    setpoints.hoodPositionMotorRotations = clamped;
+  }
+
+  // Advances hood one step up (ping-pong: 0→1→2→3→2→1→0...)
+  public void hoodStepUp() {
+    if (hoodStepDirectionUp) {
+      hoodStepIndex++;
+      if (hoodStepIndex >= HOOD_STEPS.length - 1) { hoodStepIndex = HOOD_STEPS.length - 1; hoodStepDirectionUp = false; }
+    } else {
+      hoodStepIndex--;
+      if (hoodStepIndex <= 0) { hoodStepIndex = 0; hoodStepDirectionUp = true; }
+    }
+    setHoodPositionTarget(HOOD_STEPS[hoodStepIndex]);
+  }
+
+  // Toggles hood between bottom (0) and top (HOOD_SOFT_LIMIT_TOP_ROTATIONS)
+  public void hoodStepDown() {
+    hoodStepIndex = (hoodStepIndex == 0) ? HOOD_STEPS.length - 1 : 0;
+    hoodStepDirectionUp = (hoodStepIndex == 0);
+    setHoodPositionTarget(HOOD_STEPS[hoodStepIndex]);
+  }
   public void setTurretPercent(double percent)     { setpoints.turretPercent = percent; }
 
   // Open-loop turret move that respects soft limits — use this for manual jogging after homing.
@@ -206,7 +264,10 @@ public class TurretSubsystem extends SubsystemBase {
   public boolean updateAimFromProvider(TurretAimProvider provider) {
     if (provider == null) return false;
     boolean valid = provider.update(providerGoal);
-    if (valid) setAimGoal(providerGoal);
+    if (valid) {
+      manualPositionOverride = false; // aim pipeline takes over when a real target is available
+      setAimGoal(providerGoal);
+    }
     return valid;
   }
 
@@ -253,24 +314,30 @@ public class TurretSubsystem extends SubsystemBase {
     boolean hallDebounced    = hallHighCount >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
     boolean hallOffDebounced = hallLowCount  >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
 
-    // Log transitions on debounced signal for console visibility
+    // Rising edge: sensor just debounced ON. Falling edge: sensor just debounced OFF.
+    // lastHallCCW tracks the last stable debounced state — only update it when a side fully debounces.
     boolean hallRisingEdge  = hallDebounced    && !lastHallCCW;
     boolean hallFallingEdge = hallOffDebounced && lastHallCCW;
     if (hallRisingEdge)
       SmartLogger.logConsole("HallCCW ON  — rotations: " + String.format("%.3f", inputs.turretAbsolutePositionRotations), "Turret");
     if (hallFallingEdge)
       SmartLogger.logConsole("HallCCW OFF — rotations: " + String.format("%.3f", inputs.turretAbsolutePositionRotations), "Turret");
-    lastHallCCW = hallDebounced;
+    if (hallDebounced)    lastHallCCW = true;
+    if (hallOffDebounced) lastHallCCW = false;
 
     if (homing) {
       if (homingPhase == HomingPhase.FAST) {
-        // Phase 1: fast sweep CCW — switch to slow on the debounced rising edge
-        if (hallRisingEdge) {
+        // If already on sensor when homing starts, switch to slow immediately.
+        if (hallDebounced) {
+          homingPhase = HomingPhase.SLOW;
+          SmartLogger.logConsole("Homing: already on sensor, switching to slow creep", "Turret");
+        } else if (hallRisingEdge) {
+          // Leading edge found — switch to slow creep to find the trailing edge precisely.
           homingPhase = HomingPhase.SLOW;
           SmartLogger.logConsole("Homing: sensor found, switching to slow creep", "Turret");
         }
       } else {
-        // Phase 2: slow creep CCW — zero on the debounced falling edge (trailing edge of magnet)
+        // Slow creep CCW — zero on the debounced trailing edge (sensor turns off).
         if (hallFallingEdge) {
           homing = false;
           homed  = true;
@@ -295,13 +362,22 @@ public class TurretSubsystem extends SubsystemBase {
       homingStallLoopCount = 0;
     }
 
-    // Complete hood homing when bottom limit switch fires
-    if (hoodHoming && inputs.hoodLimitSwitchRaw) {
-      hoodHoming = false;
-      hoodHomed  = true;
-      setpoints.hoodPercent = 0.0;
-      io.zeroHoodEncoder();
-      SmartLogger.logConsole("Hood homed — encoder zeroed at bottom stop", "Turret");
+    // Complete hood homing via stall detection at the hard stop.
+    // Requires sustained stall current for several loops to avoid false triggers.
+    if (hoodHoming) {
+      if (inputs.hoodMotorCurrentAmps >= Constants.Turret.HOOD_HOMING_STALL_CURRENT_AMPS) {
+        hoodHomingStallLoopCount++;
+        if (hoodHomingStallLoopCount >= Constants.Turret.HOOD_HOMING_STALL_LOOP_THRESHOLD) {
+          hoodHoming = false;
+          hoodHomed  = true;
+          hoodHomingStallLoopCount = 0;
+          setpoints.hoodPercent = 0.0;
+          io.zeroHoodEncoder();
+          SmartLogger.logConsole("Hood homed — encoder zeroed at hard stop (stall detected)", "Turret");
+        }
+      } else {
+        hoodHomingStallLoopCount = 0;
+      }
     }
 
     // Hood soft limit: stop upward movement at the top of the travel range.
@@ -334,14 +410,27 @@ public class TurretSubsystem extends SubsystemBase {
       }
     }
 
-    // If not actively homing, run the normal aim pipeline
+    // If not actively homing, run the normal aim pipeline unless a manual position override is active
     if (!homing) {
-      setpointGenerator.update(state, aimGoal, setpoints);
+      if (!manualPositionOverride) {
+        setpointGenerator.update(state, aimGoal, setpoints);
+      }
       controller.update(state, setpoints, outputs);
     }
 
-    io.setFlywheelPercent(outputs.flywheelPercent);
-    io.setHoodPercent(hoodHoming ? -Constants.Turret.HOOD_HOME_SPEED_PERCENT : outputs.hoodPercent);
+    if (outputs.useIndependentFlywheel) {
+      io.setFlywheelFrontPercent(outputs.flywheelFrontPercent);
+      io.setFlywheelBackPercent(outputs.flywheelBackPercent);
+    } else {
+      io.setFlywheelPercent(outputs.flywheelPercent);
+    }
+    if (hoodHoming) {
+      io.setHoodPercent(-Constants.Turret.HOOD_HOME_SPEED_PERCENT);
+    } else if (outputs.useHoodPosition) {
+      io.setHoodPosition(outputs.hoodPositionMotorRotations);
+    } else {
+      io.setHoodPercent(outputs.hoodPercent);
+    }
 
     // Homing uses open-loop percent. After homing, MotionMagic takes over when a position
     // target is active, otherwise open-loop percent is used (e.g. manual joystick).
@@ -376,9 +465,15 @@ public class TurretSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Turret/FireEnabled", fireEnabled);
 
     SmartLogger.logReplay("Turret/TargetMotorRot", outputs.turretPositionMotorRotations);
-    SmartLogger.logReplay("Turret/RotationMotorRot", inputs.turretAbsolutePositionRotations); // motor rotations, same units as TargetMotorRot
+    SmartLogger.logReplay("Turret/RotationMotorRot", inputs.turretAbsolutePositionRotations);
     SmartLogger.logReplay("Turret/VelocityRps", inputs.turretVelocityRps);
     SmartLogger.logReplay("Turret/CurrentAmps", inputs.turretMotorCurrentAmps);
+
+    // Hood PID tuning signals — plot HoodTargetRot vs HoodActualRot to tune kP/kV/kS
+    SmartLogger.logReplay("Turret/HoodTargetRot", outputs.hoodPositionMotorRotations);
+    SmartLogger.logReplay("Turret/HoodActualRot", inputs.hoodMotorPositionRotations);
+    SmartLogger.logReplay("Turret/HoodErrorRot",  outputs.hoodPositionMotorRotations - inputs.hoodMotorPositionRotations);
+    SmartLogger.logReplay("Turret/HoodCurrentAmps", inputs.hoodMotorCurrentAmps);
 
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/RotationDeg", inputs.turretAbsolutePositionRotations * 360.0);
@@ -399,12 +494,14 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Sets a closed-loop position target in motor rotations (0 = CCW hard stop).
   // Clamped to safe travel range. Requires homing to be complete.
+  // Bypasses the aim pipeline — writes directly to setpoints so TURRET_FORWARD_MOTOR_ROT is not added.
   public void setTurretPositionTarget(double motorRotations) {
     if (!homed) return;
     double clamped = Math.max(Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT,
                               Math.min(motorRotations, Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT));
-    aimGoal.turretRotations = clamped / Constants.Turret.TURRET_GEAR_RATIO; // SetpointGenerator expects turret rotations
-    aimGoal.enable = true;
+    manualPositionOverride = true;
+    setpoints.turretPositionMotorRotations = clamped;
+    setpoints.useTurretPosition = true;
   }
 }
 

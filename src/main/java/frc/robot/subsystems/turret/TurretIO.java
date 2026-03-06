@@ -12,6 +12,9 @@ public interface TurretIO {
 
   default void setHoodPercent(double percent) {}
 
+  // MotionMagic position control for hood — motor rotations from home (0 = bottom stop)
+  default void setHoodPosition(double motorRotations) {}
+
   default void setTurretPercent(double percent) {}
 
   // Direct voltage control — used only during SysId characterization

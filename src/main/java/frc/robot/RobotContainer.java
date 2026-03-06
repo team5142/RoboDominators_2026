@@ -51,7 +51,7 @@ public class RobotContainer {
   // Homing runs on enable only when both the subsystem AND its homing flag are true.
   // Enable the subsystem first to test motors manually, then enable homing once switches are verified.
   static boolean ENABLE_INTAKE_HOMING = true; // limit switch confirmed DIO 1, direction confirmed
-  static boolean ENABLE_TURRET_HOMING = true; // hall sensor verified 2026-03-02
+  static boolean ENABLE_TURRET_HOMING = false; // disabled 2026-03-06 — needs readjustment
   private static final boolean ENABLE_CLIMBER = false;
   private static final boolean ENABLE_SPINDEXER = true;
   private static final boolean ENABLE_SINGULATOR = true;
@@ -375,16 +375,12 @@ public class RobotContainer {
     // --- END SPINDEXER ---
 
     // --- TURRET HOOD TEST (commissioning — remove after HOOD CHECKLIST is complete) ---
-    // D-pad up (hold): move hood up (away from bottom stop)
+    // D-pad up: step hood up (ping-pong through 0%, 33%, 67%, 100% of travel)
     new Trigger(() -> operatorController.getPOV() == 0)
-        .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(Constants.Turret.HOOD_HOME_SPEED_PERCENT); },
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
-    // D-pad down (hold): move hood down (toward bottom stop)
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); }));
+    // D-pad down: toggle hood between bottom (0) and top
     new Trigger(() -> operatorController.getPOV() == 180)
-        .whileTrue(Commands.startEnd(
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(-Constants.Turret.HOOD_HOME_SPEED_PERCENT); },
-          () -> { if (turretSubsystem != null) turretSubsystem.setHoodPercent(0.0); }));
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); }));
     // Operator A: run hood home sequence (creep down until limit switch fires)
     new JoystickButton(operatorController, XboxController.Button.kA.value)
         .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodHome(); }));
@@ -392,24 +388,18 @@ public class RobotContainer {
     // (joystick jog is handled in the turret default command in the constructor)
     // --- END TURRET HOOD TEST ---
 
-    // --- TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
-    // D-pad left:  snapshot encoder when turret is manually pointed robot-LEFT  (for TURRET_FORWARD_MOTOR_ROT cal)
-    // D-pad right: snapshot encoder when turret is manually pointed robot-RIGHT (for TURRET_FORWARD_MOTOR_ROT cal)
+    // --- TURRET SOFT LIMIT TEST ---
+    // D-pad left: command turret to CCW MM target — holds position after release (runOnce, testing only)
+    // D-pad right: command turret to CW MM target — holds position after release (runOnce, testing only)
     new Trigger(() -> operatorController.getPOV() == 270)
         .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          double v = turretSubsystem.getTurretMotorRotations();
-          SmartLogger.logConsole("ACTUAL ANGLES: LEFT=" + String.format("%.3f", v), "TurretCal");
-          SmartLogger.logReplay("TurretCal/Left", v);
+          if (turretSubsystem != null) turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_MM_TARGET_LEFT_MOTOR_ROT);
         }));
     new Trigger(() -> operatorController.getPOV() == 90)
         .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          double v = turretSubsystem.getTurretMotorRotations();
-          SmartLogger.logConsole("ACTUAL ANGLES: RIGHT=" + String.format("%.3f", v), "TurretCal");
-          SmartLogger.logReplay("TurretCal/Right", v);
+          if (turretSubsystem != null) turretSubsystem.setTurretPositionTarget(Constants.Turret.TURRET_MM_TARGET_RIGHT_MOTOR_ROT);
         }));
-    // --- END TURRET FORWARD CALIBRATION / MM LIMIT TEST ---
+    // --- END TURRET SOFT LIMIT TEST ---
 
     // --- TURRET FLYWHEELS TEST (commissioning — tune direction/RPM per FLYWHEEL CHECKLIST) ---
     // Left bumper (hold): spin FRONT flywheel only — verify direction and RPM in TunerX/AdvantageScope
@@ -476,11 +466,8 @@ public class RobotContainer {
             () -> turretSubsystem.cancelHoming()));
     }
 
-    // --- TURRET HUB TARGETING ---
-    // Right bumper (hold): force turret to aim at hub regardless of field position.
-    // The default command (TurretTrackingDefault) normally auto-selects hub vs pass target
-    // based on robot position. This overrides it to always aim at the hub.
-    // Requires turret to be homed first (Operator Start).
+    // --- TURRET HUB TARGETING --- (disabled 2026-03-06 — re-enable when needed)
+    /*
     if (turretSubsystem != null) {
       TurretAimPipeline hubPipeline = new TurretAimPipeline(
           poseEstimator,
@@ -494,6 +481,7 @@ public class RobotContainer {
               () -> turretSubsystem.updateAimFromProvider(hubPipeline), turretSubsystem)
               .withName("TurretHubTracking"));
     }
+    */
     // --- END TURRET HUB TARGETING ---
   }
 

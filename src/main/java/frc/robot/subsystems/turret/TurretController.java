@@ -4,10 +4,15 @@ package frc.robot.subsystems.turret;
 // otherwise falls back to open-loop percent (used during homing).
 public class TurretController {
   public void update(TurretState state, TurretSetpoints setpoints, TurretOutput outputs) {
-    outputs.flywheelPercent      = clamp(setpoints.flywheelPercent);
-    outputs.hoodPercent          = clamp(setpoints.hoodPercent);
-    outputs.turretPercent        = clamp(setpoints.turretPercent);
-    outputs.useTurretPosition    = setpoints.useTurretPosition;
+    outputs.flywheelPercent          = clamp(setpoints.flywheelPercent);
+    outputs.flywheelFrontPercent     = clamp(setpoints.flywheelFrontPercent);
+    outputs.flywheelBackPercent      = clamp(setpoints.flywheelBackPercent);
+    outputs.useIndependentFlywheel   = setpoints.useIndependentFlywheel;
+    outputs.hoodPercent              = clamp(setpoints.hoodPercent);
+    outputs.useHoodPosition          = setpoints.useHoodPosition;
+    outputs.hoodPositionMotorRotations = setpoints.hoodPositionMotorRotations;
+    outputs.turretPercent            = clamp(setpoints.turretPercent);
+    outputs.useTurretPosition        = setpoints.useTurretPosition;
     outputs.turretPositionMotorRotations = setpoints.turretPositionMotorRotations;
   }
 

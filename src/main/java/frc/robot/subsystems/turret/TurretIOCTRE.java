@@ -82,6 +82,7 @@ public class TurretIOCTRE implements TurretIO {
   private final DutyCycleOut flywheelFrontDutyCycle = new DutyCycleOut(0.0);
   private final DutyCycleOut flywheelBackDutyCycle  = new DutyCycleOut(0.0);
   private final DutyCycleOut hoodDutyCycle          = new DutyCycleOut(0.0);
+  private final MotionMagicVoltage hoodMotionMagic  = new MotionMagicVoltage(0.0).withSlot(0);
   private final DutyCycleOut turretDutyCycle        = new DutyCycleOut(0.0);
   private final VoltageOut   turretVoltageOut  = new VoltageOut(0.0);
   private final MotionMagicVoltage turretMotionMagic = new MotionMagicVoltage(0.0).withSlot(0);
@@ -94,23 +95,32 @@ public class TurretIOCTRE implements TurretIO {
     flywheelBackMotor  = new TalonFX(Constants.Turret.FLYWHEEL_BACK_MOTOR_ID,  new CANBus(Constants.Swerve.CAN_BUS_NAME));
     hoodMotor          = new TalonFX(Constants.Turret.HOOD_MOTOR_ID,           new CANBus(Constants.Swerve.CAN_BUS_NAME));
 
-    // Flywheel motors: voltage control, brake mode, shared inversion flag (flip both if needed)
+    // Flywheel motors: coast mode, separate inversion flags (back motor runs opposite to front)
     TalonFXConfiguration flywheelConfig = new TalonFXConfiguration();
     flywheelConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-    flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
     flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_FRONT_MOTOR_INVERTED
+        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
+    flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_BACK_MOTOR_INVERTED
+        ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelBackMotor.getConfigurator().apply(flywheelConfig);
 
-    // Hood motor: duty cycle, brake mode
+    // Hood motor: MotionMagic position control, brake mode
     TalonFXConfiguration hoodConfig = new TalonFXConfiguration();
     hoodConfig.MotorOutput.NeutralMode = NeutralModeValue.Brake;
     hoodConfig.MotorOutput.Inverted = Constants.Turret.HOOD_MOTOR_INVERTED
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
-    hoodConfig.CurrentLimits.StatorCurrentLimit       = 20.0;
+    hoodConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
     hoodConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    hoodConfig.Slot0.kS = Constants.Turret.HOOD_KS;
+    hoodConfig.Slot0.kV = Constants.Turret.HOOD_KV;
+    hoodConfig.Slot0.kP = Constants.Turret.HOOD_KP;
+    MotionMagicConfigs hoodMM = new MotionMagicConfigs();
+    hoodMM.MotionMagicCruiseVelocity = Constants.Turret.HOOD_CRUISE_VELOCITY_RPS;
+    hoodMM.MotionMagicAcceleration   = Constants.Turret.HOOD_ACCELERATION_RPS2;
+    hoodConfig.MotionMagic = hoodMM;
     hoodMotor.getConfigurator().apply(hoodConfig);
 
     turretMotor = new TalonFX(Constants.Turret.TURRET_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
@@ -158,8 +168,10 @@ public class TurretIOCTRE implements TurretIO {
     inputs.hoodLimitSwitchRaw = !hoodLimitSwitch.get(); // active-low — true when switch is pressed
     inputs.hallCCWRaw         = !hallCCW.get();          // active-low — true when magnet is sensed
 
-    if (hoodMotor != null)
+    if (hoodMotor != null) {
       inputs.hoodMotorPositionRotations = hoodMotor.getPosition().getValueAsDouble();
+      inputs.hoodMotorCurrentAmps       = hoodMotor.getStatorCurrent().getValueAsDouble();
+    }
     inputs.turretAbsolutePositionRotations = turretMotor.getPosition().getValueAsDouble();
     inputs.turretVelocityRps               = turretMotor.getVelocity().getValueAsDouble();
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
@@ -194,6 +206,11 @@ public class TurretIOCTRE implements TurretIO {
   @Override
   public void setHoodPercent(double percent) {
     hoodMotor.setControl(hoodDutyCycle.withOutput(percent));
+  }
+
+  @Override
+  public void setHoodPosition(double motorRotations) {
+    hoodMotor.setControl(hoodMotionMagic.withPosition(motorRotations));
   }
 
   @Override

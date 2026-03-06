@@ -349,9 +349,9 @@ public final class Constants {
     // public static final double TURRET_CRUISE_VELOCITY_RPS  = 9.72;  // motor rot/sec
     // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
 
-    // ~350 deg in ~0.7 sec. Back off cruise/accel if motion feels violent.
-    public static final double TURRET_CRUISE_VELOCITY_RPS  = 10.0; // motor rot/sec
-    public static final double TURRET_ACCELERATION_RPS2    = 40.0; // motor rot/sec^2
+    // Slowed for testing 2026-03-06 — restore to 10.0/40.0 after soft limits are verified
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 3.0;  // motor rot/sec (~108 deg/sec)
+    public static final double TURRET_ACCELERATION_RPS2    = 10.0; // motor rot/sec^2
     public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
 
     // MotionMagic slot 0 gains (voltage control mode):
@@ -365,9 +365,10 @@ public final class Constants {
     public static final double TURRET_KD = 0.3;
 
     // Motor inversion — TODO: confirm directions on hardware
-    public static final boolean TURRET_MOTOR_INVERTED   = false;
-    public static final boolean HOOD_MOTOR_INVERTED     = false;
-    public static final boolean FLYWHEEL_MOTOR_INVERTED = false; // both flywheels use this
+    public static final boolean TURRET_MOTOR_INVERTED        = false;
+    public static final boolean HOOD_MOTOR_INVERTED           = true;  // inverted 2026-03-06
+    public static final boolean FLYWHEEL_FRONT_MOTOR_INVERTED = false;
+    public static final boolean FLYWHEEL_BACK_MOTOR_INVERTED  = false; // testing 2026-03-06 — flip back to true if wrong direction
 
     // Turret homing: two-phase sweep to find the trailing edge of the hall sensor magnet.
     // Phase 1 (fast): sweeps CCW quickly until the hall sensor first fires (leading edge).
@@ -381,37 +382,51 @@ public final class Constants {
     // Stall detection during homing — if current stays above threshold for this many loops,
     // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
     // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
-    public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 18.0; // TODO: tune on hardware
+    public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 35.0; // energy chain drag peaks ~18A — hard stop is higher
     public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
 
-    // Hall sensor is now at the CCW hard stop after magnet relocation (2026-03-02).
-    // When homing fires, encoder is set to 0.0 so that 0 = hall sensor trailing edge position.
-    // CCW hard stop measured at TunerX -7.119 motor rot (AScope -2562 deg), hall fires at -6.14 (AScope -2233 deg).
-    // So the physical CCW stop is 0.979 motor rot past the hall in the CCW direction.
-    public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // hall is now at the CCW end
+    // Hall sensor is near the CCW hard stop (gear relocated to front-left 2026-03-06, dead zone now back-right).
+    // Homing sweeps CCW to find leading edge then slow-creeps to trailing edge — encoder zeroed there.
+    // Measured 2026-03-06 (pre-home TunerX values):
+    //   Hall leading edge: -2.62 motor rot (AScope -943.7 deg)
+    //   Hall trailing edge: -3.54 motor rot (AScope -1089.7 deg) — encoder zeroed here
+    //   CCW hard stop:     -3.615 motor rot (AScope -1301 deg)  → only 0.075 rot past trailing edge
+    //   CW hard stop:       6.17 motor rot  (AScope  2220 deg)  → 9.71  motor rot from trailing edge
+    //   Straight forward:   2.45 motor rot  (AScope  882.2 deg) → 5.99  motor rot from trailing edge
+    // Post-home (encoder = 0 at trailing edge), all positions shift by ~+3.54.
+    public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // TODO: measure distance from trailing edge to hard stop, then set negative
 
-    // CCW soft limit: hall fires at TunerX -6.14, CCW safe stop at -7.119 → 0.979 motor rot past hall.
-    // CW soft limit: CW safe stop at TunerX +2.22 → (2.22 - (-6.14)) = 8.36 motor rot from hall. 95% = 7.94.
-    // Both raw TunerX values were read before homing, so they are relative to the pre-home encoder position.
-    public static final double TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  = -0.5; // CCW limit, ~0.48 rot from physical stop
-    public static final double TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT =  8.3; // CW limit — adjusted 2026-03-02
+    // Soft limits: 0 = CCW hard stop (set by TURRET_HALL_OFFSET_MOTOR_ROT). Full range ~9.9 rot.
+    public static final double TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  =  0.05; // CCW soft limit — small margin from hard stop (2026-03-06)
+    public static final double TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT =  9.9;  // CW soft limit  (2026-03-06)
 
     // MotionMagic tuning targets — kept 1 motor rot inside the soft limits so MM never commands
     // into the limit zone. Adjust outward once MM tracking is confirmed good.
-    public static final double TURRET_MM_TARGET_LEFT_MOTOR_ROT  = TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  + 1.0; // ~0.4 motor rot
-    public static final double TURRET_MM_TARGET_RIGHT_MOTOR_ROT = TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT - 1.0; // ~5.5 motor rot
+    public static final double TURRET_MM_TARGET_LEFT_MOTOR_ROT  = TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT;  // 0.05
+    public static final double TURRET_MM_TARGET_RIGHT_MOTOR_ROT = TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT; // 9.9
 
     // Motor encoder value when the turret is pointing straight toward the front of the robot.
-    // The aim solver outputs 0.0 for "robot forward" — this offset maps that to the real encoder position.
-    // TODO: re-measure after first home with new magnet position. Old value was 8.316 (different zero reference).
-    public static final double TURRET_FORWARD_MOTOR_ROT = 7.66; // measured 2026-03-02: robot-forward position after homing
+    // Measured 2026-03-06: forward = TunerX 2.45, hall trailing edge = TunerX -3.54 → delta = 5.99 motor rot.
+    public static final double TURRET_FORWARD_MOTOR_ROT = 5.787; // measured 2026-03-06 after hall offset recal
 
-    // Hood homing: slow downward until bottom limit switch fires, then zero the encoder.
+    // Hood homing: slow downward until stall detected at hard stop, then zero the encoder.
     // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
-    // HOOD_SOFT_LIMIT_TOP_ROTATIONS is a placeholder — measure on hardware at 35 deg and update.
-    public static final double HOOD_HOME_SPEED_PERCENT       = 0.03; // very slow — small hood, 1:1 gear, ~40 teeth
+    // Measured 2026-03-06: home reads 0.022 rot (≈0 after zeroing), top physical stop = 4.291 rot.
+    public static final double HOOD_HOME_SPEED_PERCENT       = 0.10; // increased 2026-03-06 for testing (was 0.03)
+
+    // Hood MotionMagic gains — start conservative, tune kP up until no steady-state error
+    public static final double HOOD_KS                   = 0.4;  // static friction override — increase if hood won't start moving
+    public static final double HOOD_KV                   = 0.12; // velocity feedforward
+    public static final double HOOD_KP                   = 8.0;  // proportional — tune on hardware
+    public static final double HOOD_CRUISE_VELOCITY_RPS  = 9.0;  // motor rot/s
+    public static final double HOOD_ACCELERATION_RPS2    = 30.0; // motor rot/s^2
     public static final double HOOD_HOME_ROTATIONS           = 0.0;  // encoder value at bottom stop
-    public static final double HOOD_SOFT_LIMIT_TOP_ROTATIONS = 5.0;  // TODO: measure at 35 deg on hardware
+    // Stall detection for hard-stop homing (no limit switch wired yet).
+    // At 10% duty cycle the hood draws ~1-2A in free rotation — any spike above this means it hit the stop.
+    // Threshold is conservative; lower it if homing doesn't trigger, raise it if it false-triggers mid-travel.
+    public static final double HOOD_HOMING_STALL_CURRENT_AMPS  = 5.0; // TODO: tune on hardware
+    public static final int    HOOD_HOMING_STALL_LOOP_THRESHOLD = 6;   // ~120ms at 50Hz — short but debounced
+    public static final double HOOD_SOFT_LIMIT_TOP_ROTATIONS = 4.1;  // measured 2026-03-06 (physical top = 4.291, 0.2 rot margin)
 
     // Phase-advance enablement — change to advance to the next phase
     // PHASE_1: fixed/manual setpoint, fire interlock only
@@ -458,8 +473,8 @@ public final class Constants {
     // [ ] MID   row: ~3.1m from hub, verify RPM and hood, fire test balls
     // [ ] FAR   row: far corner (~0,0), verify RPM and hood, fire test balls
     public static final double[] SHOT_TABLE_DISTANCES_M        = { 0.6,    3.1,    5.5   };
-    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // 2350/5400, 2950/5400, 3490/5400 — tune on hardware
-    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.465,  0.584,  0.683 }; // 2515/5400, 3155/5400, 3690/5400 — tune on hardware
+    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // tune on hardware
+    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.50,   0.84,   0.90  }; // increased 2026-03-06 — was 0.75, bumped to 0.50 test
     public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  0.139 }; // TODO: replace with measured encoder values at each distance
   }
 

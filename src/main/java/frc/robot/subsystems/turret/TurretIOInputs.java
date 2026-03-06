@@ -9,6 +9,7 @@ public class TurretIOInputs {
   // Hood position from motor encoder — 0 at home (85 deg), positive = up toward 35 deg.
   // TODO: replace with CANcoder absolute position once hardware is available.
   public double hoodMotorPositionRotations = 0.0;
+  public double hoodMotorCurrentAmps = 0.0; // stator current — used for hard-stop homing stall detection
   public double turretAbsolutePositionRotations = 0.0;
   public double turretVelocityRps = 0.0; // motor rot/sec — watch vs MotionMagic setpoint velocity in AScope
   public double flywheelVelocityRpm = 0.0;     // front flywheel velocity in RPM
