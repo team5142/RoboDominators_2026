@@ -9,6 +9,7 @@ import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.controls.VoltageOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
@@ -79,8 +80,12 @@ public class TurretIOCTRE implements TurretIO {
   private final DigitalInput hoodLimitSwitch; // fires at bottom stop (85 deg = position 0)
   private final DigitalInput hallCCW;
 
-  private final DutyCycleOut flywheelFrontDutyCycle = new DutyCycleOut(0.0);
-  private final DutyCycleOut flywheelBackDutyCycle  = new DutyCycleOut(0.0);
+  private final DutyCycleOut flywheelFrontDutyCycle  = new DutyCycleOut(0.0);
+  private final DutyCycleOut flywheelBackDutyCycle   = new DutyCycleOut(0.0);
+  private final VoltageOut   flywheelFrontVoltageOut = new VoltageOut(0.0);
+  private final VoltageOut   flywheelBackVoltageOut  = new VoltageOut(0.0);
+  private final VelocityVoltage flywheelFrontVelocity = new VelocityVoltage(0.0).withSlot(0);
+  private final VelocityVoltage flywheelBackVelocity  = new VelocityVoltage(0.0).withSlot(0);
   private final DutyCycleOut hoodDutyCycle          = new DutyCycleOut(0.0);
   private final MotionMagicVoltage hoodMotionMagic  = new MotionMagicVoltage(0.0).withSlot(0);
   private final DutyCycleOut turretDutyCycle        = new DutyCycleOut(0.0);
@@ -100,6 +105,11 @@ public class TurretIOCTRE implements TurretIO {
     flywheelConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     flywheelConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
     flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    // Slot 0: velocity feedforward + P gain from SysId 2026-03-07
+    flywheelConfig.Slot0.kS = Constants.Turret.FLYWHEEL_KS;
+    flywheelConfig.Slot0.kV = Constants.Turret.FLYWHEEL_KV;
+    flywheelConfig.Slot0.kA = Constants.Turret.FLYWHEEL_KA;
+    flywheelConfig.Slot0.kP = Constants.Turret.FLYWHEEL_KP;
     flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_FRONT_MOTOR_INVERTED
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
@@ -130,7 +140,7 @@ public class TurretIOCTRE implements TurretIO {
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     turretOutput.NeutralMode = NeutralModeValue.Brake;
     turretConfig.MotorOutput = turretOutput;
-    turretConfig.CurrentLimits.StatorCurrentLimit = 20.0;
+    turretConfig.CurrentLimits.StatorCurrentLimit = 40.0; // raised from 20A — energy chain drag requires more torque
     turretConfig.CurrentLimits.StatorCurrentLimitEnable = true;
 
     // Slot 0: MotionMagic PID + feedforward gains — tune kP in AdvantageScope
@@ -175,10 +185,18 @@ public class TurretIOCTRE implements TurretIO {
     inputs.turretAbsolutePositionRotations = turretMotor.getPosition().getValueAsDouble();
     inputs.turretVelocityRps               = turretMotor.getVelocity().getValueAsDouble();
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
-    if (flywheelFrontMotor != null)
-      inputs.flywheelVelocityRpm = flywheelFrontMotor.getVelocity().getValueAsDouble() * 60.0;
-    if (flywheelBackMotor != null)
-      inputs.flywheelBackVelocityRpm = flywheelBackMotor.getVelocity().getValueAsDouble() * 60.0;
+    if (flywheelFrontMotor != null) {
+      double frontRps = flywheelFrontMotor.getVelocity().getValueAsDouble();
+      inputs.flywheelVelocityRpm      = frontRps * 60.0;
+      inputs.flywheelFrontVelocityRps = frontRps;
+      inputs.flywheelFrontVoltageVolts = flywheelFrontMotor.getMotorVoltage().getValueAsDouble();
+    }
+    if (flywheelBackMotor != null) {
+      double backRps = flywheelBackMotor.getVelocity().getValueAsDouble();
+      inputs.flywheelBackVelocityRpm  = backRps * 60.0;
+      inputs.flywheelBackVelocityRps  = backRps;
+      inputs.flywheelBackVoltageVolts = flywheelBackMotor.getMotorVoltage().getValueAsDouble();
+    }
     // Read and immediately clear the sticky fault so it fires for exactly one loop
     bootDuringEnSignal.refresh();
     inputs.turretBootDuringEn = bootDuringEnSignal.getValue();
@@ -201,6 +219,26 @@ public class TurretIOCTRE implements TurretIO {
   @Override
   public void setFlywheelBackPercent(double percent) {
     flywheelBackMotor.setControl(flywheelBackDutyCycle.withOutput(percent));
+  }
+
+  @Override
+  public void setFlywheelFrontVoltage(double volts) {
+    flywheelFrontMotor.setControl(flywheelFrontVoltageOut.withOutput(volts));
+  }
+
+  @Override
+  public void setFlywheelBackVoltage(double volts) {
+    flywheelBackMotor.setControl(flywheelBackVoltageOut.withOutput(volts));
+  }
+
+  @Override
+  public void setFlywheelFrontRps(double rps) {
+    flywheelFrontMotor.setControl(flywheelFrontVelocity.withVelocity(rps));
+  }
+
+  @Override
+  public void setFlywheelBackRps(double rps) {
+    flywheelBackMotor.setControl(flywheelBackVelocity.withVelocity(rps));
   }
 
   @Override

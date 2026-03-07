@@ -6,6 +6,9 @@ public class TurretSetpoints {
   public double flywheelFrontPercent = 0.0; // front motor override (commissioning/test)
   public double flywheelBackPercent  = 0.0; // back motor override  (commissioning/test)
   public boolean useIndependentFlywheel = false; // when true, front/back override flywheelPercent
+  public boolean useFlywheelRps = false;    // when true, RPS closed-loop replaces percent
+  public double flywheelFrontRps = 0.0;     // front motor target in rotations/sec
+  public double flywheelBackRps  = 0.0;     // back motor target in rotations/sec
   public double hoodPercent = 0.0;
   public boolean useHoodPosition = false;
   public double hoodPositionMotorRotations = 0.0;
@@ -21,6 +24,9 @@ public class TurretSetpoints {
     flywheelFrontPercent = 0.0;
     flywheelBackPercent  = 0.0;
     useIndependentFlywheel = false;
+    useFlywheelRps = false;
+    flywheelFrontRps = 0.0;
+    flywheelBackRps  = 0.0;
     hoodPercent = 0.0;
     useHoodPosition = false;
     hoodPositionMotorRotations = 0.0;

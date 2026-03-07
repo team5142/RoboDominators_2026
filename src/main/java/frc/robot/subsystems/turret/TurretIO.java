@@ -10,6 +10,14 @@ public interface TurretIO {
   default void setFlywheelFrontPercent(double percent) {}
   default void setFlywheelBackPercent(double percent) {}
 
+  // Direct voltage control — used only during SysId characterization
+  default void setFlywheelFrontVoltage(double volts) {}
+  default void setFlywheelBackVoltage(double volts) {}
+
+  // Closed-loop velocity control using Slot0 kS/kV/kP gains (VelocityVoltage)
+  default void setFlywheelFrontRps(double rps) {}
+  default void setFlywheelBackRps(double rps) {}
+
   default void setHoodPercent(double percent) {}
 
   // MotionMagic position control for hood — motor rotations from home (0 = bottom stop)

@@ -58,6 +58,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   private int initAttempts = 0;
   private static final int MAX_INIT_ATTEMPTS = 250; // 5 seconds @ 50Hz
+  private boolean initTimeoutLogged = false; // suppress repeated timeout spam
 
   // Tracks the auto name that was last seeded so we can detect chooser changes while disabled.
   private String lastSeededAutoName = null;
@@ -285,8 +286,9 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       PoseInitializer.InitResult initResult = initializer.attemptInitialization();
       
       if (initResult != null && initResult.pose != null) {
-        // SUCCESS: Reset counter
+        // SUCCESS: Reset counter and allow timeout message to fire again if Quest drops later
         initAttempts = 0;
+        initTimeoutLogged = false;
         
         resetPose(initResult.pose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
         
@@ -328,30 +330,34 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
               + " perspective=" + String.format("%.1f", downfield.getDegrees()), "Pose");
           Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
           Logger.recordOutput("QuestNav/Seeded", false);
-          // SHOP_RESUME has no specific auto target - clear so auto changes can still re-seed
-          lastSeededAutoName = null;
+          // Track the current auto so a change to a DIFFERENT auto still triggers re-seed,
+          // but staying on the same auto does not re-seed every 200ms.
+          lastSeededAutoName = initializer.getSelectedAutoName();
         }
         
         Logger.recordOutput("PoseEstimator/InitReason", initResult.reason);
         SmartLogger.logConsole("Init reason: " + initResult.reason, "Pose");
         
       } else if (initAttempts >= MAX_INIT_ATTEMPTS) {
-        // TIMEOUT: Log diagnostic info
-        SmartLogger.logConsoleError("========== INITIALIZATION TIMEOUT ==========");
-        SmartLogger.logConsoleError("Waited 5 seconds, no valid pose found!");
-        SmartLogger.logConsoleError("Diagnostics:");
-        SmartLogger.logConsoleError("  FMS attached: " + DriverStation.isFMSAttached());
-        SmartLogger.logConsoleError("  Quest tracking: " + questNavSubsystem.isTracking());
-        SmartLogger.logConsoleError("  Quest has pose: " + questNavSubsystem.getRobotPose().isPresent());
-        
-        if (questNavSubsystem.getRobotPose().isPresent()) {
-          Pose2d questPose = questNavSubsystem.getRobotPose().get();
-          SmartLogger.logConsoleError("  Quest pose: " + SmartLogger.formatPose(questPose));
+        // Log once per timeout event — silent until Quest reconnects and init succeeds
+        if (!initTimeoutLogged) {
+          initTimeoutLogged = true;
+          SmartLogger.logConsoleError("========== INITIALIZATION TIMEOUT ==========");
+          SmartLogger.logConsoleError("Waited 5 seconds, no valid pose found!");
+          SmartLogger.logConsoleError("Diagnostics:");
+          SmartLogger.logConsoleError("  FMS attached: " + DriverStation.isFMSAttached());
+          SmartLogger.logConsoleError("  Quest tracking: " + questNavSubsystem.isTracking());
+          SmartLogger.logConsoleError("  Quest has pose: " + questNavSubsystem.getRobotPose().isPresent());
+          
+          if (questNavSubsystem.getRobotPose().isPresent()) {
+            Pose2d questPose = questNavSubsystem.getRobotPose().get();
+            SmartLogger.logConsoleError("  Quest pose: " + SmartLogger.formatPose(questPose));
+          }
+          
+          SmartLogger.logConsoleError("============================================");
         }
         
-        SmartLogger.logConsoleError("============================================");
-        
-        // Reset counter to restart 5s countdown (will log again if still not initialized)
+        // Reset counter so we keep retrying, but don't print again
         initAttempts = 0;
       }
     }

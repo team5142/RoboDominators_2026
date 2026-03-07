@@ -8,6 +8,9 @@ public class TurretController {
     outputs.flywheelFrontPercent     = clamp(setpoints.flywheelFrontPercent);
     outputs.flywheelBackPercent      = clamp(setpoints.flywheelBackPercent);
     outputs.useIndependentFlywheel   = setpoints.useIndependentFlywheel;
+    outputs.useFlywheelRps           = setpoints.useFlywheelRps;
+    outputs.flywheelFrontRps         = setpoints.flywheelFrontRps;
+    outputs.flywheelBackRps          = setpoints.flywheelBackRps;
     outputs.hoodPercent              = clamp(setpoints.hoodPercent);
     outputs.useHoodPosition          = setpoints.useHoodPosition;
     outputs.hoodPositionMotorRotations = setpoints.hoodPositionMotorRotations;

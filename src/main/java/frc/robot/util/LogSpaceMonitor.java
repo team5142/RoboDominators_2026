@@ -1,15 +1,14 @@
 package frc.robot.util;
 
 import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.Filesystem;
 import edu.wpi.first.wpilibj.RobotController;
 import java.io.File;
 import java.util.Arrays;
 import java.util.Comparator;
 
-// Monitors roboRIO disk space and deletes old AdvantageKit log sessions to stay healthy.
-// AdvantageKit logs are stored as .hoot files inside timestamped subdirectories under LOG_DIR.
-// Cleanup deletes entire session folders oldest-first until enough space is recovered.
+// Monitors roboRIO disk space and deletes old .wpilog files to stay healthy.
+// Logs are flat .wpilog files stored directly in LOG_DIR.
+// Cleanup deletes oldest files first until enough space is recovered.
 // DS alerts are shown once per state transition — no log spam.
 public class LogSpaceMonitor {
 
@@ -23,7 +22,7 @@ public class LogSpaceMonitor {
   private static DiskState s_lastState = DiskState.OK;
 
   private static double s_lastCheckTime = 0.0;
-  private static final File ROOT    = Filesystem.getOperatingDirectory();
+  private static final File ROOT    = new File("/"); // actual roboRIO root filesystem
   private static final File LOG_DIR = new File(LOG_DIR_PATH);
 
   public static void periodic() {
@@ -84,38 +83,28 @@ public class LogSpaceMonitor {
         freeGB, totalGB, ((totalGB - freeGB) / totalGB) * 100.0);
   }
 
-  // Deletes oldest session folders (each contains .hoot files) until TARGET_FREE_GB is reached.
-  // Never deletes the single most-recently-modified session.
+  // Deletes oldest .wpilog files until TARGET_FREE_GB is reached.
+  // Never deletes the single most-recently-modified file.
   private static void cleanupOldSessions() {
     if (!LOG_DIR.exists() || !LOG_DIR.isDirectory()) return;
 
-    File[] sessions = LOG_DIR.listFiles(File::isDirectory);
-    if (sessions == null || sessions.length <= 1) return;
+    File[] logs = LOG_DIR.listFiles(f -> f.isFile() && f.getName().endsWith(".wpilog"));
+    if (logs == null || logs.length <= 1) return;
 
-    Arrays.sort(sessions, Comparator.comparingLong(File::lastModified));
-    long newestTime = sessions[sessions.length - 1].lastModified();
+    Arrays.sort(logs, Comparator.comparingLong(File::lastModified));
+    long newestTime = logs[logs.length - 1].lastModified();
 
     int deleted = 0;
-    for (File session : sessions) {
+    for (File log : logs) {
       if (toGB(ROOT.getFreeSpace()) >= TARGET_FREE_GB) break;
-      if (session.lastModified() == newestTime) continue;
-      if (deleteRecursive(session)) deleted++;
+      if (log.lastModified() == newestTime) continue;
+      if (log.delete()) deleted++;
     }
 
     if (deleted > 0) {
       SmartLogger.logConsole(
-          "Deleted " + deleted + " old log sessions to free space", "LogSpace", 5);
+          "Deleted " + deleted + " old log files to free space", "LogSpace", 5);
     }
-  }
-
-  private static boolean deleteRecursive(File f) {
-    if (f.isDirectory()) {
-      File[] children = f.listFiles();
-      if (children != null) {
-        for (File child : children) deleteRecursive(child);
-      }
-    }
-    return f.delete();
   }
 
   private static double toGB(long bytes) {

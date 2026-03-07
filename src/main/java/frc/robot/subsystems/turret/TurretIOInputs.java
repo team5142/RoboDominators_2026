@@ -12,8 +12,12 @@ public class TurretIOInputs {
   public double hoodMotorCurrentAmps = 0.0; // stator current — used for hard-stop homing stall detection
   public double turretAbsolutePositionRotations = 0.0;
   public double turretVelocityRps = 0.0; // motor rot/sec — watch vs MotionMagic setpoint velocity in AScope
-  public double flywheelVelocityRpm = 0.0;     // front flywheel velocity in RPM
-  public double flywheelBackVelocityRpm = 0.0; // back flywheel velocity in RPM
+  public double flywheelVelocityRpm = 0.0;        // front flywheel velocity in RPM (dashboard)
+  public double flywheelBackVelocityRpm = 0.0;    // back flywheel velocity in RPM (dashboard)
+  public double flywheelFrontVelocityRps = 0.0;   // front flywheel velocity in RPS (SysId)
+  public double flywheelBackVelocityRps = 0.0;    // back flywheel velocity in RPS (SysId)
+  public double flywheelFrontVoltageVolts = 0.0;  // front flywheel applied voltage (SysId)
+  public double flywheelBackVoltageVolts = 0.0;   // back flywheel applied voltage (SysId)
   public double turretMotorCurrentAmps = 0.0; // stator current — used for homing stall detection
   // True for one loop when the turret motor rebooted while the robot was enabled (brownout/power loss)
   public boolean turretBootDuringEn = false;

@@ -55,7 +55,8 @@ public class RobotState {
     RETRACTED,      // fully in, both limit switches triggered, encoder zeroed
     EXTENDING,      // moving outward
     EXTENDED,       // at full extension target rotation
-    RETRACTING      // moving inward toward limit switches
+    RETRACTING,     // moving inward toward limit switches
+    AGITATING       // partial retract to 6.5 rot, then re-extend to target
   }
 
   // Spin direction of the intake rollers

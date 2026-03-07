@@ -36,7 +36,7 @@ import frc.robot.util.SmartLogger;
 // On first enable, the arm homes upward until both limit switches trip, then zeroes the encoder.
 // No limit switch at full extension - stops at a fixed rotation target.
 //
-// HOMING: call startHoming() at teleopInit/autoInit. Arm creeps upward; both switches must
+// HOMING: call startHoming() via the operator Start button. Arm creeps upward; both switches must
 // trip together to confirm fully retracted. If stall is detected before both switches fire,
 // state transitions to HOMING_FAILED and all motion is blocked until startHoming() is called again.
 //
@@ -138,7 +138,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // Start in a known safe state - do not move motors until commanded
     stopAll();
-    SmartLogger.logConsole("IntakeSubsystem initialized - call startHoming() on enable", "Intake");
+    SmartLogger.logConsole("IntakeSubsystem initialized - press operator Start to home", "Intake");
   }
 
   // Begin homing sequence - always runs regardless of current state.
@@ -182,6 +182,7 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.RETRACTED) return;
     extensionStalled = false;
+    stopRollers(); // auto-off when arm comes in
     extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
     robotState.setIntakePosition(IntakePosition.RETRACTING);
   }
@@ -215,6 +216,9 @@ public class IntakeSubsystem extends SubsystemBase {
 
   public boolean isExtensionStalled() { return extensionStalled; }
 
+  // Clear stall flag after the operator has acknowledged and moved the arm clear
+  public void clearStall() { extensionStalled = false; }
+
   // Returns true once homing has completed successfully
   public boolean isHomed() {
     IntakePosition pos = robotState.getIntakePosition();
@@ -226,8 +230,18 @@ public class IntakeSubsystem extends SubsystemBase {
     return robotState.getIntakePosition() == IntakePosition.EXTENDED;
   }
 
-  // Clear stall flag after the operator has acknowledged and moved the arm clear
-  public void clearStall() { extensionStalled = false; }
+  // Partial retract to AGITATE_RETRACT_ROTATIONS, then re-extend to full target.
+  // Only runs when the arm is already extended — ignored otherwise.
+  // Rollers stop during retract and restart when the arm finishes re-extending.
+  public void agitate() {
+    IntakePosition pos = robotState.getIntakePosition();
+    if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
+    if (pos == IntakePosition.RETRACTED || pos == IntakePosition.RETRACTING) return;
+    extensionStalled = false;
+    stopRollers(); // pause rollers while arm is retracting inward
+    extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
+    robotState.setIntakePosition(IntakePosition.AGITATING);
+  }
 
   // SysId commands — wire into configureSysIdBindings() in RobotContainer.
   // Run quasistatic fwd/rev first (slowly ramps voltage), then dynamic fwd/rev (step input).
@@ -297,13 +311,23 @@ public class IntakeSubsystem extends SubsystemBase {
       if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
         stopExtension();
         robotState.setIntakePosition(IntakePosition.EXTENDED);
+        spinIn(); // auto-start rollers once the arm is fully out
       } else if (distToTarget <= Constants.Intake.EXTEND_SLOW_ZONE_ROTATIONS) {
         extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SLOW_SPEED));
       }
     }
 
+    // Agitate: retract to mid-point, then re-extend to full target
+    if (pos == IntakePosition.AGITATING) {
+      if (rotations <= Constants.Intake.AGITATE_RETRACT_ROTATIONS) {
+        extensionStalled = false;
+        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
+        robotState.setIntakePosition(IntakePosition.EXTENDING);
+      }
+    }
+
     // Current-based stall detection — skipped during SysId (high current is expected there)
-    if (!sysIdActive && (pos == IntakePosition.HOMING || pos == IntakePosition.EXTENDING || pos == IntakePosition.RETRACTING)) {
+    if (!sysIdActive && (pos == IntakePosition.HOMING || pos == IntakePosition.EXTENDING || pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)) {
       if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
         stallLoopCount++;
         if (stallLoopCount >= STALL_LOOP_THRESHOLD) {
@@ -325,7 +349,7 @@ public class IntakeSubsystem extends SubsystemBase {
     }
 
     // AScope logging — position and target on the same axis for direct comparison
-    double target = (pos == IntakePosition.EXTENDING || pos == IntakePosition.EXTENDED)
+    double target = (pos == IntakePosition.EXTENDING || pos == IntakePosition.EXTENDED || pos == IntakePosition.AGITATING)
         ? Constants.Intake.EXTENSION_TARGET_ROTATIONS
         : Constants.Intake.EXTENSION_HOME_ROTATIONS;
     SmartLogger.logReplay("Intake/PositionRotations", rotations);
@@ -335,6 +359,10 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
     SmartLogger.logReplay("Intake/State", pos.toString());
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
+        "Intake/IsDeployed", pos == IntakePosition.EXTENDED || pos == IntakePosition.EXTENDING || pos == IntakePosition.AGITATING);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
+        "Intake/RollersOn", robotState.getIntakeRollerState() == IntakeRollerState.INTAKING);
   }
 }
 

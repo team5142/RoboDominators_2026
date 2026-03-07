@@ -207,12 +207,7 @@ public class Robot extends LoggedRobot {
     
     autonomousCommand = robotContainer.getAutonomousCommand();
 
-    if (robotContainer.intakeSubsystem != null && RobotContainer.ENABLE_INTAKE_HOMING)
-      robotContainer.intakeSubsystem.startHoming();
-    if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
-      robotContainer.turretSubsystem.home();
-      // Hood homing is manual only — operator A button — until limit switch is verified on hardware
-    }
+    // Homing is triggered manually by the operator Start button — not auto on enable.
 
     if (autonomousCommand != null) {
       String autoName = autonomousCommand.getName();
@@ -252,12 +247,7 @@ public class Robot extends LoggedRobot {
     
     robotContainer.poseEstimator.onTeleopInit();
 
-    if (robotContainer.intakeSubsystem != null && RobotContainer.ENABLE_INTAKE_HOMING)
-      robotContainer.intakeSubsystem.startHoming();
-    if (robotContainer.turretSubsystem != null && RobotContainer.ENABLE_TURRET_HOMING) {
-      robotContainer.turretSubsystem.home();
-      // Hood homing is manual only — operator A button — until limit switch is verified on hardware
-    }
+    // Homing is triggered manually by the operator Start button — not auto on enable.
 
     Logger.recordOutput("Robot/Mode", "TELEOP");
     double gyroYaw = robotContainer.driveSubsystem.getGyroRotation().getDegrees();

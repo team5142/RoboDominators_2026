@@ -323,6 +323,14 @@ public final class Constants {
   public static final class Turret {
     public static final int FLYWHEEL_FRONT_MOTOR_ID = 20;
     public static final int FLYWHEEL_BACK_MOTOR_ID = 21;
+
+    // Flywheel velocity gains — measured via SysId 2026-03-07, back motor (CAN 21), 1:1 direct drive.
+    // Front motor assumed identical — retune if behavior differs.
+    // kA omitted (not reliably fit on flywheels); set to 0.0.
+    public static final double FLYWHEEL_KS = 12.011; // V — static friction
+    public static final double FLYWHEEL_KV = 0.30527; // V*s/rot — velocity feedforward
+    public static final double FLYWHEEL_KP = 3.596;   // V/RPS error — start here, tune down if oscillating
+    public static final double FLYWHEEL_KA = 0.0;     // V*s^2/rot — not used
     public static final int HOOD_MOTOR_ID = 22;
     public static final int TURRET_MOTOR_ID = 23; // Kraken x44
 
@@ -349,8 +357,8 @@ public final class Constants {
     // public static final double TURRET_CRUISE_VELOCITY_RPS  = 9.72;  // motor rot/sec
     // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
 
-    // Slowed for testing 2026-03-06 — restore to 10.0/40.0 after soft limits are verified
-    public static final double TURRET_CRUISE_VELOCITY_RPS  = 3.0;  // motor rot/sec (~108 deg/sec)
+    // Slowed for testing 2026-03-06 — raised cruise/kS to overcome energy chain drag
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 6.0;  // motor rot/sec (~216 deg/sec)
     public static final double TURRET_ACCELERATION_RPS2    = 10.0; // motor rot/sec^2
     public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
 
@@ -359,7 +367,7 @@ public final class Constants {
     // kV: voltage per rot/sec of setpoint velocity (~12V / 100 rot/s free speed = 0.12).
     // kP: voltage per rotation of position error. Tuned to 2.5 — balances settling vs. peak velocity.
     // kD: damping — opposes velocity during the move to reduce overshoot. Tuned to 0.3.
-    public static final double TURRET_KS = 0.25;
+    public static final double TURRET_KS = 0.5;
     public static final double TURRET_KV = 0.12;
     public static final double TURRET_KP = 2.5;
     public static final double TURRET_KD = 0.3;
@@ -367,18 +375,15 @@ public final class Constants {
     // Motor inversion — TODO: confirm directions on hardware
     public static final boolean TURRET_MOTOR_INVERTED        = false;
     public static final boolean HOOD_MOTOR_INVERTED           = true;  // inverted 2026-03-06
-    public static final boolean FLYWHEEL_FRONT_MOTOR_INVERTED = false;
-    public static final boolean FLYWHEEL_BACK_MOTOR_INVERTED  = false; // testing 2026-03-06 — flip back to true if wrong direction
+    public static final boolean FLYWHEEL_FRONT_MOTOR_INVERTED = true;
+    public static final boolean FLYWHEEL_BACK_MOTOR_INVERTED  = true;
 
-    // Turret homing: two-phase sweep to find the trailing edge of the hall sensor magnet.
-    // Phase 1 (fast): sweeps CCW quickly until the hall sensor first fires (leading edge).
-    // Phase 2 (slow): continues CCW slowly until the sensor releases (trailing edge) — zero there.
-    // This gives a repeatable reference at a fixed point on the magnet rather than a variable leading edge.
-    public static final double TURRET_HOME_SPEED_FAST_PERCENT = 0.12; // fast approach to find sensor
-    public static final double TURRET_HOME_SPEED_SLOW_PERCENT = 0.03; // slow creep to trailing edge
-    // Hall debounce: require this many consecutive loops of the same reading before accepting.
-    // At 20ms/loop, 3 loops = 60ms — filters noise without meaningful delay.
-    public static final int    TURRET_HALL_DEBOUNCE_LOOPS = 3;
+    // Turret homing: leading edge debounced (3 loops), trailing edge raw (no debounce).
+    // Only 0.075 rot between trailing edge and hard stop — cannot wait even one extra loop.
+    public static final double TURRET_HOME_SPEED_FAST_PERCENT = 0.06; // slow enough to react to raw trailing edge
+    // Hall debounce: leading edge only — 3 loops (60ms) to confirm inside sensor window before watching for exit.
+    public static final int    TURRET_HALL_DEBOUNCE_LOOPS     = 3; // rising edge — 60ms
+    public static final int    TURRET_HALL_DEBOUNCE_LOOPS_OFF = 1; // falling edge — used only for non-homing logging
     // Stall detection during homing — if current stays above threshold for this many loops,
     // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
     // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
@@ -386,15 +391,14 @@ public final class Constants {
     public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
 
     // Hall sensor is near the CCW hard stop (gear relocated to front-left 2026-03-06, dead zone now back-right).
-    // Homing sweeps CCW to find leading edge then slow-creeps to trailing edge — encoder zeroed there.
+    // Homing sweeps CCW and stops on the leading edge (sensor first fires) — encoder zeroed there.
     // Measured 2026-03-06 (pre-home TunerX values):
-    //   Hall leading edge: -2.62 motor rot (AScope -943.7 deg)
-    //   Hall trailing edge: -3.54 motor rot (AScope -1089.7 deg) — encoder zeroed here
-    //   CCW hard stop:     -3.615 motor rot (AScope -1301 deg)  → only 0.075 rot past trailing edge
-    //   CW hard stop:       6.17 motor rot  (AScope  2220 deg)  → 9.71  motor rot from trailing edge
-    //   Straight forward:   2.45 motor rot  (AScope  882.2 deg) → 5.99  motor rot from trailing edge
-    // Post-home (encoder = 0 at trailing edge), all positions shift by ~+3.54.
-    public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // TODO: measure distance from trailing edge to hard stop, then set negative
+    //   Hall leading edge: -2.62 motor rot — encoder zeroed here now (was trailing edge before)
+    //   Hall trailing edge: -3.54 motor rot (AScope -1089.7 deg)
+    //   CCW hard stop:     -3.615 motor rot → 0.075 rot past trailing edge, 0.995 rot past leading edge
+    // Set TURRET_HALL_OFFSET_MOTOR_ROT to shift zero so all downstream positions stay valid.
+    // Leading edge is ~0.92 rot CW of old trailing edge zero — set to +0.92 to match old coords.
+    public static final double TURRET_HALL_OFFSET_MOTOR_ROT = 0.0; // zero at trailing edge of hall sensor
 
     // Soft limits: 0 = CCW hard stop (set by TURRET_HALL_OFFSET_MOTOR_ROT). Full range ~9.9 rot.
     public static final double TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  =  0.05; // CCW soft limit — small margin from hard stop (2026-03-06)
@@ -407,7 +411,7 @@ public final class Constants {
 
     // Motor encoder value when the turret is pointing straight toward the front of the robot.
     // Measured 2026-03-06: forward = TunerX 2.45, hall trailing edge = TunerX -3.54 → delta = 5.99 motor rot.
-    public static final double TURRET_FORWARD_MOTOR_ROT = 5.787; // measured 2026-03-06 after hall offset recal
+    public static final double TURRET_FORWARD_MOTOR_ROT = 6.077637; // measured 2026-03-07 after trailing-edge homing recal
 
     // Hood homing: slow downward until stall detected at hard stop, then zero the encoder.
     // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
@@ -424,7 +428,7 @@ public final class Constants {
     // Stall detection for hard-stop homing (no limit switch wired yet).
     // At 10% duty cycle the hood draws ~1-2A in free rotation — any spike above this means it hit the stop.
     // Threshold is conservative; lower it if homing doesn't trigger, raise it if it false-triggers mid-travel.
-    public static final double HOOD_HOMING_STALL_CURRENT_AMPS  = 5.0; // TODO: tune on hardware
+    public static final double HOOD_HOMING_STALL_CURRENT_AMPS  = 10.0; // raised 2026-03-07 — 5A was false-triggering during normal travel
     public static final int    HOOD_HOMING_STALL_LOOP_THRESHOLD = 6;   // ~120ms at 50Hz — short but debounced
     public static final double HOOD_SOFT_LIMIT_TOP_ROTATIONS = 4.1;  // measured 2026-03-06 (physical top = 4.291, 0.2 rot margin)
 
@@ -475,7 +479,14 @@ public final class Constants {
     public static final double[] SHOT_TABLE_DISTANCES_M        = { 0.6,    3.1,    5.5   };
     public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // tune on hardware
     public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.50,   0.84,   0.90  }; // increased 2026-03-06 — was 0.75, bumped to 0.50 test
-    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  0.139 }; // TODO: replace with measured encoder values at each distance
+    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  2.404 }; // FAR measured 2026-03-07; CLOSE/MID TODO
+
+    // Measured 2026-03-07 via RPM recorder (settle 3s per step, 8-step 30-100% sweep).
+    // Use these for VelocityVoltage closed-loop instead of percent. Front motor runs ~10% faster than back.
+    // PCT:   30%     40%     50%     60%     70%     80%     90%     100%
+    public static final double[] MEASURED_PCT_STEPS        = { 0.30,  0.40,  0.50,  0.60,  0.70,  0.80,  0.90,  1.00  };
+    public static final double[] MEASURED_FRONT_RPS        = { 29.52, 39.99, 50.14, 59.56, 68.86, 78.10, 87.16, 94.87 };
+    public static final double[] MEASURED_BACK_RPS         = { 26.61, 36.91, 46.38, 56.52, 65.64, 74.58, 82.11, 86.40 };
   }
 
   // Singulator hardware IDs and tuning constants (feeds balls one at a time into flywheels)
@@ -490,7 +501,7 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FEED_SPEED    =  0.50; // TODO: tune on hardware
+    public static final double FEED_SPEED    =  0.70; // TODO: tune on hardware
     public static final double REVERSE_SPEED = -0.40;
 
     // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
@@ -508,7 +519,7 @@ public final class Constants {
     public static final int MOTOR_ID = 27; // REV NEO on SparkMax
 
     // TODO: flip to true if motor runs backwards on first test
-    public static final boolean MOTOR_INVERTED = false;
+    public static final boolean MOTOR_INVERTED = true;
 
     public static final double FORWARD_SPEED = 0.40; // normal feed speed - TODO: tune
     public static final double REVERSE_SPEED = -0.30; // unjam pulse speed
@@ -539,8 +550,10 @@ public final class Constants {
     // EXTENSION_HOME_ROTATIONS: current physical rest position without hard stop ().
     //   TODO: once hard stop + limit switch installed, change to -0.475 and re-zero encoder there.
     // EXTENSION_TARGET_ROTATIONS: full out position (measured with arm manually extended).
-    public static final double EXTENSION_HOME_ROTATIONS   = 0.158; 
-    public static final double EXTENSION_TARGET_ROTATIONS =  10;
+    // AGITATE_RETRACT_ROTATIONS: mid-point the arm pulls back to during agitation before re-extending.
+    public static final double EXTENSION_HOME_ROTATIONS   = 0.158;
+    public static final double EXTENSION_TARGET_ROTATIONS = 13.250;
+    public static final double AGITATE_RETRACT_ROTATIONS  =  3.5;
 
     // Duty cycle output limits for extension movement (no position control until gear ratio known)
     public static final double EXTEND_SPEED  =  0.18; // positive = extending out
@@ -751,7 +764,19 @@ public final class Constants {
   // Fixed target poses for turret aiming (blue alliance, red mirrored later)
   public static final class TurretTargets {
     public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
-    
+
+    // Named shot positions — turret rot, hood rot, front RPS, back RPS — measured 2026-03-07
+    // HUBCLOSE: robot ~1.04m from blue hub bumper-to-face
+    public static final double HUBCLOSE_TURRET_ROT   = 5.8666;
+    public static final double HUBCLOSE_HOOD_ROT      = 0.048;
+    public static final double HUBCLOSE_FRONT_RPS     = 78.10;
+    public static final double HUBCLOSE_BACK_RPS      = 74.58;
+
+    // OUTPOST: far corner, robot pose=(0.482, 0.421), ~5.5m from hub
+    public static final double OUTPOST_TURRET_ROT    = 5.036;
+    public static final double OUTPOST_HOOD_ROT       = 2.404;
+    public static final double OUTPOST_FRONT_RPS      = 85.0;
+    public static final double OUTPOST_BACK_RPS       = 80.32;
   }
 
   // AutoPilot precision navigation library (singleton instances)

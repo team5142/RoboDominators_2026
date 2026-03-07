@@ -14,10 +14,15 @@
 
 package frc.robot.subsystems.turret;
 
+import edu.wpi.first.units.measure.Voltage;
+import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.Constants;
 import frc.robot.RobotState;
 import frc.robot.util.SmartLogger;
+
+import static edu.wpi.first.units.Units.Volts;
 
 public class TurretSubsystem extends SubsystemBase {
   private final RobotState robotState;
@@ -58,10 +63,10 @@ public class TurretSubsystem extends SubsystemBase {
   private boolean homed = false;
   private boolean homing = false;
   private boolean manualPositionOverride = false; // when true, skip aim pipeline and hold setpoints.turretPositionMotorRotations
-  // Two-phase homing: FAST sweeps to find the sensor, SLOW creeps to the trailing edge
-  private enum HomingPhase { FAST, SLOW }
-  private HomingPhase homingPhase = HomingPhase.FAST;
+  // Two-phase homing removed — now homes on leading edge (sensor turns on) at fast speed only.
   private int homingStallLoopCount = 0;
+  // Set true once the debounced leading edge fires — trailing edge watch begins after this.
+  private boolean homingSeenLeadingEdge = false;
   // Debounce counters for hall sensor — require N consecutive matching reads before acting
   private int hallHighCount = 0;
   private int hallLowCount  = 0;
@@ -79,10 +84,54 @@ public class TurretSubsystem extends SubsystemBase {
   private double lastKnownPosition = 0.0;
   private static final double POSITION_SAVE_THRESHOLD = 0.05; // only update if moved this many motor rotations
 
+  // SysId routines — one per flywheel motor, used for kV/kS/kA characterization only.
+  // Call sysIdFrontQuasistatic/Dynamic or sysIdBackQuasistatic/Dynamic from RobotContainer.
+  private final SysIdRoutine sysIdFront;
+  private final SysIdRoutine sysIdBack;
+
+  // Flywheel RPM settle recorder — samples RPM 3s after each bumper press, prints table when all 8 done.
+  private static final int SETTLE_LOOPS = 150; // 3s at 50Hz
+  private static final int RPM_TABLE_SIZE = 8;
+  private final double[] rpmTablePct      = new double[RPM_TABLE_SIZE];
+  private final double[] rpmTableFrontRpm = new double[RPM_TABLE_SIZE];
+  private final double[] rpmTableBackRpm  = new double[RPM_TABLE_SIZE];
+  private int rpmTableCount   = 0; // how many steps have been recorded
+  private int settleLoopsLeft = -1; // -1 = idle, >0 = counting down
+  private double pendingPct   = 0.0;
+
   public TurretSubsystem(RobotState robotState, TurretIO io) {
     this.robotState = robotState;
     this.io = io;
     SmartLogger.logConsole("Turret ready (phase: " + Constants.Turret.CURRENT_PHASE + ")", "Turret");
+
+    sysIdFront = new SysIdRoutine(
+        new SysIdRoutine.Config(null, null, null,
+            state -> com.ctre.phoenix6.SignalLogger.writeString("sysid-test-state", state.toString())),
+        new SysIdRoutine.Mechanism(
+            (Voltage v) -> io.setFlywheelFrontVoltage(v.in(Volts)),
+            null, this));
+
+    sysIdBack = new SysIdRoutine(
+        new SysIdRoutine.Config(null, null, null,
+            state -> com.ctre.phoenix6.SignalLogger.writeString("sysid-test-state", state.toString())),
+        new SysIdRoutine.Mechanism(
+            (Voltage v) -> io.setFlywheelBackVoltage(v.in(Volts)),
+            null, this));
+  }
+
+  public Command sysIdFrontQuasistatic(SysIdRoutine.Direction dir) { return sysIdFront.quasistatic(dir); }
+  public Command sysIdFrontDynamic(SysIdRoutine.Direction dir)     { return sysIdFront.dynamic(dir); }
+  public Command sysIdBackQuasistatic(SysIdRoutine.Direction dir)  { return sysIdBack.quasistatic(dir); }
+  public Command sysIdBackDynamic(SysIdRoutine.Direction dir)      { return sysIdBack.dynamic(dir); }
+
+  // ---- Flywheel RPM settle recorder ----
+
+  // Call right after bumping the flywheel speed. Samples both RPMs 3s later, then
+  // prints a formatted table to the console once all RPM_TABLE_SIZE steps are done.
+  public void scheduleFlywheelRpmRecord(double pct) {
+    pendingPct = pct;
+    settleLoopsLeft = SETTLE_LOOPS;
+    System.out.println("[RPM Recorder] Scheduled step " + (rpmTableCount + 1) + "/8 at " + (int)(pct * 100) + "% - sampling in 3s");
   }
 
   // ---- Fire interlock ----
@@ -150,18 +199,28 @@ public class TurretSubsystem extends SubsystemBase {
   // Starts turret homing sweep — drives slowly CCW until CCW hall sensor fires.
   // Required before Phase 2+ aim solve is trusted. Safe to call in Phase 1 (encoder only).
   public void home() {
-    if (homed || homing) return;
+    if (homing) return; // already in progress
+    homed = false; // allow re-homing if called again
     homing = true;
-    homingPhase = HomingPhase.FAST;
+    homingSeenLeadingEdge = false;
     hallHighCount = 0;
     hallLowCount  = 0;
+    lastHallCCW   = false; // force rising edge to fire cleanly when debounce completes
     SmartLogger.logConsole("Turret homing started", "Turret");
+  }
+
+  // Clears homed state without starting a new sweep — lets you jog the turret CW and re-home via Start.
+  public void resetHomed() {
+    homed = false;
+    homing = false;
+    homingSeenLeadingEdge = false;
   }
 
   // Cancels an in-progress homing sweep and stops the motor — called when the trigger is released.
   public void cancelHoming() {
     if (!homing) return;
     homing = false;
+    homingSeenLeadingEdge = false;
     homingStallLoopCount = 0;
     setpoints.turretPercent = 0.0;
     SmartLogger.logConsole("Turret homing cancelled", "Turret");
@@ -169,9 +228,9 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Starts hood homing — creeps downward until stall current is detected at the hard stop, then zeroes encoder.
   // When the limit switch is wired, replace the stall check in periodic() with hoodLimitSwitchRaw.
-  // Safe to call if already homed (no-op).
   public void hoodHome() {
-    if (hoodHomed) return;
+    if (hoodHoming) return; // already in progress
+    hoodHomed = false; // allow re-homing if called again
     hoodHoming = true;
     hoodHomingStallLoopCount = 0;
     setpoints.hoodPercent = -Constants.Turret.HOOD_HOME_SPEED_PERCENT;
@@ -190,11 +249,25 @@ public class TurretSubsystem extends SubsystemBase {
   // Drive each flywheel independently — for commissioning: verify each motor's direction and RPM separately
   public void setFlywheelFrontPercent(double percent) {
     setpoints.useIndependentFlywheel = true;
+    setpoints.useFlywheelRps = false;
     setpoints.flywheelFrontPercent = percent;
   }
   public void setFlywheelBackPercent(double percent)  {
     setpoints.useIndependentFlywheel = true;
+    setpoints.useFlywheelRps = false;
     setpoints.flywheelBackPercent = percent;
+  }
+  // Closed-loop velocity control — both motors independently in RPS (motor shaft rot/sec).
+  // Measured 2026-03-07: 80% -> front=78.10 RPS, back=74.58 RPS. See Constants.Turret.MEASURED_*_RPS.
+  public void setFlywheelFrontRps(double rps) {
+    setpoints.useIndependentFlywheel = true;
+    setpoints.useFlywheelRps = true;
+    setpoints.flywheelFrontRps = rps;
+  }
+  public void setFlywheelBackRps(double rps) {
+    setpoints.useIndependentFlywheel = true;
+    setpoints.useFlywheelRps = true;
+    setpoints.flywheelBackRps = rps;
   }
   public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; setpoints.useHoodPosition = false; }
 
@@ -288,6 +361,46 @@ public class TurretSubsystem extends SubsystemBase {
     io.updateInputs(inputs);
     state.updateFromInputs(inputs);
 
+    // RPM settle recorder: count down after bumper press, then sample.
+    // Ignores duplicate pct values (wrapping past 100% restarts from 30%).
+    // Prints the table as soon as the 100% step is recorded.
+    if (settleLoopsLeft > 0) {
+      settleLoopsLeft--;
+    } else if (settleLoopsLeft == 0) {
+      settleLoopsLeft = -1;
+      // Skip if we already recorded this pct (handles wrap-around extra presses)
+      boolean alreadyRecorded = false;
+      for (int i = 0; i < rpmTableCount; i++) {
+        if (Math.abs(rpmTablePct[i] - pendingPct) < 0.001) { alreadyRecorded = true; break; }
+      }
+      if (!alreadyRecorded && rpmTableCount < RPM_TABLE_SIZE) {
+        rpmTablePct[rpmTableCount]      = pendingPct;
+        rpmTableFrontRpm[rpmTableCount] = inputs.flywheelVelocityRpm;
+        rpmTableBackRpm[rpmTableCount]  = inputs.flywheelBackVelocityRpm;
+        System.out.println(String.format("[RPM Recorder] Step %d: %.0f%% -> front=%.1f back=%.1f",
+            rpmTableCount + 1, pendingPct * 100,
+            rpmTableFrontRpm[rpmTableCount], rpmTableBackRpm[rpmTableCount]));
+        SmartLogger.logReplay("Turret/RpmRecorder/Step",     (double)(rpmTableCount + 1));
+        SmartLogger.logReplay("Turret/RpmRecorder/FrontRpm", rpmTableFrontRpm[rpmTableCount]);
+        SmartLogger.logReplay("Turret/RpmRecorder/BackRpm",  rpmTableBackRpm[rpmTableCount]);
+        rpmTableCount++;
+        // Print table as soon as 100% (the last step) is recorded
+        if (Math.abs(pendingPct - 1.00) < 0.001) {
+          StringBuilder sb = new StringBuilder("\n=== FLYWHEEL RPM TABLE ===\n");
+          sb.append(String.format("%-6s  %-10s  %-10s%n", "PCT", "FRONT_RPM", "BACK_RPM"));
+          for (int i = 0; i < rpmTableCount; i++) {
+            sb.append(String.format("%-6.0f  %-10.1f  %-10.1f%n",
+                rpmTablePct[i] * 100, rpmTableFrontRpm[i], rpmTableBackRpm[i]));
+          }
+          sb.append("==========================");
+          String tableStr = sb.toString();
+          System.out.println(tableStr);
+          SmartLogger.logReplay("Turret/RpmRecorder/Table", tableStr);
+          rpmTableCount = 0; // reset for re-run
+        }
+      }
+    }
+
     // If the motor rebooted mid-match (brownout), restore the encoder from our saved position.
     // The sticky fault fires for exactly one loop then is cleared by TurretIOCTRE.
     // Also patch inputs so the rest of this loop uses the correct position, not the reset zero.
@@ -303,16 +416,17 @@ public class TurretSubsystem extends SubsystemBase {
       lastKnownPosition = inputs.turretAbsolutePositionRotations;
     }
 
-    // Debounce the hall sensor — require TURRET_HALL_DEBOUNCE_LOOPS consecutive matching reads.
+    // Debounce the hall sensor — rising edge uses 3 loops (60ms) to filter noise on entry.
+    // Falling edge is checked raw (no debounce) during homing — only 0.075 rot to hard stop after trailing edge.
     if (inputs.hallCCWRaw) {
       hallHighCount = Math.min(hallHighCount + 1, Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS);
       hallLowCount  = 0;
     } else {
-      hallLowCount  = Math.min(hallLowCount  + 1, Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS);
+      hallLowCount  = Math.min(hallLowCount  + 1, Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS_OFF);
       hallHighCount = 0;
     }
     boolean hallDebounced    = hallHighCount >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
-    boolean hallOffDebounced = hallLowCount  >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS;
+    boolean hallOffDebounced = hallLowCount  >= Constants.Turret.TURRET_HALL_DEBOUNCE_LOOPS_OFF;
 
     // Rising edge: sensor just debounced ON. Falling edge: sensor just debounced OFF.
     // lastHallCCW tracks the last stable debounced state — only update it when a side fully debounces.
@@ -326,24 +440,21 @@ public class TurretSubsystem extends SubsystemBase {
     if (hallOffDebounced) lastHallCCW = false;
 
     if (homing) {
-      if (homingPhase == HomingPhase.FAST) {
-        // If already on sensor when homing starts, switch to slow immediately.
-        if (hallDebounced) {
-          homingPhase = HomingPhase.SLOW;
-          SmartLogger.logConsole("Homing: already on sensor, switching to slow creep", "Turret");
-        } else if (hallRisingEdge) {
-          // Leading edge found — switch to slow creep to find the trailing edge precisely.
-          homingPhase = HomingPhase.SLOW;
-          SmartLogger.logConsole("Homing: sensor found, switching to slow creep", "Turret");
+      if (!homingSeenLeadingEdge) {
+        // Waiting for debounced leading edge — confirms we are solidly inside the sensor window.
+        if (hallRisingEdge) {
+          homingSeenLeadingEdge = true;
+          SmartLogger.logConsole("Homing: leading edge confirmed, watching for trailing edge", "Turret");
         }
       } else {
-        // Slow creep CCW — zero on the debounced trailing edge (sensor turns off).
-        if (hallFallingEdge) {
+        // Leading edge seen — zero on the FIRST loop the raw sensor goes low (no debounce).
+        // No margin between trailing edge and hard stop, so we cannot wait even one extra loop.
+        if (!inputs.hallCCWRaw) {
           homing = false;
           homed  = true;
           homingStallLoopCount = 0;
           io.zeroTurretEncoder();
-          SmartLogger.logConsole("Turret homed — encoder zeroed at trailing edge of hall sensor", "Turret");
+          SmartLogger.logConsole("Turret homed — encoder zeroed at trailing edge (raw)", "Turret");
         }
       }
     }
@@ -419,8 +530,13 @@ public class TurretSubsystem extends SubsystemBase {
     }
 
     if (outputs.useIndependentFlywheel) {
-      io.setFlywheelFrontPercent(outputs.flywheelFrontPercent);
-      io.setFlywheelBackPercent(outputs.flywheelBackPercent);
+      if (outputs.useFlywheelRps) {
+        io.setFlywheelFrontRps(outputs.flywheelFrontRps);
+        io.setFlywheelBackRps(outputs.flywheelBackRps);
+      } else {
+        io.setFlywheelFrontPercent(outputs.flywheelFrontPercent);
+        io.setFlywheelBackPercent(outputs.flywheelBackPercent);
+      }
     } else {
       io.setFlywheelPercent(outputs.flywheelPercent);
     }
@@ -435,10 +551,7 @@ public class TurretSubsystem extends SubsystemBase {
     // Homing uses open-loop percent. After homing, MotionMagic takes over when a position
     // target is active, otherwise open-loop percent is used (e.g. manual joystick).
     if (homing) {
-      double homeSpeed = (homingPhase == HomingPhase.FAST)
-          ? Constants.Turret.TURRET_HOME_SPEED_FAST_PERCENT
-          : Constants.Turret.TURRET_HOME_SPEED_SLOW_PERCENT;
-      io.setTurretPercent(-homeSpeed);
+      io.setTurretPercent(-Constants.Turret.TURRET_HOME_SPEED_FAST_PERCENT);
     } else if (outputs.useTurretPosition) {
       io.setTurretPosition(outputs.turretPositionMotorRotations);
     } else {
@@ -487,6 +600,8 @@ public class TurretSubsystem extends SubsystemBase {
         "Turret/FlywheelFrontRpm", inputs.flywheelVelocityRpm);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelBackRpm", inputs.flywheelBackVelocityRpm);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelSetpointPct", outputs.flywheelFrontPercent);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Turret/ReadyToShoot", isReadyToShoot());
     SmartLogger.logReplay("Turret/TargetReachable", aimGoal.targetReachable);
