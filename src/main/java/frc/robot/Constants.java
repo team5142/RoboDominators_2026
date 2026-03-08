@@ -219,7 +219,7 @@ public final class Constants {
   public static final class QuestNav {
     // Measured 2026-03-02: 10.79in back, 11.88in left, 20.28in up. Facing backward (yaw 180).
     public static final double QUEST_X_METERS = Units.inchesToMeters(-10.79);
-    public static final double QUEST_Y_METERS = Units.inchesToMeters(11.88);
+    public static final double QUEST_Y_METERS = Units.inchesToMeters(10.88);
     public static final double QUEST_Z_METERS = Units.inchesToMeters(20.28);
     public static final double QUEST_YAW_DEG = 180.0;
 
@@ -324,13 +324,20 @@ public final class Constants {
     public static final int FLYWHEEL_FRONT_MOTOR_ID = 20;
     public static final int FLYWHEEL_BACK_MOTOR_ID = 21;
 
-    // Flywheel velocity gains — measured via SysId 2026-03-07, back motor (CAN 21), 1:1 direct drive.
-    // Front motor assumed identical — retune if behavior differs.
-    // kA omitted (not reliably fit on flywheels); set to 0.0.
-    public static final double FLYWHEEL_KS = 12.011; // V — static friction
-    public static final double FLYWHEEL_KV = 0.30527; // V*s/rot — velocity feedforward
-    public static final double FLYWHEEL_KP = 3.596;   // V/RPS error — start here, tune down if oscillating
-    public static final double FLYWHEEL_KA = 0.0;     // V*s^2/rot — not used
+    // Flywheel velocity gains — front and back motors tuned separately (different inertia/response).
+    // kV back-calculated from 8-step RPM table. kP corrects residual steady-state error.
+    // 2026-03-07: front was +2.5 RPS over, back was +5 RPS over — reduced kV on both, added kP to front.
+    public static final double FLYWHEEL_FRONT_KS = 1.5;
+    public static final double FLYWHEEL_FRONT_KV = 0.0975; // reduced from 0.1005 — was +2.5 RPS over
+    public static final double FLYWHEEL_FRONT_KP = 0.03;   // added to correct residual steady-state error
+    public static final double FLYWHEEL_FRONT_KA = 0.0;
+    // Back: kS=1.3 pushed center +5 RPS over — reduced kS and kV to re-center.
+    // Still oscillating — mechanical drag suspected, flagged for inspection.
+    public static final double FLYWHEEL_BACK_KS  = 1.0;
+    public static final double FLYWHEEL_BACK_KV  = 0.108;  // split between 0.103 (low) and 0.109 (high)
+    public static final double FLYWHEEL_BACK_KP  = 0.005;
+    public static final double FLYWHEEL_BACK_KD  = 0.002;
+    public static final double FLYWHEEL_BACK_KA  = 0.0;
     public static final int HOOD_MOTOR_ID = 22;
     public static final int TURRET_MOTOR_ID = 23; // Kraken x44
 
@@ -365,11 +372,12 @@ public final class Constants {
     // MotionMagic slot 0 gains (voltage control mode):
     // kS: static friction kick — raises output just enough to start moving. Tune first.
     // kV: voltage per rot/sec of setpoint velocity (~12V / 100 rot/s free speed = 0.12).
-    // kP: voltage per rotation of position error. Tuned to 2.5 — balances settling vs. peak velocity.
-    // kD: damping — opposes velocity during the move to reduce overshoot. Tuned to 0.3.
+    // kP: voltage per rotation of position error. Must satisfy kP * min_error > kS to avoid stopping short.
+    //     At kS=0.5 and worst-case 0.05 rot error, need kP > 10. Set to 15 for adequate settling margin.
+    // kD: damping — opposes velocity during the move to reduce overshoot.
     public static final double TURRET_KS = 0.5;
     public static final double TURRET_KV = 0.12;
-    public static final double TURRET_KP = 2.5;
+    public static final double TURRET_KP = 15.0;  // raised from 2.5 — was stopping short of target
     public static final double TURRET_KD = 0.3;
 
     // Motor inversion — TODO: confirm directions on hardware
@@ -413,6 +421,10 @@ public final class Constants {
     // Measured 2026-03-06: forward = TunerX 2.45, hall trailing edge = TunerX -3.54 → delta = 5.99 motor rot.
     public static final double TURRET_FORWARD_MOTOR_ROT = 6.077637; // measured 2026-03-07 after trailing-edge homing recal
 
+    // When true: operator must hold LT+RT+A after each boot to confirm turret is facing forward.
+    // Set false for tournament — turret auto-zeros to forward at boot with no confirmation required.
+    public static final boolean REQUIRE_TURRET_FORWARD_CONFIRM = true;
+
     // Hood homing: slow downward until stall detected at hard stop, then zero the encoder.
     // 0 rotations = bottom (85 deg, steep). Positive motor output = hood moving UP (toward 35 deg).
     // Measured 2026-03-06: home reads 0.022 rot (≈0 after zeroing), top physical stop = 4.291 rot.
@@ -425,6 +437,7 @@ public final class Constants {
     public static final double HOOD_CRUISE_VELOCITY_RPS  = 9.0;  // motor rot/s
     public static final double HOOD_ACCELERATION_RPS2    = 30.0; // motor rot/s^2
     public static final double HOOD_HOME_ROTATIONS           = 0.0;  // encoder value at bottom stop
+    public static final double HOOD_HOME_BACKOFF_ROTATIONS   = 0.05; // back off hard stop after homing to stop stall beep
     // Stall detection for hard-stop homing (no limit switch wired yet).
     // At 10% duty cycle the hood draws ~1-2A in free rotation — any spike above this means it hit the stop.
     // Threshold is conservative; lower it if homing doesn't trigger, raise it if it false-triggers mid-travel.
@@ -459,10 +472,9 @@ public final class Constants {
     // The front roller is the effective origin for all distance/trajectory math.
     // Hood angle bakes the exit-point offset into each shot table row implicitly —
     // do NOT assume a fixed launch height when adding ballistic math later.
-    // TODO: measure HOOD_SHAFT_SEPARATION_M (distance between the two hex shaft centers)
-    //       and HOOD_FRONT_ROLLER_HEIGHT_M (height of front roller above ground) on hardware.
-    public static final double HOOD_SHAFT_SEPARATION_M    = 0.0; // TODO: measure (meters)
-    public static final double HOOD_FRONT_ROLLER_HEIGHT_M = 0.0; // TODO: measure (meters)
+    // Measured 2026-03-07 after singulator gusset install (ball now centered on flywheel shaft).
+    public static final double HOOD_SHAFT_SEPARATION_M    = Units.inchesToMeters(8.5);  // center-to-center between front and back hex shafts
+    public static final double HOOD_FRONT_ROLLER_HEIGHT_M = Units.inchesToMeters(19.52); // front shaft center above ground
     public static final double HOOD_ANGLE_MIN_DEG         = 35.0; // hood all the way open — back roller forward, shallow launch angle, long range
     public static final double HOOD_ANGLE_MAX_DEG         = 85.0; // hood home position — back roller nearly above front roller, steep lob, short range
 
@@ -501,7 +513,7 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FEED_SPEED    =  0.70; // TODO: tune on hardware
+    public static final double FEED_SPEED    =  0.85; // TODO: tune on hardware
     public static final double REVERSE_SPEED = -0.40;
 
     // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
@@ -521,17 +533,17 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FORWARD_SPEED = 0.40; // normal feed speed - TODO: tune
+    public static final double FORWARD_SPEED = 0.55; // increased from 0.40 — needs more torque under ball load
     public static final double REVERSE_SPEED = -0.30; // unjam pulse speed
 
     // Agitator auto-reverse: if velocity stays below this for AGITATE_LOOP_THRESHOLD loops,
     // fire a short reverse pulse to jostle stuck balls
-    public static final double STALL_VELOCITY_RPS     = 0.5;  // TODO: tune on hardware
-    public static final int    AGITATE_LOOP_THRESHOLD = 25;   // ~500ms at 50Hz
+    public static final double STALL_VELOCITY_RPS     = 0.5;
+    public static final int    AGITATE_LOOP_THRESHOLD = 15;   // reduced from 25 — agitate sooner before full stall
     public static final int    AGITATE_PULSE_LOOPS    = 10;   // ~200ms reverse pulse
 
     // SparkMax smart current limit (stall protection)
-    public static final int CURRENT_LIMIT_AMPS = 30;
+    public static final int CURRENT_LIMIT_AMPS = 45; // raised from 30 — gives NEO more torque headroom under load
   }
 
   // Intake mechanism hardware IDs and tuning constants
@@ -766,17 +778,24 @@ public final class Constants {
     public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
 
     // Named shot positions — turret rot, hood rot, front RPS, back RPS — measured 2026-03-07
-    // HUBCLOSE: robot ~1.04m from blue hub bumper-to-face
-    public static final double HUBCLOSE_TURRET_ROT   = 5.8666;
-    public static final double HUBCLOSE_HOOD_ROT      = 0.048;
-    public static final double HUBCLOSE_FRONT_RPS     = 78.10;
-    public static final double HUBCLOSE_BACK_RPS      = 74.58;
+    // Robot pose is blue alliance field coords (x, y, omega). Distance is to BLUE_HUB_CENTER (4.612, 4.022).
+    // HUBCLOSE: pose=(3.369, 3.730, 0deg), ~1.28m from hub center — locked in 2026-03-07
+    public static final double HUBCLOSE_TURRET_ROT   = 5.83;
+    public static final double HUBCLOSE_HOOD_ROT      = 0.3;
+    public static final double HUBCLOSE_FRONT_RPS     = 59.0;
+    public static final double HUBCLOSE_BACK_RPS      = 54.6;
 
-    // OUTPOST: far corner, robot pose=(0.482, 0.421), ~5.5m from hub
-    public static final double OUTPOST_TURRET_ROT    = 5.036;
-    public static final double OUTPOST_HOOD_ROT       = 2.404;
-    public static final double OUTPOST_FRONT_RPS      = 85.0;
-    public static final double OUTPOST_BACK_RPS       = 80.32;
+    // MIDRANGE: tuning preset — turret forward, same RPS as OUTPOST for PID validation
+    public static final double MIDRANGE_TURRET_ROT   = 6.077637; // forward position (TURRET_FORWARD_MOTOR_ROT)
+    public static final double MIDRANGE_HOOD_ROT      = 2.1;
+    public static final double MIDRANGE_FRONT_RPS     = 65.0;
+    public static final double MIDRANGE_BACK_RPS      = 62.7;
+
+    // OUTPOST: pose=(0.4826, 0.4191, 0deg), ~5.48m from hub center — locked in 2026-03-07
+    public static final double OUTPOST_TURRET_ROT    = 4.93;
+    public static final double OUTPOST_HOOD_ROT       = 2.1;
+    public static final double OUTPOST_FRONT_RPS      = 65.0;
+    public static final double OUTPOST_BACK_RPS       = 62.7;
   }
 
   // AutoPilot precision navigation library (singleton instances)

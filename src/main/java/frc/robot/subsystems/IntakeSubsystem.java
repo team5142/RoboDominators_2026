@@ -136,9 +136,9 @@ public class IntakeSubsystem extends SubsystemBase {
 
     limitSwitch = new DigitalInput(Constants.Intake.RETRACT_LIMIT_SWITCH_DIO);
 
-    // Start in a known safe state - do not move motors until commanded
+    // Start in a known safe state then immediately home — same pattern as hood homing.
     stopAll();
-    SmartLogger.logConsole("IntakeSubsystem initialized - press operator Start to home", "Intake");
+    startHoming();
   }
 
   // Begin homing sequence - always runs regardless of current state.

@@ -106,13 +106,18 @@ public class TurretIOCTRE implements TurretIO {
     flywheelConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
     flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
     // Slot 0: velocity feedforward + P gain from SysId 2026-03-07
-    flywheelConfig.Slot0.kS = Constants.Turret.FLYWHEEL_KS;
-    flywheelConfig.Slot0.kV = Constants.Turret.FLYWHEEL_KV;
-    flywheelConfig.Slot0.kA = Constants.Turret.FLYWHEEL_KA;
-    flywheelConfig.Slot0.kP = Constants.Turret.FLYWHEEL_KP;
+    flywheelConfig.Slot0.kS = Constants.Turret.FLYWHEEL_FRONT_KS;
+    flywheelConfig.Slot0.kV = Constants.Turret.FLYWHEEL_FRONT_KV;
+    flywheelConfig.Slot0.kA = Constants.Turret.FLYWHEEL_FRONT_KA;
+    flywheelConfig.Slot0.kP = Constants.Turret.FLYWHEEL_FRONT_KP;
     flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_FRONT_MOTOR_INVERTED
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelFrontMotor.getConfigurator().apply(flywheelConfig);
+    flywheelConfig.Slot0.kS = Constants.Turret.FLYWHEEL_BACK_KS;
+    flywheelConfig.Slot0.kV = Constants.Turret.FLYWHEEL_BACK_KV;
+    flywheelConfig.Slot0.kA = Constants.Turret.FLYWHEEL_BACK_KA;
+    flywheelConfig.Slot0.kP = Constants.Turret.FLYWHEEL_BACK_KP;
+    flywheelConfig.Slot0.kD = Constants.Turret.FLYWHEEL_BACK_KD;
     flywheelConfig.MotorOutput.Inverted = Constants.Turret.FLYWHEEL_BACK_MOTOR_INVERTED
         ? InvertedValue.Clockwise_Positive : InvertedValue.CounterClockwise_Positive;
     flywheelBackMotor.getConfigurator().apply(flywheelConfig);

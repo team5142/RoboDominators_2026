@@ -117,6 +117,23 @@ public class TurretSubsystem extends SubsystemBase {
         new SysIdRoutine.Mechanism(
             (Voltage v) -> io.setFlywheelBackVoltage(v.in(Volts)),
             null, this));
+
+    if (!Constants.Turret.REQUIRE_TURRET_FORWARD_CONFIRM) {
+      homeForward();
+    }
+    hoodHome(); // always auto-home the hood at boot — safe regardless of turret position
+  }
+
+  // Seeds the turret encoder to TURRET_FORWARD_MOTOR_ROT and marks homed — no sweep needed.
+  // Safe to call any time the turret is physically pointing forward.
+  // In tournament mode this is called automatically at boot. In testing mode, operator
+  // confirms with LT+RT+A after visually verifying the turret is forward.
+  public void homeForward() {
+    io.restoreTurretEncoder(Constants.Turret.TURRET_FORWARD_MOTOR_ROT);
+    homed = true;
+    homing = false;
+    lastKnownPosition = Constants.Turret.TURRET_FORWARD_MOTOR_ROT;
+    SmartLogger.logConsole("Turret zeroed to forward position (" + Constants.Turret.TURRET_FORWARD_MOTOR_ROT + " rot)", "Turret");
   }
 
   public Command sysIdFrontQuasistatic(SysIdRoutine.Direction dir) { return sysIdFront.quasistatic(dir); }
@@ -482,8 +499,11 @@ public class TurretSubsystem extends SubsystemBase {
           hoodHoming = false;
           hoodHomed  = true;
           hoodHomingStallLoopCount = 0;
-          setpoints.hoodPercent = 0.0;
           io.zeroHoodEncoder();
+          // Back off slightly so the motor isn't sitting against the hard stop.
+          setpoints.hoodPositionMotorRotations = Constants.Turret.HOOD_HOME_BACKOFF_ROTATIONS;
+          setpoints.useHoodPosition = true;
+          setpoints.hoodPercent = 0.0;
           SmartLogger.logConsole("Hood homed — encoder zeroed at hard stop (stall detected)", "Turret");
         }
       } else {
@@ -600,6 +620,14 @@ public class TurretSubsystem extends SubsystemBase {
         "Turret/FlywheelFrontRpm", inputs.flywheelVelocityRpm);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelBackRpm", inputs.flywheelBackVelocityRpm);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelFrontTargetRps", outputs.flywheelFrontRps);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelBackTargetRps", outputs.flywheelBackRps);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelFrontActualRps", inputs.flywheelVelocityRpm / 60.0);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
+        "Turret/FlywheelBackActualRps", inputs.flywheelBackVelocityRpm / 60.0);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelSetpointPct", outputs.flywheelFrontPercent);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
