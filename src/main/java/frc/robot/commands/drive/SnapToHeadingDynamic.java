@@ -25,8 +25,8 @@ public class SnapToHeadingDynamic extends Command {
   // Static state persists across instances so double-tap works between separate command activations.
   private static double lastWallHeading = Double.NaN; // last heading chosen when near a wall
   private static double lastEndTimestamp = Double.NaN; // Timer.getFPGATimestamp() when command last ended
-  private static final double LEFT_WALL_Y  = 7.248;
-  private static final double RIGHT_WALL_Y = 0.624;
+  private static final double LEFT_WALL_Y  = 7.175;
+  private static final double RIGHT_WALL_Y = 0.876;
   private static final double CENTER_Y = (LEFT_WALL_Y + RIGHT_WALL_Y) / 2.0;
 
   private final PoseEstimatorSubsystem poseEstimator;
@@ -179,8 +179,8 @@ public class SnapToHeadingDynamic extends Command {
   private static final double NEUTRAL_ZONE_NEAR_X = 5.6;  // near edge of neutral sweep area
 
   private static double nearXBlue() { return NEUTRAL_ZONE_NEAR_X; }
-  private static double farXBlue()  { return RobotContainer.COMPETITION_MODE ? 11.574 : 9.024; }
-  private static double nearXRed()  { return RobotContainer.COMPETITION_MODE ? 10.564 : 9.024; }
-  private static double farXRed()   { return 5.976; }
+  private static double farXBlue()  { return RobotContainer.COMPETITION_MODE ? 10.427 : 8.821; }
+  private static double nearXRed()  { return RobotContainer.COMPETITION_MODE ? 10.427 : 8.821; }
+  private static double farXRed()   { return 6.086; }
 }
 

@@ -140,6 +140,13 @@ public class DriveSubsystem extends CommandSwerveDrivetrain {
     return super.getKinematics().toChassisSpeeds(getState().ModuleStates);
   }
 
+  // True when translation and rotation are all below threshold — used by AutoShootCommand.
+  public boolean isStationary() {
+    ChassisSpeeds s = getRobotRelativeSpeeds();
+    double speed = Math.hypot(s.vxMetersPerSecond, s.vyMetersPerSecond);
+    return speed < 0.10 && Math.abs(s.omegaRadiansPerSecond) < 0.10;
+  }
+
   public edu.wpi.first.math.kinematics.SwerveModulePosition[] getModulePositions() {
     return getState().ModulePositions;
   }

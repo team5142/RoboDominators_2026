@@ -20,6 +20,14 @@ public class RobotState {
   private boolean enabled = false;
   private boolean sysIdMode = false;
   private boolean operatorDriveLockout = false;
+  // When true: QuestNav is unreliable — pose-dependent commands are blocked, turret uses fixed preset.
+  private boolean questNavEmergencyMode = false;
+  // When true: auto shoot mode active — flywheels, singulator, and spindexer run automatically.
+  private boolean autoShootMode = false;
+  // When true: auto shoot is temporarily paused — ball stays staged, shooting is blocked.
+  private boolean autoShootPaused = false;
+  // When true: robot is in a bump or net zone — auto shoot fire gate is suppressed.
+  private boolean shotSuppressed = false;
   private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
   // Match phase and hub active tracking
@@ -93,6 +101,7 @@ public class RobotState {
   private SpindexerState spindexerState = SpindexerState.STOPPED;
   private SingulatorState singulatorState = SingulatorState.PAUSED;
   private boolean singulatorBeamBreak = false;
+  private boolean deadZoneBeamBreak = false;
   private int ballsFedCount = 0;
   private boolean intakeLimitSwitch = false;
 
@@ -170,7 +179,29 @@ public class RobotState {
   }
   
   public boolean isSysIdMode() { return sysIdMode; }
-  
+
+  public boolean isQuestNavEmergencyMode() { return questNavEmergencyMode; }
+  public void setQuestNavEmergencyMode(boolean active) {
+    questNavEmergencyMode = active;
+    SmartLogger.logConsole("QuestNav emergency mode " + (active ? "ACTIVE — pose commands blocked" : "cleared"), "Emergency");
+  }
+
+  public boolean isAutoShootMode() { return autoShootMode; }
+  public void setAutoShootMode(boolean active) {
+    autoShootMode = active;
+    SmartLogger.logConsole("Auto shoot mode " + (active ? "ACTIVE" : "OFF"), "AutoShoot");
+  }
+
+  public boolean isAutoShootPaused() { return autoShootPaused; }
+  public void setAutoShootPaused(boolean paused) { autoShootPaused = paused; }
+
+  public boolean isShotSuppressed() { return shotSuppressed; }
+  public void setShotSuppressed(boolean value) {
+    if (shotSuppressed == value) return;
+    shotSuppressed = value;
+    SmartLogger.logReplay("RobotState/ShotSuppressed", value);
+  }
+
   public boolean isOperatorDriveLockout() {
     return operatorDriveLockout;
   }
@@ -238,6 +269,14 @@ public class RobotState {
     SmartLogger.logReplay("RobotState/SingulatorBeamBreak", value);
   }
   public boolean getSingulatorBeamBreak() { return singulatorBeamBreak; }
+
+  // True when a ball is stuck in the dead zone above the singulator, below the flywheels
+  public void setDeadZoneBeamBreak(boolean value) {
+    if (this.deadZoneBeamBreak == value) return;
+    this.deadZoneBeamBreak = value;
+    SmartLogger.logReplay("RobotState/DeadZoneBeamBreak", value);
+  }
+  public boolean getDeadZoneBeamBreak() { return deadZoneBeamBreak; }
 
   // Incremented when a ball exits toward the flywheels; decremented when one is pulled back.
   public void incrementBallsFed() {

@@ -182,33 +182,34 @@ public class OpposingAllianceZoneSweepSimplifiedCommand extends Command {
   }
 
   // ---- Coordinate helpers ----
-  // X values are the AllianceZoneSweep X values mirrored: mirror(x) = FIELD_LENGTH_METERS - x.
-  // Y values are also mirrored across the field width: mirror(y) = FIELD_WIDTH - y.
-  // This places the loop at the opposing alliance's driver station wall with the tower
-  // on the correct (high-Y) side.
+  // All values mirror AllianceZoneSweepSimplifiedCommand using FIELD_LENGTH_METERS - x and FIELD_WIDTH - y.
+  // Source safe values: nearX=0.876m, backupX=2.134m, leftY=7.175m, rightY=0.876m, towerPassY=2.134m.
+  // Tower footprint on opposing side: same 44x47in square, mirrored to high-X, high-Y corner.
 
   // Far edge of opposing alliance zone (neutral zone boundary on the far side)
   private static double farX(boolean isRed) {
     return isRed ? 3.3 : (FIELD_LENGTH_METERS - 3.3);
   }
 
-  // Near edge: deepest point toward the opposing driver station wall
+  // Near edge: deepest point toward the opposing driver station wall.
+  // Intake faces wall — must be >= 34.5in = 0.876m from wall.
   private static double nearX(boolean isRed) {
-    return isRed ? 0.540 : (FIELD_LENGTH_METERS - 0.540);
+    return isRed ? 0.876 : (FIELD_LENGTH_METERS - 0.876);
   }
 
-  // Backup X: avoids the outpost on the far side
+  // Backup X: must clear opposing tower far face + turning radius + margin = 2.134m (84in).
   private static double backupX(boolean isRed) {
-    return isRed ? 1.530 : (FIELD_LENGTH_METERS - 1.530);
+    return isRed ? 2.134 : (FIELD_LENGTH_METERS - 2.134);
   }
 
-  // Y walls are mirrored: the opposing tower is on the HIGH-Y side, so leftY/rightY swap roles.
-  // leftY here is the mirrored low-Y wall (sweep start), rightY is the mirrored high-Y wall.
-  private static double leftY()  { return FIELD_WIDTH - 7.285; } // ~0.758 — mirrored high-Y wall
-  private static double rightY() { return FIELD_WIDTH - 0.620; } // ~7.423 — mirrored low-Y wall
+  // Y walls mirrored: opposing tower is on HIGH-Y side so leftY/rightY swap roles.
+  // Source leftY=7.175 → mirrored rightY=FIELD_WIDTH-7.175=0.876 (34.5in from right wall) ✅
+  // Source rightY=0.876 → mirrored leftY=FIELD_WIDTH-0.876=7.175 (34.5in from left wall) ✅
+  private static double leftY()  { return FIELD_WIDTH - 7.175; } // 0.876m — mirrored, 34.5in from right wall
+  private static double rightY() { return FIELD_WIDTH - 0.876; } // 7.175m — mirrored, 34.5in from left wall
 
-  // Tower pass Y: mirrored to the HIGH-Y side of the opposing zone
-  private static double towerPassY() { return FIELD_WIDTH - 2.633; } // ~5.410
+  // Tower pass Y mirrored: source towerPassY=2.134m → FIELD_WIDTH-2.134=5.909m
+  private static double towerPassY() { return FIELD_WIDTH - 2.134; }
 
   // Headings are swapped vs. alliance zone because the loop runs in the opposite Y direction.
   private static double toLeft(boolean isRed)  { return 270.0; } // toward mirrored "left" (low-Y)

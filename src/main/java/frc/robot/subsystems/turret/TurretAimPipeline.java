@@ -42,6 +42,8 @@ public class TurretAimPipeline implements TurretAimProvider {
     inputs.robotPose = latest.robotPose;
     inputs.targetPose = latest.targetPose;
     inputs.robotSpeedMetersPerSecond = latest.robotSpeedMetersPerSecond;
+    inputs.robotFieldVxMetersPerSecond = latest.robotFieldVxMetersPerSecond;
+    inputs.robotFieldVyMetersPerSecond = latest.robotFieldVyMetersPerSecond;
     inputs.targetLatencySeconds = latest.targetLatencySeconds;
 
     solver.solve(inputs, goal);

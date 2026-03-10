@@ -1,5 +1,7 @@
 // Singulator subsystem - feeds balls one at a time from the spindexer up through the turret
-// into the flywheels. A LaserCAN at the staging point tells us when a ball is present.
+// into the flywheels. Two LaserCANs tell us ball position:
+//   CAN 28 — staging beam break: ball present and ready to feed
+//   CAN 29 — dead zone beam break: ball stuck above singulator, below flywheels
 // Tracks total balls fed since boot via direction-aware edge detection on the sensor.
 //
 // BALL COUNTER: increments on the falling edge only while FEEDING (ball exits toward flywheels).
@@ -12,13 +14,15 @@
 // [ ] 2. Confirm LaserCAN (CAN 28) appears on CAN bus and reports valid measurements.
 //        In Test mode, block the sensor with your hand and verify Singulator/BallPresent
 //        toggles true in AdvantageScope. Threshold is LASERCAN_THRESHOLD_MM in Constants.
-// [x] 3. Check motor direction: run spinFeed() at low speed, confirm balls move toward
+// [ ] 3. Confirm dead zone LaserCAN (CAN 29) appears on CAN bus and reports valid measurements.
+//        Block with hand and verify Singulator/DeadZoneBallPresent toggles true.
+// [x] 4. Check motor direction: run spinFeed() at low speed, confirm balls move toward
 //        the flywheels. If backwards, set MOTOR_INVERTED = true in Constants.
-// [ ] 4. Tune FEED_SPEED to match the flywheel acceptance rate — too fast risks double-
+// [ ] 5. Tune FEED_SPEED to match the flywheel acceptance rate — too fast risks double-
 //        feeding; too slow starves the shooter.
-// [ ] 5. Run several balls through end-to-end and verify the counter increments once per
+// [ ] 6. Run several balls through end-to-end and verify the counter increments once per
 //        ball. Watch RobotState/BallsFedCount in AdvantageScope.
-// [x] 6. Test spinReverse() with a stuck ball to confirm it clears cleanly.
+// [x] 7. Test spinReverse() with a stuck ball to confirm it clears cleanly.
 
 package frc.robot.subsystems;
 
@@ -38,6 +42,7 @@ public class SingulatorSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final SparkMax motor;
   private final LaserCan laserCan;
+  private final LaserCan deadZoneLaserCan;
 
   // Track previous beam break state to detect falling edge (ball just passed)
   private boolean lastBeamBreakBlocked = false;
@@ -58,9 +63,12 @@ public class SingulatorSubsystem extends SubsystemBase {
     motor = new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless);
 
     laserCan = new LaserCan(Constants.Singulator.LASERCAN_ID);
+    deadZoneLaserCan = new LaserCan(Constants.Singulator.DEAD_ZONE_LASERCAN_ID);
     try {
       laserCan.setRangingMode(LaserCan.RangingMode.SHORT);
       laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
+      deadZoneLaserCan.setRangingMode(LaserCan.RangingMode.SHORT);
+      deadZoneLaserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
     } catch (au.grapplerobotics.ConfigurationFailedException e) {
       SmartLogger.logConsole("LaserCAN config failed: " + e.getMessage(), "Singulator");
     }
@@ -109,12 +117,20 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   public void stopAll() { pause(); }
 
-  // True when a ball is close enough to block the LaserCAN beam
+  // True when a ball is close enough to block the staging LaserCAN beam
   public boolean isBallPresent() {
     LaserCan.Measurement m = laserCan.getMeasurement();
     return m != null
         && m.status == LaserCan.LASERCAN_STATUS_VALID_MEASUREMENT
         && m.distance_mm <= Constants.Singulator.LASERCAN_THRESHOLD_MM;
+  }
+
+  // True when a ball is stuck in the dead zone above the singulator, below the flywheels
+  public boolean isDeadZoneBallPresent() {
+    LaserCan.Measurement m = deadZoneLaserCan.getMeasurement();
+    return m != null
+        && m.status == LaserCan.LASERCAN_STATUS_VALID_MEASUREMENT
+        && m.distance_mm <= Constants.Singulator.DEAD_ZONE_LASERCAN_THRESHOLD_MM;
   }
 
   @Override
@@ -144,7 +160,11 @@ public class SingulatorSubsystem extends SubsystemBase {
 
     robotState.setSingulatorBeamBreak(ballBlocked);
 
+    boolean deadZoneBlocked = isDeadZoneBallPresent();
+    robotState.setDeadZoneBeamBreak(deadZoneBlocked);
+
     SmartLogger.logReplay("Singulator/BallPresent", ballBlocked);
+    SmartLogger.logReplay("Singulator/DeadZoneBallPresent", deadZoneBlocked);
     SmartLogger.logReplay("Singulator/CurrentAmps", motor.getOutputCurrent());
     SmartLogger.logReplay("Singulator/BallsFedCount", robotState.getBallsFedCount());
 
@@ -154,6 +174,8 @@ public class SingulatorSubsystem extends SubsystemBase {
         "Singulator/ShotRatePerSec", computeShotRate());
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Singulator/BallPresent", ballBlocked);
+    edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
+        "Singulator/DeadZoneBallPresent", deadZoneBlocked);
   }
 
   private void recordShot() {

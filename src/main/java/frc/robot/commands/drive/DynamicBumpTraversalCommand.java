@@ -111,10 +111,13 @@ public class DynamicBumpTraversalCommand extends Command {
     uphillPitchSign = 1.0;
 
     double passThroughVelocity = 1.5;
+    // Goal velocity 0: PathPlanner fully decelerates and stops at staging before crossing.
+    // A short settle wait lets oscillation damp so the robot is truly centered on the bump Y.
     Command toStaging = AutoBuilder.pathfindToPose(
         plan.stagingPose,
         config.pathConstraints,
-        passThroughVelocity);
+        0.0);
+    Command settle = Commands.waitSeconds(0.20);
     Command toMid = AutoBuilder.pathfindToPose(
         plan.midPose,
         config.pathConstraints,
@@ -124,6 +127,7 @@ public class DynamicBumpTraversalCommand extends Command {
 
     activeCommand = new SequentialCommandGroup(
         toStaging,
+        settle,
         Commands.race(toMid, waitForDownhill),
         toExit);
     CommandScheduler.getInstance().schedule(activeCommand);
@@ -269,7 +273,10 @@ public class DynamicBumpTraversalCommand extends Command {
   double allianceZoneLengthMeters = Units.inchesToMeters(158.60); // Alliance zone depth.
   double bumpStartXMeters = Units.inchesToMeters(160.0); // Bump start from alliance wall.
   double bumpDepthMeters = Units.inchesToMeters(44.4); // Bump depth across X.
-  double bumpCenterOffsetMeters = Units.inchesToMeters(99.0); // Center from side wall.
+  double bumpCenterOffsetMeters = Units.inchesToMeters(98.36); // Right bump center from right wall.
+  // Y layout: 49.86 trench + 12 base + 73 bump + 47 hub + 73 bump + 12 + 49.86
+  // Right bump center = 49.86 + 12 + 73/2 = 98.36in. Left = fieldWidth - 98.36in (mirrored).
+  // Robot width=38in centered on 73in bump gives 17.5in clearance to each bump edge.
   double stagingClearanceMeters = Units.inchesToMeters(12.0); // Desired bumper clearance.
   double robotHalfLengthMeters = Units.inchesToMeters(17.0); // Half of robot length with bumpers.
   double intakeExtensionMeters = Units.inchesToMeters(12.0); // Intake extension used for clearance.

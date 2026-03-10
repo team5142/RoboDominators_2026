@@ -183,31 +183,36 @@ public class AllianceZoneSweepSimplifiedCommand extends Command {
   }
 
   // ---- Coordinate helpers (all in Blue field frame, Red uses mirrored X) ----
+  // All values account for intake turning radius (28.5in) + 6in margin = 34.5in = 0.876m.
+  // Tower footprint: X 0-44in, Y 123.5-170.5in.
+  // Tower safe exclusion: X > 44+34.5=78.5in=1.994m, Y < 123.5-34.5=89.0in=2.261m.
 
   // X at far edge of alliance zone (neutral zone boundary = start of loop on trench side)
   private static double farX(boolean isRed) {
     return isRed ? (FIELD_LENGTH_METERS - 3.3) : 3.3;
   }
 
-  // X at near edge: deepest point robot drives toward driver station wall
+  // X at near edge: deepest approach toward driver station wall.
+  // Intake faces wall here — must be >= turning radius + margin = 34.5in = 0.876m from wall.
   private static double nearX(boolean isRed) {
-    return isRed ? (FIELD_LENGTH_METERS - 0.540) : 0.540;
+    return isRed ? (FIELD_LENGTH_METERS - 0.876) : 0.876;
   }
 
-  // X at backup point: robot backs away from driver station wall to avoid outpost
+  // X at backup point: must clear tower far face (44in) + turning radius + margin = 78.5in = 1.994m.
+  // Using 2.134m (84in) for a clean margin above minimum.
   private static double backupX(boolean isRed) {
-    return isRed ? (FIELD_LENGTH_METERS - 1.530) : 1.530;
+    return isRed ? (FIELD_LENGTH_METERS - 2.134) : 2.134;
   }
 
-  // Y of left wall (high-Y side) — same for both alliances
-  private static double leftY() { return 7.285; }
+  // Y of left wall (high-Y side) — 34.5in = 0.876m from left physical wall (8.051-0.876=7.175m).
+  private static double leftY() { return 7.175; }
 
-  // Y of right wall (low-Y side) — same for both alliances
-  private static double rightY() { return 0.620; }
+  // Y of right wall (low-Y side) — 34.5in = 0.876m from right physical wall.
+  private static double rightY() { return 0.876; }
 
-  // Y of tower/outpost avoidance: robot passes through this Y corridor to avoid the tower.
-  // Measured at Y=2.633 (just past the tower on the right/low-Y side).
-  private static double towerPassY() { return 2.633; }
+  // Y of tower/outpost avoidance: must be <= tower right face (123.5in) - 34.5in margin = 89.0in = 2.261m.
+  // Using 2.134m (84in) symmetric with backupX for clean corner geometry.
+  private static double towerPassY() { return 2.134; }
 
   // Headings — Y axis is alliance-independent so toLeft/toRight are always the same.
   // toFar/toNear flip with alliance.

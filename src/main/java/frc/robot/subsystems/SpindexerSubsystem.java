@@ -80,6 +80,13 @@ public class SpindexerSubsystem extends SubsystemBase {
 
   public void stopAll() { stop(); }
 
+  // True when current draw while FORWARD suggests balls are sitting on the cone.
+  // Threshold must be tuned on hardware — watch Spindexer/CurrentAmps in AdvantageScope.
+  public boolean isSpindexerUnderLoad() {
+    return robotState.getSpindexerState() == RobotState.SpindexerState.FORWARD
+        && motor.getOutputCurrent() > Constants.Spindexer.LOAD_CURRENT_AMPS;
+  }
+
   @Override
   public void periodic() {
     double velocityRpm = motor.getEncoder().getVelocity(); // NEO encoder reports RPM

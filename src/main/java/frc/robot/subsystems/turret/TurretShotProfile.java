@@ -2,64 +2,73 @@ package frc.robot.subsystems.turret;
 
 import frc.robot.Constants;
 
-// Preset turret shot settings (flywheel percent + hood rotations for a given distance).
-// Seed values are ChatGPT estimates from our flywheel build — replace each row after
-// measuring on hardware. See Constants.Turret.SHOT_TABLE_* for the raw data.
+// Shot profile interpolated from the locked-in named shot table in TurretTargets.
+// Uses turret-pivot distances (not robot-center) for the three confirmed positions:
+//   HUBCLOSE: 1.45m, MIDRANGE: 3.38m, OUTPOST: 5.70m
+// Front and back RPS are kept independent — do not average them.
 public class TurretShotProfile {
-  public final double flywheelPercent; // average of front+back percents
+  public final double flywheelFrontRps;
+  public final double flywheelBackRps;
   public final double hoodRotations;
-  public final double turretRotations;
+  // Ball time-of-flight in seconds — used for moving-target lead compensation.
+  public final double timeOfFlightSeconds;
 
-  public TurretShotProfile(double flywheelPercent, double hoodRotations, double turretRotations) {
-    this.flywheelPercent = flywheelPercent;
-    this.hoodRotations = hoodRotations;
-    this.turretRotations = turretRotations;
+  // Pivot distances for each named shot position (meters, turret-pivot to hub)
+  private static final double[] DISTANCES = { 1.45, 3.38, 5.70 };
+
+  public TurretShotProfile(double flywheelFrontRps, double flywheelBackRps, double hoodRotations, double timeOfFlightSeconds) {
+    this.flywheelFrontRps    = flywheelFrontRps;
+    this.flywheelBackRps     = flywheelBackRps;
+    this.hoodRotations       = hoodRotations;
+    this.timeOfFlightSeconds = timeOfFlightSeconds;
   }
 
-  public TurretAimGoal toAimGoal() {
-    TurretAimGoal goal = new TurretAimGoal();
-    goal.flywheelPercent = flywheelPercent;
-    goal.hoodRotations = hoodRotations;
-    goal.turretRotations = turretRotations;
-    goal.enable = true;
-    return goal;
-  }
-
-  // Returns an interpolated shot profile for a given distance in meters.
-  // Clamps to the nearest table edge if distance is outside the table range.
-  // Front and back flywheel percents are averaged; tune separately once on hardware.
+  // Returns an interpolated shot profile for a given pivot-to-hub distance in meters.
+  // Clamps to nearest table edge if outside range.
   public static TurretShotProfile getForDistance(double distanceMeters) {
-    double[] distances = Constants.Turret.SHOT_TABLE_DISTANCES_M;
-    double[] frontPcts = Constants.Turret.SHOT_TABLE_FLYWHEEL_FRONT_PCT;
-    double[] backPcts  = Constants.Turret.SHOT_TABLE_FLYWHEEL_BACK_PCT;
-    double[] hoods     = Constants.Turret.SHOT_TABLE_HOOD_ROTATIONS;
+    double[] frontRps = {
+      Constants.TurretTargets.HUBCLOSE_FRONT_RPS,
+      Constants.TurretTargets.MIDRANGE_FRONT_RPS,
+      Constants.TurretTargets.OUTPOST_FRONT_RPS
+    };
+    double[] backRps = {
+      Constants.TurretTargets.HUBCLOSE_BACK_RPS,
+      Constants.TurretTargets.MIDRANGE_BACK_RPS,
+      Constants.TurretTargets.OUTPOST_BACK_RPS
+    };
+    double[] hoods = {
+      Constants.TurretTargets.HUBCLOSE_HOOD_ROT,
+      Constants.TurretTargets.MIDRANGE_HOOD_ROT,
+      Constants.TurretTargets.OUTPOST_HOOD_ROT
+    };
+    double[] tofs = {
+      Constants.TurretTargets.HUBCLOSE_TOF_SECONDS,
+      Constants.TurretTargets.MIDRANGE_TOF_SECONDS,
+      Constants.TurretTargets.OUTPOST_TOF_SECONDS
+    };
 
-    // Clamp below minimum
-    if (distanceMeters <= distances[0]) {
-      return new TurretShotProfile((frontPcts[0] + backPcts[0]) / 2.0, hoods[0], 0.0);
+    if (distanceMeters <= DISTANCES[0]) {
+      return new TurretShotProfile(frontRps[0], backRps[0], hoods[0], tofs[0]);
     }
-    // Clamp above maximum
-    int last = distances.length - 1;
-    if (distanceMeters >= distances[last]) {
-      return new TurretShotProfile((frontPcts[last] + backPcts[last]) / 2.0, hoods[last], 0.0);
+    int last = DISTANCES.length - 1;
+    if (distanceMeters >= DISTANCES[last]) {
+      return new TurretShotProfile(frontRps[last], backRps[last], hoods[last], tofs[last]);
     }
-
-    // Find the two surrounding rows and linearly interpolate
     for (int i = 0; i < last; i++) {
-      if (distanceMeters <= distances[i + 1]) {
-        double t = (distanceMeters - distances[i]) / (distances[i + 1] - distances[i]);
-        double flywheel = lerp((frontPcts[i] + backPcts[i]) / 2.0,
-                               (frontPcts[i + 1] + backPcts[i + 1]) / 2.0, t);
-        double hood = lerp(hoods[i], hoods[i + 1], t);
-        return new TurretShotProfile(flywheel, hood, 0.0);
+      if (distanceMeters <= DISTANCES[i + 1]) {
+        double t = (distanceMeters - DISTANCES[i]) / (DISTANCES[i + 1] - DISTANCES[i]);
+        return new TurretShotProfile(
+          lerp(frontRps[i], frontRps[i + 1], t),
+          lerp(backRps[i],  backRps[i + 1],  t),
+          lerp(hoods[i],    hoods[i + 1],    t),
+          lerp(tofs[i],     tofs[i + 1],     t));
       }
     }
-
-    // Should never reach here given the clamps above
-    return new TurretShotProfile(0.0, 0.0, 0.0);
+    return new TurretShotProfile(frontRps[last], backRps[last], hoods[last], tofs[last]);
   }
 
   private static double lerp(double a, double b, double t) {
     return a + (b - a) * t;
   }
 }
+

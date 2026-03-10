@@ -68,13 +68,6 @@ public class RobotContainer {
   // Flywheel warm-up toggle state (operator A button) - used when flywheel section is uncommented
   @SuppressWarnings("unused")
   private boolean flywheelOn = false;
-  // Steps through 30/40/50/60/70/80/90/100% on each right bumper press, wraps back to 30
-  private int flywheelSpeedIndex = 0;
-  private static final double[] FLYWHEEL_SPEED_STEPS = { 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 1.00 };
-  // Right stick Y trims this continuously; kept in sync when bumpers/A button set a step
-  private double flywheelSpeedPercent = 0.30;
-  // Per-loop trim rate at full deflection: ~17s to sweep full 30-100% range
-  private static final double FLYWHEEL_TRIM_RATE = 0.004;
 
   // Subsystems - order here matches initialization order in constructor
   final RobotState robotState;
@@ -133,18 +126,18 @@ public class RobotContainer {
       TurretAimPipeline aimPipeline = new TurretAimPipeline(
           poseEstimator,
           driveSubsystem,
-          new TurretTargetSelector(poseEstimator),
+          new TurretTargetSelector(poseEstimator, robotState),
           new TurretAimSolver());
       turretSubsystem.setDefaultCommand(
           Commands.run(() -> {
             turretSubsystem.updateAimFromProvider(aimPipeline);
-            // Right stick Y: trim flywheel speed up/down while flywheels are on (deadband 0.1)
-            double trimAxis = -operatorController.getRightY(); // up = positive = faster
-            if (Math.abs(trimAxis) < 0.1) trimAxis = 0.0;
-            if (trimAxis != 0.0 && flywheelOn) {
-              flywheelSpeedPercent = Math.max(0.30, Math.min(1.00, flywheelSpeedPercent + trimAxis * FLYWHEEL_TRIM_RATE));
-              turretSubsystem.setFlywheelFrontPercent(flywheelSpeedPercent);
-              turretSubsystem.setFlywheelBackPercent(flywheelSpeedPercent);
+            // Flywheel RPS is fully operator-controlled — not driven by the aim pipeline automatically.
+            // Each loop: apply pipeline RPS when on, or hold zero when off.
+            if (flywheelOn) {
+              turretSubsystem.setFlywheelFrontRps(turretSubsystem.getAimGoalFrontRps());
+              turretSubsystem.setFlywheelBackRps(turretSubsystem.getAimGoalBackRps());
+            } else {
+              turretSubsystem.setFlywheelPercent(0.0); // open-loop zero = coast, not closed-loop hold
             }
           }, turretSubsystem)
               .withName("TurretTrackingDefault"));
@@ -183,19 +176,20 @@ public class RobotContainer {
     AutoCommands.register(intakeSubsystem, turretSubsystem, spindexerSubsystem, singulatorSubsystem, climberSubsystem);
     configureDefaultCommands();
     if (Constants.Turret.REQUIRE_TURRET_FORWARD_CONFIRM) {
-      SmartLogger.logConsole("Waiting for turret forward confirm (Back+A) before enabling controls", "Homing");
-      // Back+A: confirm turret is forward, then activate all controls.
-      // The 0.1s delay ensures Back is fully released before the Back-reset binding activates.
-      new Trigger(() -> operatorController.getBackButton() && operatorController.getAButton())
+      SmartLogger.logConsole("Waiting for turret forward confirm (LB+RB) before enabling controls", "Homing");
+      // LB+RB: confirm turret is forward, then activate all controls.
+      new Trigger(() -> operatorController.getLeftBumperButton() && operatorController.getRightBumperButton())
           .onTrue(Commands.sequence(
             Commands.waitSeconds(0.1),
             Commands.runOnce(() -> {
               if (bindingsConfigured) return;
               if (turretSubsystem != null) turretSubsystem.homeForward();
+              if (turretSubsystem != null) turretSubsystem.enableTracking();
               configureButtonBindings();
               SmartLogger.logConsole("Turret confirmed forward — all controls now active", "Homing");
             })));
     } else {
+      if (turretSubsystem != null) turretSubsystem.enableTracking();
       configureButtonBindings();
     }
     
@@ -271,30 +265,46 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kStart.value)
         .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
 
+    // D-PAD DOWN: Toggle QuestNav emergency mode (locks turret to HUBCLOSE, blocks pose-dependent commands).
+    new Trigger(() -> driverController.getPOV() == 180)
+        .onTrue(Commands.runOnce(this::toggleQuestNavEmergencyMode));
+
     // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
 
-    // Y/B/X: SmartDrive to tags
-    new JoystickButton(driverController, XboxController.Button.kX.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_LEFTBUMP, PRECISE_BLUE_ALLIANCE_LEFTBUMP));
-    new JoystickButton(driverController, XboxController.Button.kB.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTBUMP, PRECISE_BLUE_ALLIANCE_RIGHTBUMP));
-    new JoystickButton(driverController, XboxController.Button.kY.value)
-        .whileTrue(SmartDriveToPosition.create(BLUE_ALLIANCE_RIGHTOWER, PRECISE_BLUE_ALLIANCE_RIGHTOWER));
+    // Reusable gate — all pose-dependent commands check this before starting.
+    Trigger poseAvailable = new Trigger(() -> !robotState.isQuestNavEmergencyMode());
 
-    // A BUTTON: Smart sweep based on current zone
+    // Y/B/A/X: Wall traversal (face buttons match D-pad compass layout)
+    // Y = far wall, B = right wall, A = near wall, X = left wall
+    new JoystickButton(driverController, XboxController.Button.kY.value)
+        .and(poseAvailable)
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.FAR)));
+    new JoystickButton(driverController, XboxController.Button.kB.value)
+        .and(poseAvailable)
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.RIGHT)));
     new JoystickButton(driverController, XboxController.Button.kA.value)
+        .and(poseAvailable)
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.NEAR)));
+    new JoystickButton(driverController, XboxController.Button.kX.value)
+        .and(poseAvailable)
+        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.LEFT)));
+
+    // LEFT TRIGGER (alone): Smart zone sweep based on current zone
+    new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
+        .and(new Trigger(() -> driverController.getRightTriggerAxis() <= 0.5))
+        .and(poseAvailable)
         .whileTrue(Commands.deferredProxy(this::createSmartSweepCommand));
 
     // LEFT/RIGHT BUMPER: Dynamic bump traversal
-    // COMMENTED OUT during SysId — bumpers are used for SignalLogger start/stop
-    /*
     new JoystickButton(driverController, XboxController.Button.kLeftBumper.value)
+        .and(poseAvailable)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.LEFT)));
     new JoystickButton(driverController, XboxController.Button.kRightBumper.value)
+        .and(poseAvailable)
         .whileTrue(Commands.deferredProxy(() -> createBumpTraversalCommand(DynamicBumpTraversalCommand.Side.RIGHT)));
-    */
 
-    // BOTH TRIGGERS: Dynamic heading snap - picks heading based on field position
+    // BOTH TRIGGERS: Dynamic heading snap — gyro only, safe in emergency mode (no gate needed).
+    // Holds a field-relative heading based on zone/position while driver steers with left stick.
     Trigger bothTriggers = new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
         .and(new Trigger(() -> driverController.getRightTriggerAxis() > 0.5));
     bothTriggers.whileTrue(new SnapToHeadingDynamic(
@@ -302,98 +312,56 @@ public class RobotContainer {
         () -> -driverController.getLeftY(),
         () -> -driverController.getLeftX()));
 
-    // LEFT TRIGGER (alone): Hub auto-aim — turret tracks hub using pose while held.
-    // Uses the same hubPipeline logic as operator right bumper but on the driver controller.
-    // Only activates when right trigger is NOT also held (bothTriggers takes priority).
-    if (turretSubsystem != null) {
-      TurretAimPipeline driverHubPipeline = new TurretAimPipeline(
-          poseEstimator,
-          driveSubsystem,
-          () -> cachedAlliance == edu.wpi.first.wpilibj.DriverStation.Alliance.Red
-              ? Constants.HubCenters.RED_HUB_CENTER
-              : Constants.HubCenters.BLUE_HUB_CENTER,
-          new TurretAimSolver());
-      new Trigger(() -> driverController.getLeftTriggerAxis() > 0.5)
-          .and(new Trigger(() -> driverController.getRightTriggerAxis() <= 0.5))
-          .whileTrue(Commands.run(
-              () -> turretSubsystem.updateAimFromProvider(driverHubPipeline), turretSubsystem)
-              .withName("DriverHubAim"));
-    }
-
-    // D-PAD: Wall traversal commands (Up=Far, Down=Near, Left=Left wall, Right=Right wall)
-    new Trigger(() -> driverController.getPOV() == 0)
-        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.FAR)));
-    new Trigger(() -> driverController.getPOV() == 180)
-        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.NEAR)));
-    new Trigger(() -> driverController.getPOV() == 270)
-        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.LEFT)));
-    new Trigger(() -> driverController.getPOV() == 90)
-        .whileTrue(Commands.deferredProxy(() -> new WallTraversalCommand(poseEstimator, driveSubsystem, WallTraversalCommand.Wall.RIGHT)));
-
     // ========== END NORMAL OPERATION BUTTONS ==========
 
     // ========== OPERATOR CONTROLLER BINDINGS ==========
-    // Uncomment each section only after completing the corresponding commissioning checklist.
-    // Each section is independently gated - you can enable intake without enabling turret, etc.
 
     // --- INTAKE ---
-    /* Y: toggle extend/retract
+    // Y: toggle extend/retract; rollers auto-start on extend, auto-stop on retract.
     new JoystickButton(operatorController, XboxController.Button.kY.value)
         .onTrue(Commands.runOnce(() -> {
           if (intakeSubsystem == null) return;
           if (intakeSubsystem.isExtended()) {
+            intakeSubsystem.stopRollers();
             intakeSubsystem.retract();
           } else {
             intakeSubsystem.extend();
+            intakeSubsystem.spinIn();
           }
-        })); */
-    // Right stick click: agitate — partial retract to 6.5 rot then re-extend (only when arm is out)
-    new JoystickButton(operatorController, XboxController.Button.kRightStick.value)
-        .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
-    // X (hold): spin rollers inward - only works when arm is fully extended
+        }));
+    // X (hold): reverse rollers to spit out.
     new JoystickButton(operatorController, XboxController.Button.kX.value)
         .whileTrue(Commands.startEnd(
-          () -> { if (intakeSubsystem != null && intakeSubsystem.isExtended()) intakeSubsystem.spinIn(); },
+          () -> { if (intakeSubsystem != null) intakeSubsystem.spinOut(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    /* B (hold): spin rollers outward (eject) - only works when arm is fully extended
-    new JoystickButton(operatorController, XboxController.Button.kB.value)
+    // A (hold): agitate intake.
+    new JoystickButton(operatorController, XboxController.Button.kA.value)
         .whileTrue(Commands.startEnd(
-          () -> { if (intakeSubsystem != null && intakeSubsystem.isExtended()) intakeSubsystem.spinOut(); },
-          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); })); */
+          () -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); },
+          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
+    // B: toggle intake rollers on/off manually without moving the arm.
+    new JoystickButton(operatorController, XboxController.Button.kB.value)
+        .onTrue(Commands.runOnce(() -> {
+          if (intakeSubsystem == null) return;
+          if (intakeSubsystem.isRollersOn()) {
+            intakeSubsystem.stopRollers();
+          } else {
+            intakeSubsystem.spinIn();
+          }
+        }));
     // --- END INTAKE ---
 
-    // --- SHOT PRESETS ---
-    // Y: HUBCLOSE preset (~1.04m from hub bumper-to-face)
-    new JoystickButton(operatorController, XboxController.Button.kY.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setTurretPositionTarget(Constants.TurretTargets.HUBCLOSE_TURRET_ROT);
-          turretSubsystem.setHoodPositionTarget(Constants.TurretTargets.HUBCLOSE_HOOD_ROT);
-          turretSubsystem.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
-          turretSubsystem.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
-        }));
-    // B: MIDRANGE preset (~3.5m from hub) — placeholder values, tune on robot
-    new JoystickButton(operatorController, XboxController.Button.kB.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setTurretPositionTarget(Constants.TurretTargets.MIDRANGE_TURRET_ROT);
-          turretSubsystem.setHoodPositionTarget(Constants.TurretTargets.MIDRANGE_HOOD_ROT);
-          turretSubsystem.setFlywheelFrontRps(Constants.TurretTargets.MIDRANGE_FRONT_RPS);
-          turretSubsystem.setFlywheelBackRps(Constants.TurretTargets.MIDRANGE_BACK_RPS);
-        }));
-    // --- END SHOT PRESETS ---
-
-    // --- SINGULATOR (uncomment after SingulatorSubsystem commissioning checklist is complete) ---
-    // Set ENABLE_SINGULATOR = true before uncommenting.
-    
-    // Right trigger (hold): singulator only — prime then feed; release: pause
-    new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
-        .whileTrue(Commands.startEnd(
-          () -> { if (singulatorSubsystem != null) singulatorSubsystem.primeAndFeed(); },
-          () -> { if (singulatorSubsystem != null) singulatorSubsystem.pause(); }));
-    // Left trigger (hold): spindexer + singulator together — full feed cycle.
-    // Block spindexer only while intake arm is actively moving (EXTENDING/RETRACTING) — arm could cross ball path.
+    // --- TURRET FLYWHEELS + SHOOT ---
+    // LT (press): toggle flywheels on/off.
     new Trigger(() -> operatorController.getLeftTriggerAxis() > 0.5)
+        .onTrue(Commands.runOnce(() -> {
+          if (turretSubsystem == null) return;
+          flywheelOn = !flywheelOn;
+          if (!flywheelOn) turretSubsystem.setFlywheelPercent(0.0);
+        }));
+    // RT (hold): shoot — spindexer + singulator full feed cycle.
+    // Blocked while intake arm is moving to avoid crossing ball path.
+    new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.startEnd(
           () -> {
             boolean spindexerAllowed = intakeSubsystem == null
@@ -406,51 +374,7 @@ public class RobotContainer {
             if (spindexerSubsystem  != null) spindexerSubsystem.stop();
             if (singulatorSubsystem != null) singulatorSubsystem.pause();
           }));
-     // --- END SINGULATOR ---
-
-    // --- SPINDEXER (uncomment after SpindexerSubsystem commissioning checklist is complete) ---
-    // Set ENABLE_SPINDEXER = true before uncommenting.
-    // Note: Start button is reserved for emergency re-home.
-    /*
-    new JoystickButton(operatorController, XboxController.Button.kStart.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (spindexerSubsystem == null) return;
-          if (robotState.getSpindexerState() == RobotState.SpindexerState.STOPPED) {
-            spindexerSubsystem.spinForward();
-          } else {
-            spindexerSubsystem.stop();
-          }
-        }));
-    */
-    // Operator Back (alone): reset turret homed state — commented out to avoid accidental de-home.
-    // new Trigger(() -> operatorController.getBackButton() && !operatorController.getAButton())
-    //     .onTrue(Commands.runOnce(() -> {
-    //       if (turretSubsystem != null) turretSubsystem.resetHomed();
-    //       SmartLogger.logConsole("Turret homed state reset — press Start to re-home", "Homing");
-    //     }));
-    // --- END SPINDEXER ---
-
-    // --- TURRET HOOD TEST (commissioning — remove after HOOD CHECKLIST is complete) ---
-    // D-pad up: step hood up (ping-pong through 0%, 33%, 67%, 100% of travel)
-    new Trigger(() -> operatorController.getPOV() == 0)
-        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); }));
-    // D-pad down: toggle hood between bottom (0) and top
-    new Trigger(() -> operatorController.getPOV() == 180)
-        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); }));
-    // --- END TURRET HOOD TEST ---
-
-    // Operator A: load OUTPOST preset.
-    new JoystickButton(operatorController, XboxController.Button.kA.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setTurretPositionTarget(Constants.TurretTargets.OUTPOST_TURRET_ROT);
-          turretSubsystem.setHoodPositionTarget(Constants.TurretTargets.OUTPOST_HOOD_ROT);
-          turretSubsystem.setFlywheelFrontRps(Constants.TurretTargets.OUTPOST_FRONT_RPS);
-          turretSubsystem.setFlywheelBackRps(Constants.TurretTargets.OUTPOST_BACK_RPS);
-          flywheelOn = true;
-          flywheelSpeedIndex = 6;
-          flywheelSpeedPercent = 0.90;
-        }));
+    // --- END TURRET FLYWHEELS + SHOOT ---
 
     // --- TURRET ROTATION ---
     // D-pad left/right (hold): rotate turret CCW/CW — open-loop, no soft limits.
@@ -464,61 +388,13 @@ public class RobotContainer {
           () -> { if (turretSubsystem != null) turretSubsystem.setTurretPercent(0.0); }));
     // --- END TURRET ROTATION ---
 
-    // --- TURRET FLYWHEELS ---
-    // Right bumper (press): step speed up 10% per press (30->40->...->100->30->...)
-    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          double speed = FLYWHEEL_SPEED_STEPS[flywheelSpeedIndex];
-          turretSubsystem.setFlywheelFrontPercent(speed);
-          turretSubsystem.setFlywheelBackPercent(speed);
-          turretSubsystem.scheduleFlywheelRpmRecord(speed);
-          flywheelOn = true;
-          flywheelSpeedPercent = speed;
-          flywheelSpeedIndex = (flywheelSpeedIndex + 1) % FLYWHEEL_SPEED_STEPS.length;
-        }));
-    // Left bumper (press): force both flywheels off, reset speed index to 30%
-    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (turretSubsystem == null) return;
-          turretSubsystem.setFlywheelFrontPercent(0.0);
-          turretSubsystem.setFlywheelBackPercent(0.0);
-          flywheelOn = false;
-          flywheelSpeedIndex = 0;
-          flywheelSpeedPercent = 0.30;
-        }));
-    // --- END TURRET FLYWHEELS ---
-
-    // --- CLIMBER (uncomment after CLIMBER COMMISSIONING CHECKLIST in ClimberSubsystem is complete) ---
-    // Set ENABLE_CLIMBER = true before uncommenting.
-    /*
-    // Left trigger (hold): run pull motor to climb
-    new Trigger(() -> operatorController.getLeftTriggerAxis() > 0.5)
-        .whileTrue(Commands.startEnd(
-          () -> { if (climberSubsystem != null) climberSubsystem.setPullPercent(Constants.Climber.PULL_SPEED); },
-          () -> { if (climberSubsystem != null) climberSubsystem.setPullPercent(0.0); }));
-    // Left bumper up (hold): pivot arm forward
-    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
-        .whileTrue(Commands.startEnd(
-          () -> { if (climberSubsystem != null) climberSubsystem.setRotationPercent(Constants.Climber.ROTATION_SPEED); },
-          () -> { if (climberSubsystem != null) climberSubsystem.setRotationPercent(0.0); }));
-    */ // --- END CLIMBER ---
-
-    // --- EMERGENCY STOP ---
-    // Right bumper is currently used for flywheel back commissioning test.
-    // Re-enable this block (and remove the flywheel test section above) once commissioning is done.
-    /*
-    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
-        .onTrue(Commands.runOnce(() -> {
-          flywheelOn = false;
-          if (intakeSubsystem     != null) intakeSubsystem.stopAll();
-          if (singulatorSubsystem != null) singulatorSubsystem.stopAll();
-          if (spindexerSubsystem  != null) spindexerSubsystem.stopAll();
-          if (turretSubsystem     != null) turretSubsystem.stopAll();
-          if (climberSubsystem    != null) climberSubsystem.stopAll();
-          SmartLogger.logConsole("OPERATOR E-STOP triggered", "EStop");
-        }));
-    */ // --- END EMERGENCY STOP ---
+    // --- TURRET HOOD ---
+    // D-pad up: step hood up. D-pad down: step hood down.
+    new Trigger(() -> operatorController.getPOV() == 0)
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); }));
+    new Trigger(() -> operatorController.getPOV() == 180)
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); }));
+    // --- END TURRET HOOD ---
 
     // ========== END OPERATOR CONTROLLER BINDINGS ==========
 
@@ -533,14 +409,14 @@ public class RobotContainer {
     //       }
     //     }));
 
-    // Operator Start: emergency re-home for mid-match reboot recovery only.
-    // Normal startup uses Back+A (forward confirm) instead of this hall sweep.
-    new JoystickButton(operatorController, XboxController.Button.kStart.value)
+    // Back+Start: emergency re-home — use when turret homing is bad from startup.
+    // Manually rotate turret to forward with D-pad L/R first, then press both together.
+    new Trigger(() -> operatorController.getBackButton() && operatorController.getStartButton())
         .onTrue(Commands.runOnce(() -> {
           if (turretSubsystem != null) turretSubsystem.home();
           if (turretSubsystem != null) turretSubsystem.hoodHome();
           if (intakeSubsystem != null) intakeSubsystem.startHoming();
-          SmartLogger.logConsole("Emergency re-home triggered (Start) — hall sweep + intake + hood", "Homing");
+          SmartLogger.logConsole("Emergency re-home triggered (Back+Start) — hall sweep + intake + hood", "Homing");
         }));
 
     // --- TURRET HUB TARGETING --- (disabled 2026-03-06 — re-enable when needed)
@@ -572,6 +448,18 @@ public class RobotContainer {
   public Command getAutonomousCommand() { 
     Command selectedAuto = autoChooser.getSelected();
     return (selectedAuto != null) ? wrapPathWithLogging(selectedAuto) : selectedAuto;
+  }
+
+  // Toggles QuestNav emergency mode on/off.
+  // ON: locks turret to HUBCLOSE preset, blocks all pose-dependent drive commands.
+  // Operator still controls flywheels and shooting manually via LT/RT as normal.
+  // OFF: clears the flag — pose-dependent commands and auto-tracking resume.
+  public void toggleQuestNavEmergencyMode() {
+    boolean nowActive = !robotState.isQuestNavEmergencyMode();
+    robotState.setQuestNavEmergencyMode(nowActive);
+    if (nowActive) {
+      if (turretSubsystem != null) turretSubsystem.activateEmergencyHubClose();
+    }
   }
 
   // Reset robot position

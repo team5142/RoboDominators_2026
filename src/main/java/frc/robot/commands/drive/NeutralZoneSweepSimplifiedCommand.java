@@ -147,13 +147,15 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
 
   private Pose2d findNearestEntryCorner(Pose2d currentPose, boolean isRed) {
     // Entry corners are the far-left and far-right corners of the loop.
-    // The sweep now runs far->near on each wall to push fuel toward the alliance zone.
+    // Use the same safe boundary constants as buildSegments so they can never diverge.
+    double leftY  = 7.175;
+    double rightY = 0.876;
     Pose2d leftCorner  = isRed
-        ? new Pose2d(farXRed(),   7.248, Rotation2d.fromDegrees(0.0))
-        : new Pose2d(farXBlue(),  7.248, Rotation2d.fromDegrees(180.0));
+        ? new Pose2d(farXRed(),   leftY,  Rotation2d.fromDegrees(0.0))
+        : new Pose2d(farXBlue(),  leftY,  Rotation2d.fromDegrees(180.0));
     Pose2d rightCorner = isRed
-        ? new Pose2d(farXRed(),   0.624, Rotation2d.fromDegrees(0.0))
-        : new Pose2d(farXBlue(),  0.624, Rotation2d.fromDegrees(180.0));
+        ? new Pose2d(farXRed(),   rightY, Rotation2d.fromDegrees(0.0))
+        : new Pose2d(farXBlue(),  rightY, Rotation2d.fromDegrees(180.0));
 
     double distToLeft  = currentPose.getTranslation().getDistance(leftCorner.getTranslation());
     double distToRight = currentPose.getTranslation().getDistance(rightCorner.getTranslation());
@@ -172,25 +174,34 @@ public class NeutralZoneSweepSimplifiedCommand extends Command {
     return AutoBuilder.pathfindToPose(entryPose, pathConstraints);
   }
 
-  // Returns the near-wall X for Blue (their driver-station side, always present).
-  private static double nearXBlue() { return 5.976; }
+  // Returns the near-wall X for Blue — must clear Blue hub right face (181.6+23.5=205.1in) + turning radius + margin.
+  // 205.1 + 28.5 + 6 = 239.6in = 6.086m
+  private static double nearXBlue() { return 6.086; }
 
-  // Returns the far-wall X for Blue (Red's driver-station side, shortened on practice field).
-  private static double farXBlue()  { return RobotContainer.COMPETITION_MODE ? 11.574 : 9.024; }
+  // Returns the far-wall X for Blue — must clear Red hub left face (468.5-23.5=445.0in) - turning radius - margin.
+  // 445.0 - 28.5 - 6 = 410.5in = 10.427m (competition). Practice field is shorter so Red hub is not a factor.
+  // Practice value pulled in 8in from original 9.024m for intake clearance safety.
+  private static double farXBlue()  { return RobotContainer.COMPETITION_MODE ? 10.427 : 8.821; }
 
-  // Returns the near-wall X for Red (their driver-station side, always present).
-  private static double nearXRed()  { return RobotContainer.COMPETITION_MODE ? 10.564 : 9.024; }
+  // Returns the near-wall X for Red — must clear Red hub left face (468.5-23.5=445.0in) - turning radius - margin.
+  // 445.0 - 28.5 - 6 = 410.5in = 10.427m (competition). Practice uses same shortened X as farXBlue.
+  private static double nearXRed()  { return RobotContainer.COMPETITION_MODE ? 10.427 : 8.821; }
 
-  // Returns the far-wall X for Red (Blue's driver-station side, always present).
-  private static double farXRed()   { return 5.976; }
+  // Returns the far-wall X for Red — must clear Blue hub right face (181.6+23.5=205.1in) + turning radius + margin.
+  // 205.1 + 28.5 + 6 = 239.6in = 6.086m (same virtual wall as nearXBlue, mirrored).
+  private static double farXRed()   { return 6.086; }
 
   private List<SweepSegment> buildSegments(boolean isRed) {
 
     double nearX = isRed ? nearXRed()  : nearXBlue();
     double farX  = isRed ? farXRed()   : farXBlue();
-    double leftY   = 7.248;
+    // Wall clearance: robot width=38in, intake extends 12in, turning radius=28.5in from center.
+    // Minimum safe center-to-wall = 28.5in + 6in margin = 34.5in = 0.876m.
+    // leftY: 8.051 - 0.876 = 7.175m (34.5in from left wall)
+    // rightY: 0.876m (34.5in from right wall)
+    double leftY   = 7.175;
     double centerY = 3.936;
-    double rightY  = 0.624;
+    double rightY  = 0.876;
 
     // Intake heading: faces toward near wall while collecting (pushing fuel back to alliance zone).
     // Blue near wall is West (180 deg), Red near wall is East (0 deg).

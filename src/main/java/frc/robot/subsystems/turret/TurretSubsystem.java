@@ -41,6 +41,10 @@ public class TurretSubsystem extends SubsystemBase {
   // Fire interlock — must be explicitly enabled by operator each match
   private boolean fireEnabled = false;
 
+  // Tracking gate — operator must confirm turret is homed before aim pipeline runs.
+  // Until this is true, updateAimFromProvider() is a no-op and no motors move.
+  private boolean trackingEnabled = false;
+
   // Hood step positions: 10% increments of travel (0%, 10%, 20%, ... 100%)
   private static final double[] HOOD_STEPS = {
     0.0,
@@ -71,10 +75,10 @@ public class TurretSubsystem extends SubsystemBase {
   private int hallHighCount = 0;
   private int hallLowCount  = 0;
 
-  // Hood homing state — hood creeps down until stall is detected at the hard stop, then zeroes encoder
+  // Hood homing state — hood creeps down until the limit switch fires, then zeroes encoder
   private boolean hoodHomed  = false;
   private boolean hoodHoming = false;
-  private int hoodHomingStallLoopCount = 0;
+  private int hoodHomingStallLoopCount = 0; // fallback stall counter if limit switch fails
 
   // Edge detection for hall sensor — log once on rising edge for console visibility
   private boolean lastHallCCW = false;
@@ -157,9 +161,16 @@ public class TurretSubsystem extends SubsystemBase {
   public void enableFire()  { fireEnabled = true; }
   public void disableFire() { fireEnabled = false; }
 
+  // Allows the aim pipeline to start running. Called once after the lockout confirm.
+  public void enableTracking() { trackingEnabled = true; }
+
   // True when the current target bearing is within the turret's physical travel range.
   // False = target is in the ~28 deg blind spot; robot must rotate to bring it in range.
   public boolean isTurretReachable() { return aimGoal.targetReachable; }
+
+  // RPS values last solved by the aim pipeline for the current robot distance.
+  public double getAimGoalFrontRps() { return aimGoal.flywheelFrontRps; }
+  public double getAimGoalBackRps()  { return aimGoal.flywheelBackRps; }
 
   // Returns true only when all conditions are satisfied for a safe shot
   public boolean isReadyToShoot() {
@@ -243,15 +254,23 @@ public class TurretSubsystem extends SubsystemBase {
     SmartLogger.logConsole("Turret homing cancelled", "Turret");
   }
 
-  // Starts hood homing — creeps downward until stall current is detected at the hard stop, then zeroes encoder.
-  // When the limit switch is wired, replace the stall check in periodic() with hoodLimitSwitchRaw.
+  // Starts hood homing — creeps downward until the limit switch fires, then zeroes encoder.
+  // If the switch is already pressed, declares homed immediately without moving.
+  // Falls back to stall-current detection if the limit switch never fires.
   public void hoodHome() {
     if (hoodHoming) return; // already in progress
-    hoodHomed = false; // allow re-homing if called again
+    if (inputs.hoodLimitSwitchRaw) {
+      // Switch is already pressed — we're at the home position already
+      hoodHomed = true;
+      io.zeroHoodEncoder();
+      SmartLogger.logConsole("Hood already at home (limit switch pressed) — encoder zeroed", "Turret");
+      return;
+    }
+    hoodHomed = false;
     hoodHoming = true;
     hoodHomingStallLoopCount = 0;
     setpoints.hoodPercent = -Constants.Turret.HOOD_HOME_SPEED_PERCENT;
-    SmartLogger.logConsole("Hood homing started - creeping to hard stop", "Turret");
+    SmartLogger.logConsole("Hood homing started - creeping to limit switch", "Turret");
   }
 
   public boolean isHomed()     { return homed; }
@@ -345,19 +364,23 @@ public class TurretSubsystem extends SubsystemBase {
   // ---- Aim goal (closed loop) ----
 
   public void setAimGoal(TurretAimGoal goal) {
-    aimGoal.turretRotations = goal.turretRotations;
-    aimGoal.hoodRotations   = goal.hoodRotations;
-    aimGoal.flywheelPercent = goal.flywheelPercent;
-    aimGoal.enable          = goal.enable;
+    aimGoal.turretRotations  = goal.turretRotations;
+    aimGoal.hoodRotations    = goal.hoodRotations;
+    aimGoal.flywheelPercent  = goal.flywheelPercent;
+    aimGoal.useRps           = goal.useRps;
+    aimGoal.flywheelFrontRps = goal.flywheelFrontRps;
+    aimGoal.flywheelBackRps  = goal.flywheelBackRps;
+    aimGoal.enable           = goal.enable;
+    aimGoal.targetReachable  = goal.targetReachable;
   }
 
   public boolean updateAimFromProvider(TurretAimProvider provider) {
-    if (provider == null) return false;
+    if (provider == null || !trackingEnabled) return false;
     boolean valid = provider.update(providerGoal);
-    if (valid) {
-      manualPositionOverride = false; // aim pipeline takes over when a real target is available
-      setAimGoal(providerGoal);
-    }
+    // Always apply the goal — even when enable=false (deadzone), we need aimGoal.enable
+    // and targetReachable to update so the turret holds position instead of chasing a stale target.
+    manualPositionOverride = false;
+    setAimGoal(providerGoal);
     return valid;
   }
 
@@ -490,24 +513,26 @@ public class TurretSubsystem extends SubsystemBase {
       homingStallLoopCount = 0;
     }
 
-    // Complete hood homing via stall detection at the hard stop.
-    // Requires sustained stall current for several loops to avoid false triggers.
+    // Complete hood homing — limit switch is primary, stall current is fallback.
     if (hoodHoming) {
-      if (inputs.hoodMotorCurrentAmps >= Constants.Turret.HOOD_HOMING_STALL_CURRENT_AMPS) {
+      boolean limitHit = inputs.hoodLimitSwitchRaw;
+      boolean stallHit = inputs.hoodMotorCurrentAmps >= Constants.Turret.HOOD_HOMING_STALL_CURRENT_AMPS;
+      if (stallHit) {
         hoodHomingStallLoopCount++;
-        if (hoodHomingStallLoopCount >= Constants.Turret.HOOD_HOMING_STALL_LOOP_THRESHOLD) {
-          hoodHoming = false;
-          hoodHomed  = true;
-          hoodHomingStallLoopCount = 0;
-          io.zeroHoodEncoder();
-          // Back off slightly so the motor isn't sitting against the hard stop.
-          setpoints.hoodPositionMotorRotations = Constants.Turret.HOOD_HOME_BACKOFF_ROTATIONS;
-          setpoints.useHoodPosition = true;
-          setpoints.hoodPercent = 0.0;
-          SmartLogger.logConsole("Hood homed — encoder zeroed at hard stop (stall detected)", "Turret");
-        }
       } else {
         hoodHomingStallLoopCount = 0;
+      }
+      boolean stallConfirmed = hoodHomingStallLoopCount >= Constants.Turret.HOOD_HOMING_STALL_LOOP_THRESHOLD;
+      if (limitHit || stallConfirmed) {
+        hoodHoming = false;
+        hoodHomed  = true;
+        hoodHomingStallLoopCount = 0;
+        io.zeroHoodEncoder();
+        setpoints.hoodPositionMotorRotations = Constants.Turret.HOOD_HOME_BACKOFF_ROTATIONS;
+        setpoints.useHoodPosition = true;
+        setpoints.hoodPercent = 0.0;
+        SmartLogger.logConsole(
+            "Hood homed — encoder zeroed (" + (limitHit ? "limit switch" : "stall fallback") + ")", "Turret");
       }
     }
 
@@ -595,6 +620,7 @@ public class TurretSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Turret/Phase", Constants.Turret.CURRENT_PHASE.toString());
     SmartLogger.logReplay("Turret/Homed", homed);
     SmartLogger.logReplay("Turret/HoodHomed", hoodHomed);
+    SmartLogger.logReplay("Turret/HoodLimitSwitchPressed", inputs.hoodLimitSwitchRaw); // true = switch pressed (active-low after inversion)
     SmartLogger.logReplay("Turret/FireEnabled", fireEnabled);
 
     SmartLogger.logReplay("Turret/TargetMotorRot", outputs.turretPositionMotorRotations);
@@ -645,6 +671,17 @@ public class TurretSubsystem extends SubsystemBase {
     manualPositionOverride = true;
     setpoints.turretPositionMotorRotations = clamped;
     setpoints.useTurretPosition = true;
+  }
+
+  // Emergency fallback: locks the turret to the HUBCLOSE fixed preset and bypasses the aim pipeline.
+  // Call when QuestNav is unreliable — robot must be physically positioned at hub close.
+  // Flywheels are set to HUBCLOSE RPS; operator fire button still required to shoot.
+  public void activateEmergencyHubClose() {
+    setTurretPositionTarget(Constants.TurretTargets.HUBCLOSE_TURRET_ROT);
+    setHoodPositionTarget(Constants.TurretTargets.HUBCLOSE_HOOD_ROT);
+    setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
+    setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
+    SmartLogger.logConsole("EMERGENCY HUBCLOSE activated — tracking disabled, fixed preset loaded", "Emergency");
   }
 }
 

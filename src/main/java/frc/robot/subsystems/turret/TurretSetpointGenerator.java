@@ -5,11 +5,15 @@ import frc.robot.Constants;
 // Converts aim goals into motor setpoints.
 // Turret rotation uses MotionMagic position control — goal is in turret rotations,
 // converted to motor rotations via gear ratio before being sent to the motor.
+// Hood uses MotionMagic position control. Flywheel uses independent front/back RPS when useRps=true.
 public class TurretSetpointGenerator {
-  private static final double HOOD_KP = 0.15; // hood is still open-loop percent
 
   public void update(TurretState state, TurretAimGoal goal, TurretSetpoints setpoints) {
     if (!goal.enable) {
+      // No active goal — drop to open-loop zero so turret holds its current position via brake mode.
+      // Do not leave a stale position setpoint active or MotionMagic will keep driving toward it.
+      setpoints.useTurretPosition = false;
+      setpoints.turretPercent = 0.0;
       return;
     }
 
@@ -23,11 +27,11 @@ public class TurretSetpointGenerator {
     setpoints.turretPositionMotorRotations = motorRot;
     setpoints.useTurretPosition = true;
 
-    setpoints.hoodPercent     = clamp((goal.hoodRotations - state.hoodMotorPositionRotations) * HOOD_KP);
-    setpoints.flywheelPercent = clamp(goal.flywheelPercent);
-  }
+    setpoints.useHoodPosition              = true;
+    setpoints.hoodPositionMotorRotations   = goal.hoodRotations;
 
-  private double clamp(double value) {
-    return Math.max(-1.0, Math.min(1.0, value));
+    // Flywheels are not set here — the operator controls them independently via setFlywheelFrontRps/BackRps.
+    // The aim goal carries the correct RPS values for the current distance, but applying them
+    // is gated by the operator (right bumper) so they never spin without a deliberate command.
   }
 }

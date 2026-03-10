@@ -155,17 +155,20 @@ public class WallTraversalCommand extends Command {
   }
 
   // ---- Coordinate constants ----
+  // All values match the safe boundaries from the three sweep commands.
+  // Turning radius (28.5in) + 6in margin = 34.5in = 0.876m from every wall/obstacle.
+  // Tower footprint: X 0-44in, Y 123.5-170.5in. backupX clears tower at 84in=2.134m.
   private static final double FIELD_LEN  = FIELD_LENGTH_METERS;
   private static final double AZ_FAR_X  = 3.3;     // alliance zone far edge (neutral boundary)
-  private static final double AZ_NEAR_X = 0.540;   // alliance zone near edge (driver station)
-  private static final double AZ_BACK_X = 1.530;   // backup X to clear outpost
-  private static final double NZ_NEAR_X_BLUE = 5.976;   // neutral zone near edge Blue side
-  private static final double NZ_FAR_X_BLUE  = RobotContainer.COMPETITION_MODE ? 11.574 : 9.024;
-  private static final double NZ_NEAR_X_RED  = RobotContainer.COMPETITION_MODE ? 10.564 : 9.024;
-  private static final double NZ_FAR_X_RED   = 5.976;
-  private static final double LEFT_Y    = 7.133;
-  private static final double RIGHT_Y   = 0.468;
-  private static final double TOWER_Y   = 2.633;   // tower pass Y in alliance zone
+  private static final double AZ_NEAR_X = 0.876;   // 34.5in from driver station wall
+  private static final double AZ_BACK_X = 2.134;   // 84in — clears tower far face + turning radius
+  private static final double NZ_NEAR_X_BLUE = 6.086;   // clears Blue hub virtual wall
+  private static final double NZ_FAR_X_BLUE  = RobotContainer.COMPETITION_MODE ? 10.427 : 8.821;
+  private static final double NZ_NEAR_X_RED  = RobotContainer.COMPETITION_MODE ? 10.427 : 8.821;
+  private static final double NZ_FAR_X_RED   = 6.086;   // clears Blue hub virtual wall (mirrored)
+  private static final double LEFT_Y    = 7.175;   // 34.5in from left physical wall
+  private static final double RIGHT_Y   = 0.876;   // 34.5in from right physical wall
+  private static final double TOWER_Y   = 2.134;   // 84in — clears tower right face + turning radius
 
   // ---- Segment building ----
   private List<TraversalSegment> buildSegments(

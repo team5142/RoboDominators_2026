@@ -82,6 +82,13 @@ public class IntakeSubsystem extends SubsystemBase {
   private boolean extensionStalled = false;
   private int stallLoopCount = 0;
   private static final int STALL_LOOP_THRESHOLD = 30; // ~600ms at 50Hz — long enough to ignore momentary ball compression
+  private int ballResistanceLoopCount = 0;
+
+  // Roller under-load detection — high current while spinning suggests balls present in hopper.
+  // TODO: tune ROLLER_LOAD_CURRENT_AMPS after observing Intake/RollerCurrentAmps in AdvantageScope.
+  private boolean rollerUnderLoad = false;
+  private static final int ROLLER_LOAD_LOOP_THRESHOLD = 5; // ~100ms sustained to confirm load, not a momentary spike
+  private int rollerLoadLoopCount = 0;
 
   // Set true during SysId tests to bypass stall detection (high current is expected during characterization)
   private boolean sysIdActive = false;
@@ -138,13 +145,22 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // Start in a known safe state then immediately home — same pattern as hood homing.
     stopAll();
-    startHoming();
+    if (Constants.Intake.HOPPER_TEST_MODE) {
+      // Hopper test: assume arm is already down, skip homing, lock out all extension movement.
+      extensionMotor.setPosition(Constants.Intake.EXTENSION_TARGET_ROTATIONS);
+      robotState.setIntakePosition(IntakePosition.EXTENDED);
+      SmartLogger.logConsole("Intake HOPPER_TEST_MODE — arm locked at extended, rollers only", "Intake");
+    } else {
+      startHoming();
+    }
   }
 
   // Begin homing sequence - always runs regardless of current state.
   // If the limit switch is already pressed (arm is up), zero immediately.
   // Otherwise retract until the switch trips.
+  // No-op in HOPPER_TEST_MODE — arm must stay down.
   public void startHoming() {
+    if (Constants.Intake.HOPPER_TEST_MODE) return;
     double rotations = positionSignal.refresh().getValueAsDouble();
     boolean switchRaw = limitSwitch.get();
     boolean atHome = switchRaw
@@ -165,8 +181,9 @@ public class IntakeSubsystem extends SubsystemBase {
   }
 
   // Extend the intake arm out over the bumper.
-  // Blocked until homing completes successfully.
+  // Blocked until homing completes successfully. No-op in HOPPER_TEST_MODE.
   public void extend() {
+    if (Constants.Intake.HOPPER_TEST_MODE) return;
     IntakePosition pos = robotState.getIntakePosition();
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.EXTENDED) return;
@@ -176,8 +193,9 @@ public class IntakeSubsystem extends SubsystemBase {
   }
 
   // Retract the intake arm back inside the frame.
-  // Blocked until homing completes successfully.
+  // Blocked until homing completes successfully. No-op in HOPPER_TEST_MODE.
   public void retract() {
+    if (Constants.Intake.HOPPER_TEST_MODE) return;
     IntakePosition pos = robotState.getIntakePosition();
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.RETRACTED) return;
@@ -209,12 +227,17 @@ public class IntakeSubsystem extends SubsystemBase {
     robotState.setIntakeRollerState(IntakeRollerState.STOPPED);
   }
 
+  // True when roller current has been elevated for several consecutive loops — suggests balls in hopper.
+  // Threshold must be tuned on hardware — watch Intake/RollerCurrentAmps in AdvantageScope.
+  public boolean isRollerUnderLoad() { return rollerUnderLoad; }
+
   public void stopAll() {
     stopExtension();
     stopRollers();
   }
 
   public boolean isExtensionStalled() { return extensionStalled; }
+  public boolean isRollersOn() { return robotState.getIntakeRollerState() == IntakeRollerState.INTAKING; }
 
   // Clear stall flag after the operator has acknowledged and moved the arm clear
   public void clearStall() { extensionStalled = false; }
@@ -283,6 +306,9 @@ public class IntakeSubsystem extends SubsystemBase {
 
     IntakePosition pos = robotState.getIntakePosition();
 
+    // In HOPPER_TEST_MODE skip homing/retract/extend — arm only moves for agitation.
+    if (!Constants.Intake.HOPPER_TEST_MODE) {
+
     // Homing: stop and zero as soon as the limit switch trips
     if (pos == IntakePosition.HOMING) {
       if (atHome) {
@@ -305,7 +331,11 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     }
 
-    // Extend: slow zone near target, then stop at soft limit
+    // Extend: moved outside HOPPER_TEST_MODE block — see below.
+
+    } // end !HOPPER_TEST_MODE
+
+    // Extend: slow zone near target, then stop at soft limit — runs in all modes (needed after agitate).
     if (pos == IntakePosition.EXTENDING) {
       double distToTarget = Constants.Intake.EXTENSION_TARGET_ROTATIONS - rotations;
       if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
@@ -317,7 +347,7 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     }
 
-    // Agitate: retract to mid-point, then re-extend to full target
+    // Agitate: retract to mid-point, then re-extend to full target — runs in all modes.
     if (pos == IntakePosition.AGITATING) {
       if (rotations <= Constants.Intake.AGITATE_RETRACT_ROTATIONS) {
         extensionStalled = false;
@@ -328,6 +358,22 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // Current-based stall detection — skipped during SysId (high current is expected there)
     if (!sysIdActive && (pos == IntakePosition.HOMING || pos == IntakePosition.EXTENDING || pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)) {
+
+      // Ball resistance check — only during retract/agitate. Back out instead of forcing through.
+      if ((pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)
+          && currentAmps > Constants.Intake.BALL_RESISTANCE_CURRENT_AMPS
+          && currentAmps <= Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
+        ballResistanceLoopCount++;
+        if (ballResistanceLoopCount >= Constants.Intake.BALL_RESISTANCE_LOOP_THRESHOLD) {
+          ballResistanceLoopCount = 0;
+          extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
+          robotState.setIntakePosition(IntakePosition.EXTENDING);
+          SmartLogger.logConsole("Intake ball resistance — re-extending", "Intake");
+        }
+      } else {
+        ballResistanceLoopCount = 0;
+      }
+
       if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
         stallLoopCount++;
         if (stallLoopCount >= STALL_LOOP_THRESHOLD) {
@@ -346,6 +392,7 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     } else {
       stallLoopCount = 0;
+      ballResistanceLoopCount = 0;
     }
 
     // AScope logging — position and target on the same axis for direct comparison
@@ -359,6 +406,19 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
     SmartLogger.logReplay("Intake/State", pos.toString());
+
+    // Roller load detection — sustained high current while spinning suggests balls in hopper
+    double rollerAmps = rollerMotor.getOutputCurrent();
+    if (robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
+        && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS) {
+      rollerLoadLoopCount++;
+      if (rollerLoadLoopCount >= ROLLER_LOAD_LOOP_THRESHOLD) rollerUnderLoad = true;
+    } else {
+      rollerLoadLoopCount = 0;
+      rollerUnderLoad = false;
+    }
+    SmartLogger.logReplay("Intake/RollerCurrentAmps", rollerAmps);
+    SmartLogger.logReplay("Intake/RollerUnderLoad", rollerUnderLoad);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Intake/IsDeployed", pos == IntakePosition.EXTENDED || pos == IntakePosition.EXTENDING || pos == IntakePosition.AGITATING);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
