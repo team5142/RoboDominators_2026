@@ -15,7 +15,7 @@ import frc.robot.util.SmartLogger;
 
 // Practice/shop calibration tool - manually seeds robot pose to a known field position.
 // If FMS is attached, only works while DISABLED. Without FMS, works anytime (teleop calibration).
-// Verifies via QuestNav after seeding; retries up to MAX_SEED_ATTEMPTS if not confirmed.
+// Verifies via pose estimator after seeding; retries up to MAX_SEED_ATTEMPTS if not confirmed.
 public class SetStartingPoseCommand extends Command {
   private static final double CONFIRM_TOLERANCE_METERS = 0.15;
   private static final double CONFIRM_TOLERANCE_DEG = 5.0;
@@ -25,7 +25,6 @@ public class SetStartingPoseCommand extends Command {
   private final Pose2d targetPose;
   private final String positionName;
   private final GyroSubsystem gyro;
-  private final QuestNavSubsystem questNav;
   private final DriveSubsystem drive;
   private final PoseEstimatorSubsystem poseEstimator;
 
@@ -38,13 +37,12 @@ public class SetStartingPoseCommand extends Command {
       Pose2d targetPose,
       String positionName,
       GyroSubsystem gyro,
-      QuestNavSubsystem questNav,
+      QuestNavSubsystem questNav, // kept for call-site compatibility, not used internally
       DriveSubsystem drive,
       PoseEstimatorSubsystem poseEstimator) {
     this.targetPose = targetPose;
     this.positionName = positionName;
     this.gyro = gyro;
-    this.questNav = questNav;
     this.drive = drive;
     this.poseEstimator = poseEstimator;
     addRequirements(poseEstimator);
@@ -91,10 +89,12 @@ public class SetStartingPoseCommand extends Command {
   public void execute() {
     if (executionBlocked || confirmed) return;
 
-    Pose2d questPose = questNav.getRobotPose().orElse(null);
-    if (questPose != null) {
-      double posErr = questPose.getTranslation().getDistance(targetPose.getTranslation());
-      double rotErr = Math.abs(questPose.getRotation().minus(targetPose.getRotation()).getDegrees());
+    // Confirm via pose estimator (which was just seeded) rather than raw QuestNav pose.
+    // QuestNav reports in its own tracking space and doesn't know about the field seed.
+    Pose2d confirmedPose = poseEstimator.getEstimatedPose();
+    if (confirmedPose != null) {
+      double posErr = confirmedPose.getTranslation().getDistance(targetPose.getTranslation());
+      double rotErr = Math.abs(confirmedPose.getRotation().minus(targetPose.getRotation()).getDegrees());
 
       SmartDashboard.putNumber("Seed/PosErrorMeters", posErr);
       SmartDashboard.putNumber("Seed/RotErrorDeg", rotErr);

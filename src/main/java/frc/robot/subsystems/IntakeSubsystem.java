@@ -82,13 +82,20 @@ public class IntakeSubsystem extends SubsystemBase {
   private boolean extensionStalled = false;
   private int stallLoopCount = 0;
   private static final int STALL_LOOP_THRESHOLD = 30; // ~600ms at 50Hz — long enough to ignore momentary ball compression
+  @SuppressWarnings("unused") // used when ball resistance check is re-enabled
   private int ballResistanceLoopCount = 0;
 
   // Roller under-load detection — high current while spinning suggests balls present in hopper.
   // TODO: tune ROLLER_LOAD_CURRENT_AMPS after observing Intake/RollerCurrentAmps in AdvantageScope.
   private boolean rollerUnderLoad = false;
-  private static final int ROLLER_LOAD_LOOP_THRESHOLD = 5; // ~100ms sustained to confirm load, not a momentary spike
   private int rollerLoadLoopCount = 0;
+
+  // Roller jam recovery — brief reverse pulse when sustained overload is detected.
+  private boolean rollerJamPulsing = false;
+  private double rollerJamPulseStartSec = -1.0;
+
+  // Target position for bump lift — set by bumpLift(), cleared when arm reaches it
+  private double bumpLiftTarget = -1.0;
 
   // Set true during SysId tests to bypass stall detection (high current is expected during characterization)
   private boolean sysIdActive = false;
@@ -255,15 +262,25 @@ public class IntakeSubsystem extends SubsystemBase {
 
   // Partial retract to AGITATE_RETRACT_ROTATIONS, then re-extend to full target.
   // Only runs when the arm is already extended — ignored otherwise.
-  // Rollers stop during retract and restart when the arm finishes re-extending.
+  // Rollers keep spinning throughout the agitation cycle.
   public void agitate() {
     IntakePosition pos = robotState.getIntakePosition();
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.RETRACTED || pos == IntakePosition.RETRACTING) return;
     extensionStalled = false;
-    stopRollers(); // pause rollers while arm is retracting inward
     extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
     robotState.setIntakePosition(IntakePosition.AGITATING);
+  }
+
+  // Tiny retract during bump traversal to lift the intake ~1-2in off the ground.
+  // Only acts when extended — gravity pulls it back down once the motor stops.
+  // Safe to call twice (uphill + downhill) since it just pulses inward briefly.
+  public void bumpLift() {
+    IntakePosition pos = robotState.getIntakePosition();
+    if (pos != IntakePosition.EXTENDED && pos != IntakePosition.EXTENDING) return;
+    extensionStalled = false;
+    bumpLiftTarget = Constants.Intake.BUMP_LIFT_ROTATIONS;
+    robotState.setIntakePosition(IntakePosition.BUMP_LIFTING);
   }
 
   // SysId commands — wire into configureSysIdBindings() in RobotContainer.
@@ -299,7 +316,8 @@ public class IntakeSubsystem extends SubsystemBase {
     double velocityRps = velocitySignal.getValueAsDouble();
 
     boolean switchRaw = limitSwitch.get();
-    // Only trust the switch if the encoder agrees the arm is near home — guards against stuck-ON failure
+    // Only trust the switch if the encoder agrees the arm is near home — guards against stuck-ON failure.
+    // During homing we use switchRaw directly since the encoder may not be zeroed yet.
     boolean atHome = switchRaw
         && (rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS);
     robotState.setIntakeLimitSwitch(atHome);
@@ -307,15 +325,19 @@ public class IntakeSubsystem extends SubsystemBase {
     IntakePosition pos = robotState.getIntakePosition();
 
     // In HOPPER_TEST_MODE skip homing/retract/extend — arm only moves for agitation.
+    
     if (!Constants.Intake.HOPPER_TEST_MODE) {
 
-    // Homing: stop and zero as soon as the limit switch trips
+    // Homing: stop and zero as soon as the limit switch trips (use raw — encoder may not be zeroed yet)
     if (pos == IntakePosition.HOMING) {
-      if (atHome) {
+      if (switchRaw) {
         stopExtension();
         extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
         robotState.setIntakePosition(IntakePosition.RETRACTED);
         SmartLogger.logConsole("Intake homing complete - encoder zeroed", "Intake");
+      } else {
+        // Re-issue retract every loop — CTRE clears motor output on disable so we must reapply on enable.
+        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
       }
     }
 
@@ -341,7 +363,7 @@ public class IntakeSubsystem extends SubsystemBase {
       if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
         stopExtension();
         robotState.setIntakePosition(IntakePosition.EXTENDED);
-        spinIn(); // auto-start rollers once the arm is fully out
+        // spinIn(); // rollers now manual via operator B button
       } else if (distToTarget <= Constants.Intake.EXTEND_SLOW_ZONE_ROTATIONS) {
         extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SLOW_SPEED));
       }
@@ -356,23 +378,32 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     }
 
+    // Bump lift: retract to BUMP_LIFT_ROTATIONS then stop — gravity returns the arm to ground.
+    if (pos == IntakePosition.BUMP_LIFTING) {
+      if (rotations <= bumpLiftTarget) {
+        stopExtension();
+        bumpLiftTarget = -1.0;
+        robotState.setIntakePosition(IntakePosition.EXTENDED);
+      }
+    }
+
     // Current-based stall detection — skipped during SysId (high current is expected there)
     if (!sysIdActive && (pos == IntakePosition.HOMING || pos == IntakePosition.EXTENDING || pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)) {
 
-      // Ball resistance check — only during retract/agitate. Back out instead of forcing through.
-      if ((pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)
-          && currentAmps > Constants.Intake.BALL_RESISTANCE_CURRENT_AMPS
-          && currentAmps <= Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
-        ballResistanceLoopCount++;
-        if (ballResistanceLoopCount >= Constants.Intake.BALL_RESISTANCE_LOOP_THRESHOLD) {
-          ballResistanceLoopCount = 0;
-          extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
-          robotState.setIntakePosition(IntakePosition.EXTENDING);
-          SmartLogger.logConsole("Intake ball resistance — re-extending", "Intake");
-        }
-      } else {
-        ballResistanceLoopCount = 0;
-      }
+      // Ball resistance check — disabled temporarily to allow arm to push through (2026-03-11)
+      // if ((pos == IntakePosition.RETRACTING || pos == IntakePosition.AGITATING)
+      //     && currentAmps > Constants.Intake.BALL_RESISTANCE_CURRENT_AMPS
+      //     && currentAmps <= Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
+      //   ballResistanceLoopCount++;
+      //   if (ballResistanceLoopCount >= Constants.Intake.BALL_RESISTANCE_LOOP_THRESHOLD) {
+      //     ballResistanceLoopCount = 0;
+      //     extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
+      //     robotState.setIntakePosition(IntakePosition.EXTENDING);
+      //     SmartLogger.logConsole("Intake ball resistance — re-extending", "Intake");
+      //   }
+      // } else {
+      //   ballResistanceLoopCount = 0;
+      // }
 
       if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
         stallLoopCount++;
@@ -404,18 +435,40 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Intake/VelocityRps", velocityRps);
     SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
     SmartLogger.logReplay("Intake/LimitSwitch", atHome);
+    SmartLogger.logReplay("Intake/LimitSwitchRaw", switchRaw); // raw pin state before encoder validation
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
     SmartLogger.logReplay("Intake/State", pos.toString());
 
-    // Roller load detection — sustained high current while spinning suggests balls in hopper
+    // Roller load detection and jam recovery.
+    // If sustained overload while intaking: fire a brief reverse pulse then resume.
     double rollerAmps = rollerMotor.getOutputCurrent();
-    if (robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
+    double nowSec = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
+
+    if (rollerJamPulsing) {
+      // Currently in reverse pulse — check if duration has elapsed
+      if (nowSec - rollerJamPulseStartSec >= Constants.Intake.ROLLER_JAM_REVERSE_SEC) {
+        rollerJamPulsing = false;
+        rollerLoadLoopCount = 0;
+        rollerMotor.set(Constants.Intake.ROLLER_INTAKE_SPEED);
+        robotState.setIntakeRollerState(IntakeRollerState.INTAKING);
+        SmartLogger.logConsole("Intake roller jam cleared — resuming intake", "Intake");
+      }
+    } else if (robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
         && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS) {
       rollerLoadLoopCount++;
-      if (rollerLoadLoopCount >= ROLLER_LOAD_LOOP_THRESHOLD) rollerUnderLoad = true;
+      rollerUnderLoad = true;
+      if (rollerLoadLoopCount >= Constants.Intake.ROLLER_JAM_LOOP_THRESHOLD) {
+        rollerLoadLoopCount = 0;
+        rollerJamPulsing = true;
+        rollerJamPulseStartSec = nowSec;
+        rollerMotor.set(Constants.Intake.ROLLER_REVERSE_SPEED);
+        robotState.setIntakeRollerState(IntakeRollerState.REVERSING);
+        SmartLogger.logConsole("Intake roller jam — reverse pulse", "Intake");
+      }
     } else {
       rollerLoadLoopCount = 0;
-      rollerUnderLoad = false;
+      rollerUnderLoad = robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
+          && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS;
     }
     SmartLogger.logReplay("Intake/RollerCurrentAmps", rollerAmps);
     SmartLogger.logReplay("Intake/RollerUnderLoad", rollerUnderLoad);

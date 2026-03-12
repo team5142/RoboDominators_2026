@@ -2,6 +2,7 @@ package frc.robot.subsystems.turret;
 
 import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.configs.AudioConfigs;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
@@ -147,6 +148,12 @@ public class TurretIOCTRE implements TurretIO {
     turretConfig.MotorOutput = turretOutput;
     turretConfig.CurrentLimits.StatorCurrentLimit = 40.0; // raised from 20A — energy chain drag requires more torque
     turretConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    // Disable limit-hit beep on the turret motor — soft limits are enforced in software
+    AudioConfigs turretAudio = new AudioConfigs();
+    turretAudio.BeepOnBoot = false;
+    turretAudio.BeepOnConfig = false;
+    turretAudio.AllowMusicDurDisable = false;
+    turretConfig.Audio = turretAudio;
 
     // Slot 0: MotionMagic PID + feedforward gains — tune kP in AdvantageScope
     Slot0Configs slot0 = new Slot0Configs();
@@ -180,7 +187,7 @@ public class TurretIOCTRE implements TurretIO {
 
   @Override
   public void updateInputs(TurretIOInputs inputs) {
-    inputs.hoodLimitSwitchRaw = !hoodLimitSwitch.get(); // active-low — true when switch is pressed
+    inputs.hoodLimitSwitchRaw = hoodLimitSwitch.get(); // true when switch is pressed
     inputs.hallCCWRaw         = !hallCCW.get();          // active-low — true when magnet is sensed
 
     if (hoodMotor != null) {

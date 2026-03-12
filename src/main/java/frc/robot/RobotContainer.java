@@ -20,6 +20,7 @@ import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.commands.auto.AutoCommands;
+import frc.robot.commands.auto.ShootInPlaceAuto;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
 import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
@@ -198,6 +199,7 @@ public class RobotContainer {
     }
     
     autoChooser = AutoBuilder.buildAutoChooser(); // Scans deploy/pathplanner/autos/ for named autos
+    autoChooser.addOption("ShootInPlace", new ShootInPlaceAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem));
     SmartDashboard.putData("Auto Chooser", autoChooser); // Sends chooser widget to dashboard
     robotState.setSysIdMode(SYSID_MODE);
     poseEstimator.setAutoChooser(autoChooser); // Lets pose estimator read auto start poses
@@ -317,16 +319,22 @@ public class RobotContainer {
     // ========== OPERATOR CONTROLLER BINDINGS ==========
 
     // --- INTAKE ---
-    // Y: toggle extend/retract; rollers auto-start on extend, auto-stop on retract.
+    // Y: toggle extend/retract. Rollers no longer auto-start — use B to run them manually.
+    // Retracts from any "arm is out" state (EXTENDED, EXTENDING, AGITATING, BUMP_LIFTING).
     new JoystickButton(operatorController, XboxController.Button.kY.value)
         .onTrue(Commands.runOnce(() -> {
           if (intakeSubsystem == null) return;
-          if (intakeSubsystem.isExtended()) {
+          RobotState.IntakePosition pos = robotState.getIntakePosition();
+          boolean armIsOut = pos == RobotState.IntakePosition.EXTENDED
+              || pos == RobotState.IntakePosition.EXTENDING
+              || pos == RobotState.IntakePosition.AGITATING
+              || pos == RobotState.IntakePosition.BUMP_LIFTING;
+          if (armIsOut) {
             intakeSubsystem.stopRollers();
             intakeSubsystem.retract();
           } else {
             intakeSubsystem.extend();
-            intakeSubsystem.spinIn();
+            // intakeSubsystem.spinIn(); // removed — rollers now manual via B
           }
         }));
     // X (hold): reverse rollers to spit out.
@@ -334,15 +342,16 @@ public class RobotContainer {
         .whileTrue(Commands.startEnd(
           () -> { if (intakeSubsystem != null) intakeSubsystem.spinOut(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    // A (hold): agitate intake.
+    // A (press): agitate intake once — arm retracts to mid-point then re-extends automatically.
+    // Using onTrue/runOnce so it fires once and doesn't fight with Y's retract.
     new JoystickButton(operatorController, XboxController.Button.kA.value)
-        .whileTrue(Commands.startEnd(
-          () -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); },
-          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    // B: toggle intake rollers on/off manually without moving the arm.
+        .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
+    // B: toggle intake rollers on/off — blocked when arm is retracted or retracting.
+    // // Old B behavior (reverse intake): intakeSubsystem.spinOut() — commented out, restore if needed
     new JoystickButton(operatorController, XboxController.Button.kB.value)
         .onTrue(Commands.runOnce(() -> {
           if (intakeSubsystem == null) return;
+          if (!intakeSubsystem.isExtended()) return; // no rollers when arm is not out
           if (intakeSubsystem.isRollersOn()) {
             intakeSubsystem.stopRollers();
           } else {
@@ -361,9 +370,11 @@ public class RobotContainer {
         }));
     // RT (hold): shoot — spindexer + singulator full feed cycle.
     // Blocked while intake arm is moving to avoid crossing ball path.
+    // Also blocked by phase-aware zone gate in FMS/Practice mode.
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.startEnd(
           () -> {
+            if (!robotState.shouldShootInZone()) return;
             boolean spindexerAllowed = intakeSubsystem == null
                 || (robotState.getIntakePosition() != RobotState.IntakePosition.EXTENDING
                 &&  robotState.getIntakePosition() != RobotState.IntakePosition.RETRACTING);
@@ -665,7 +676,8 @@ public class RobotContainer {
         driveSubsystem,
         side,
         modifier,
-        DynamicBumpTraversalCommand.createPrototypeConfig());
+        DynamicBumpTraversalCommand.createPrototypeConfig(),
+        intakeSubsystem);
   }
 
   private Pose2d getRebuiltRightCornerPose() {

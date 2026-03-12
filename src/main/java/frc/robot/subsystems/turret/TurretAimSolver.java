@@ -17,7 +17,8 @@ public class TurretAimSolver {
   // Values update freely while moving, then freeze once speed drops below threshold.
   private double latchedTurretRotations = 0.0;
   private double latchedDistance        = 0.0;
-  private boolean latchInitialized = false;
+  private boolean latchInitialized      = false;
+  private boolean wasInDeadzone         = false; // true last cycle — forces one free latch update on re-entry
 
   public void solve(TurretAimInputs inputs, TurretAimGoal goal) {
     Constants.Turret.TurretPhase phase = Constants.Turret.CURRENT_PHASE;
@@ -78,10 +79,14 @@ public class TurretAimSolver {
     boolean rawReachable = motorTargetRaw >= Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT
         && motorTargetRaw <= Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT;
 
-    // Freeze the latch when effectively stopped AND target is reachable — suppresses QuestNav drift.
-    // Uses a tighter threshold (0.1 m/s) than the fire gate so the latch updates freely while moving.
-    // If target is in the deadzone, always update so the latch escapes as soon as robot rotates out.
-    boolean shouldFreeze = effectivelyStopped && rawReachable;
+    // Freeze the latch when fully stopped (translation AND rotation) AND target is reachable.
+    // If we just exited the deadzone, force one free update so the latch picks up the live
+    // bearing before it can freeze — prevents locking onto the stale wrap-edge position.
+    boolean justExitedDeadzone = wasInDeadzone && rawReachable;
+    wasInDeadzone = !rawReachable;
+    boolean fullyStationary = effectivelyStopped
+        && inputs.robotOmegaRadPerSecond < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
+    boolean shouldFreeze = fullyStationary && rawReachable && !justExitedDeadzone;
     if (!latchInitialized || !shouldFreeze) {
       latchedTurretRotations = rawTurretRotations;
       latchedDistance        = distance;
@@ -90,15 +95,27 @@ public class TurretAimSolver {
 
     SmartLogger.logReplay("Turret/AimSolver/HeadingDeg",             Math.toDegrees(inputs.robotPose.getRotation().getRadians())); // filtered
     SmartLogger.logReplay("Turret/AimSolver/HeadingRawDeg",          Math.toDegrees(rawHeadingRad)); // raw — for comparison
+    SmartLogger.logReplay("Turret/AimSolver/OmegaRadPerSec",         inputs.robotOmegaRadPerSecond);
     SmartLogger.logReplay("Turret/AimSolver/TurretTargetRot",        rawTurretRotations);
     SmartLogger.logReplay("Turret/AimSolver/TurretTargetRotLatched",  latchedTurretRotations);
     SmartLogger.logReplay("Turret/AimSolver/DistanceM",              distance);
     SmartLogger.logReplay("Turret/AimSolver/DistanceLatched",        latchedDistance);
 
+    // Through-360 diagnostics — watch these together in AScope to diagnose wrap/re-acquire issues
+    SmartLogger.logReplay("Turret/Through360/RawTurretRot",          rawTurretRotations);
+    SmartLogger.logReplay("Turret/Through360/LatchedTurretRot",      latchedTurretRotations);
+    SmartLogger.logReplay("Turret/Through360/RawReachable",          rawReachable);
+    SmartLogger.logReplay("Turret/Through360/GoalTargetReachable",   goal.targetReachable);
+    SmartLogger.logReplay("Turret/Through360/WasInDeadzone",         wasInDeadzone);
+    SmartLogger.logReplay("Turret/Through360/JustExitedDeadzone",    justExitedDeadzone);
+    SmartLogger.logReplay("Turret/Through360/FullyStationary",       fullyStationary);
+    SmartLogger.logReplay("Turret/Through360/ShouldFreeze",          shouldFreeze);
+    SmartLogger.logReplay("Turret/Through360/MotorTargetRaw",        motorTargetRaw);
+    SmartLogger.logReplay("Turret/Through360/OmegaRadPerSec",        inputs.robotOmegaRadPerSecond);
+
     double motorTarget = latchedTurretRotations * Constants.Turret.TURRET_GEAR_RATIO
         + Constants.Turret.TURRET_FORWARD_MOTOR_ROT;
-    goal.targetReachable = motorTarget >= Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT
-        && motorTarget <= Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT;
+    goal.targetReachable = rawReachable; // use live bearing for reachability — latch is stale during wrap
     SmartLogger.logReplay("Turret/AimSolver/TargetReachable", goal.targetReachable);
     SmartLogger.logReplay("Turret/AimSolver/MotorTarget", motorTarget);
 
@@ -122,10 +139,21 @@ public class TurretAimSolver {
       return;
     }
 
-    // Phase 3 and 4: disable goal if target is in the deadzone — prevents turret slamming to soft limit.
+    // Phase 3 and 4: target is in the deadzone — pre-position to the closer soft limit edge
+    // so the turret is already swung to the correct side when the target re-emerges.
+    // Edge values must be in robot-relative turret rotations (same frame as goal.turretRotations):
+    // robotRelative = (motorLimit - TURRET_FORWARD_MOTOR_ROT) / TURRET_GEAR_RATIO
     if (!goal.targetReachable) {
-      goal.enable = false;
-      SmartLogger.logReplay("Turret/AimSolver/WhyNotReady", "target in deadzone");
+      double leftEdge  = (Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT
+                          - Constants.Turret.TURRET_FORWARD_MOTOR_ROT) / Constants.Turret.TURRET_GEAR_RATIO;
+      double rightEdge = (Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT
+                          - Constants.Turret.TURRET_FORWARD_MOTOR_ROT) / Constants.Turret.TURRET_GEAR_RATIO;
+      double distToLeft  = Math.abs(rawTurretRotations - leftEdge);
+      double distToRight = Math.abs(rawTurretRotations - rightEdge);
+      goal.turretRotations = (distToLeft <= distToRight) ? leftEdge : rightEdge;
+      goal.enable = true;
+      SmartLogger.logReplay("Turret/AimSolver/WhyNotReady", "target in deadzone — wrapping");
+      SmartLogger.logReplay("Turret/Through360/WrapEdgeRot", goal.turretRotations);
       return;
     }
 

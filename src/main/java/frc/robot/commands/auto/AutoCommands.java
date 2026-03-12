@@ -66,6 +66,44 @@ public final class AutoCommands {
             }, turret, spindexer, singulator));
         }
 
+        // Flywheel spin-up / spin-down — call FlywheelsOn before ShootStart, FlywheelsOff after ShootStop.
+        // Uses HUBCLOSE RPS targets as initial speed; aim pipeline overrides dynamically once tracking enabled.
+        // TrackingEnable allows the aim pipeline to run — call once at auto start after turret is homed.
+        if (turret != null) {
+            NamedCommands.registerCommand("TrackingEnable", Commands.runOnce(
+                turret::enableTracking, turret));
+
+            NamedCommands.registerCommand("FlywheelsOn", Commands.runOnce(() -> {
+                turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
+                turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
+            }, turret));
+
+            NamedCommands.registerCommand("FlywheelsOff", Commands.runOnce(() ->
+                turret.setFlywheelPercent(0.0), turret));
+        }
+
+        // --- Meta commands (combinations for simple autos) ---
+        // AutoInit: enable tracking + spin up flywheels + deploy intake. Call at auto start, then wait for spin-up.
+        if (turret != null && intake != null) {
+            NamedCommands.registerCommand("AutoInit", Commands.runOnce(() -> {
+                turret.enableTracking();
+                turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
+                turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
+                intake.extend();
+                intake.spinIn();
+            }, turret, intake));
+        }
+
+        // AutoShootEnd: stop fire interlock, feed chain, and flywheels in one call.
+        if (turret != null && spindexer != null && singulator != null) {
+            NamedCommands.registerCommand("AutoShootEnd", Commands.runOnce(() -> {
+                turret.disableFire();
+                turret.setFlywheelPercent(0.0);
+                spindexer.stop();
+                singulator.pause();
+            }, turret, spindexer, singulator));
+        }
+
         // --- Climber ---
         if (climber != null) {
             // Deploy: pivot the arm out to the cage

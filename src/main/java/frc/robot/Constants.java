@@ -37,9 +37,11 @@ public final class Constants {
     public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 4.0;
 
     // Driver speed modes (multiply by max speed)
-    public static final double NORMAL_SPEED_SCALE    = 0.40; // 5.21 * 0.40 = ~2.1 m/s
-    public static final double PRECISION_SPEED_SCALE = 0.20; // 5.21 * 0.20 = ~1.0 m/s
-    public static final double FAST_SPEED_SCALE      = 1.0;
+    public static final double NORMAL_SPEED_SCALE         = 0.30; // 5.21 * 0.30 = ~1.56 m/s  (was 0.40 ~2.1 m/s)
+    public static final double NORMAL_ROTATION_SCALE      = 0.20; // 4pi  * 0.20 = ~2.5 rad/s (was 0.40)
+    public static final double PRECISION_SPEED_SCALE      = 0.20; // 5.21 * 0.20 = ~1.0 m/s
+    public static final double PRECISION_ROTATION_SCALE   = 0.10;
+    public static final double FAST_SPEED_SCALE           = 1.0;
     public static final double JOYSTICK_DEADBAND     = 0.12; // slightly larger to reduce touchiness
 
     // Module positions on robot frame (meters from center)
@@ -365,9 +367,16 @@ public final class Constants {
     // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
 
     // Slowed for testing 2026-03-06 — raised cruise/kS to overcome energy chain drag
-    public static final double TURRET_CRUISE_VELOCITY_RPS  = 6.0;  // motor rot/sec (~216 deg/sec)
-    public static final double TURRET_ACCELERATION_RPS2    = 10.0; // motor rot/sec^2
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 10.0; // motor rot/sec (~360 deg/sec)
+    public static final double TURRET_ACCELERATION_RPS2    = 20.0; // motor rot/sec^2
     public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
+
+    // Chain-jam stall recovery — if the turret hasn't moved for this long while a target
+    // is active, snap the MM target to current position to stop fighting (and whistling).
+    // 2.5s > worst-case full-range move (~1.7s) so healthy moves never trigger this.
+    public static final double TURRET_STALL_TIMEOUT_SECS         = 2.5;
+    public static final double TURRET_STALL_VELOCITY_THRESHOLD_RPS = 0.3; // motor RPS — "not moving"
+    public static final double TURRET_STALL_ERROR_THRESHOLD_ROT    = 0.15; // motor rot — "not on target"
 
     // MotionMagic slot 0 gains (voltage control mode):
     // kS: static friction kick — raises output just enough to start moving. Tune first.
@@ -377,7 +386,7 @@ public final class Constants {
     // kD: damping — opposes velocity during the move to reduce overshoot.
     public static final double TURRET_KS = 0.5;
     public static final double TURRET_KV = 0.12;
-    public static final double TURRET_KP = 15.0;  // raised from 2.5 — was stopping short of target
+    public static final double TURRET_KP = 9.0;   // reduced from 15.0 to reduce stall whistle (2026-03-11)
     public static final double TURRET_KD = 0.3;
 
     // Motor inversion — TODO: confirm directions on hardware
@@ -410,7 +419,7 @@ public final class Constants {
 
     // Soft limits: 0 = CCW hard stop (set by TURRET_HALL_OFFSET_MOTOR_ROT). Full range ~9.9 rot.
     public static final double TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT  =  0.05; // CCW soft limit — small margin from hard stop (2026-03-06)
-    public static final double TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT =  9.76; // CW soft limit — pulled in 0.14 rot (~0.5 deg) 2026-03-08 to prevent hard stop oscillation
+    public static final double TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT =  9.46; // CW soft limit — pulled in 0.3 rot from 9.76 to clear motor limit (2026-03-11)
 
     // MotionMagic tuning targets — kept 1 motor rot inside the soft limits so MM never commands
     // into the limit zone. Adjust outward once MM tracking is confirmed good.
@@ -457,6 +466,7 @@ public final class Constants {
     // Phase 3+: only allow firing when chassis is below this speed
     public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 0.5;  // Phase 3 fire gate — robot must be near-stopped to shoot
     public static final double CHASSIS_SPEED_LATCH_THRESHOLD_MPS = 0.1; // latch freezes below this — essentially stopped
+    public static final double CHASSIS_OMEGA_LATCH_THRESHOLD_RPS = 0.5; // ~29 deg/s — only freeze latch when truly settled, not just slow
 
     // "Ready to shoot" tolerances — all must pass for isReadyToShoot() to return true
     public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
@@ -534,7 +544,7 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FEED_SPEED    =  0.85; // TODO: tune on hardware
+    public static final double FEED_SPEED    =  1.00; // raised from 0.85 (2026-03-11)
     public static final double REVERSE_SPEED = -0.40;
 
     // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
@@ -574,7 +584,7 @@ public final class Constants {
     // Hopper test mode: skips homing and arm movement entirely.
     // Assumes the arm is already physically down. Only rollers and roller-agitation work.
     // Set false for normal match operation.
-    public static final boolean HOPPER_TEST_MODE = true;
+    public static final boolean HOPPER_TEST_MODE = false;
 
     public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // NEO 500 - roller spin
     public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X60 - arm extend/retract, 4:1 gear ratio
@@ -591,9 +601,11 @@ public final class Constants {
     //   TODO: once hard stop + limit switch installed, change to -0.475 and re-zero encoder there.
     // EXTENSION_TARGET_ROTATIONS: full out position (measured with arm manually extended).
     // AGITATE_RETRACT_ROTATIONS: mid-point the arm pulls back to during agitation before re-extending.
+    // BUMP_LIFT_ROTATIONS: tiny retract during bump traversal (~1/6 of agitate) to clear the slope.
     public static final double EXTENSION_HOME_ROTATIONS   = 0.158;
     public static final double EXTENSION_TARGET_ROTATIONS = 13.250;
     public static final double AGITATE_RETRACT_ROTATIONS  =  3.5;
+    public static final double BUMP_LIFT_ROTATIONS        = EXTENSION_TARGET_ROTATIONS - (AGITATE_RETRACT_ROTATIONS / 6.0);
 
     // Duty cycle output limits for extension movement (no position control until gear ratio known)
     public static final double EXTEND_SPEED  =  0.18; // positive = extending out
@@ -639,6 +651,9 @@ public final class Constants {
     public static final int    BALL_RESISTANCE_LOOP_THRESHOLD = 5; // ~100ms sustained before reacting
     // TODO: tune after observing Intake/RollerCurrentAmps in AdvantageScope with/without balls
     public static final double ROLLER_LOAD_CURRENT_AMPS = 20.0; // placeholder — NEO under ball load
+    // Jam recovery: brief reverse pulse duration when roller is under sustained load.
+    public static final double ROLLER_JAM_REVERSE_SEC  = 0.15; // duration of reverse pulse
+    public static final int    ROLLER_JAM_LOOP_THRESHOLD = 10; // ~200ms sustained overload before pulsing
   }
 
   // Climber mechanism hardware IDs and tuning
@@ -683,6 +698,10 @@ public final class Constants {
     
     // Post-path correction timeout (SmartDrive precision phase)
     public static final double POST_PATH_CORRECTION_TIMEOUT_S = 3.0;
+
+    // ShootInPlace auto timing — tune these to match flywheel spin-up and ball count
+    public static final double SHOOT_IN_PLACE_SPINUP_SECONDS = 2.0; // time to reach target RPS
+    public static final double SHOOT_IN_PLACE_SHOOT_SECONDS  = 5.0; // feed window for ~8 balls
   }
 
 // Bump traversal staging poses (blue alliance frame, red mirrored automatically)
@@ -756,13 +775,45 @@ public final class Constants {
     
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
+
+    // ShootInPlace auto starting pose — hub close right side, facing forward
+    public static final Pose2d SHOOT_IN_PLACE_START = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0));
   }
 
   // Field constants used for fixed target mirroring
+  //
+  // Field X zones (blue-origin, all in meters):
+  //
+  //   0.000 ──────────────────────────────── 4.030  ALLIANCE ZONE (blue)
+  //                                                   Robot scores into hub here.
+  //                                                   Hub center at X=4.612 (181.56in from wall).
+  //
+  //   4.030 ──────────────────────────────── 5.208  HUB / BUMP / TRENCH DEAD ZONE
+  //                                                   Hub structure (47in square) + bump + net occupy this strip.
+  //                                                   Not usable for shooting. Treated as alliance zone for
+  //                                                   shoot suppression (hub is still reachable from here).
+  //
+  //   5.208 ──────────────────────────────── 11.305  NEUTRAL ZONE
+  //                                                   120in each side of center line (240in total), full width.
+  //                                                   Pass back here during first 15s of opponent active period.
+  //                                                   After 15s: collect only, fill hopper for next active period.
+  //
+  //   11.305 ─────────────────────────────── 12.481  OPPONENT HUB / BUMP / TRENCH DEAD ZONE
+  //                                                   Mirror of blue dead zone.
+  //
+  //   12.481 ─────────────────────────────── 16.511  OPPONENT ALLIANCE ZONE (red)
+  //                                                   Never shoot here.
+  //
   public static final class Field {
     public static final double FIELD_LENGTH_METERS = Units.inchesToMeters(650.12); // 2026 AndyMark perimeter
-    public static final double FIELD_WIDTH_METERS = Units.inchesToMeters(316.64);
+    public static final double FIELD_WIDTH_METERS  = Units.inchesToMeters(316.64);
+    // Alliance zone: 158.60in from each alliance wall.
     public static final double ALLIANCE_ZONE_LENGTH_METERS = Units.inchesToMeters(158.60);
+    // Neutral zone: 120in each side of the center line (240in total), full field width.
+    // The gap between ALLIANCE_ZONE_LENGTH and NEUTRAL_ZONE_LOW_X is the hub/bump/trench dead zone.
+    public static final double NEUTRAL_ZONE_HALF_LENGTH_METERS = Units.inchesToMeters(120.0);
+    public static final double NEUTRAL_ZONE_LOW_X_METERS  = (FIELD_LENGTH_METERS / 2.0) - NEUTRAL_ZONE_HALF_LENGTH_METERS;
+    public static final double NEUTRAL_ZONE_HIGH_X_METERS = (FIELD_LENGTH_METERS / 2.0) + NEUTRAL_ZONE_HALF_LENGTH_METERS;
   }
 
   // Hub centers for aiming
@@ -799,10 +850,12 @@ public final class Constants {
         new Rotation3d());
   }
 
-  // Pass targets for alliance-zone handoff
+  // Pass targets for alliance-zone handoff — balls lobbed from the neutral zone land here.
+  // X=1.5m puts the landing spot well inside the alliance zone, away from robots near the hub.
+  // Y values place targets on either side of the hub center (Y=4.022) to avoid the net.
   public static final class PassTargets {
-    public static final Pose2d BLUE_PASS_TARGET_LEFT  = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(3.46, 2.21, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_PASS_TARGET_LEFT  = new Pose2d(1.5, 5.83, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(1.5, 2.21, Rotation2d.fromDegrees(0.0));
 
     // Red targets mirror X across the field center but keep LEFT/RIGHT physically consistent.
     // Rotational symmetry flips Y, so Red LEFT (high Y) must source its Y from Blue RIGHT's Y flipped.

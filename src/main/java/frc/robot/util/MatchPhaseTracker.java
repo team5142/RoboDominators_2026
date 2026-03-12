@@ -4,6 +4,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import java.util.Optional;
 import org.littletonrobotics.junction.Logger;
+import frc.robot.RobotState.ShootingZone;
 
 // Tracks the current Rebuilt game phase and whether our hub is active.
 //
@@ -86,8 +87,10 @@ import org.littletonrobotics.junction.Logger;
 // ============================================================
 public class MatchPhaseTracker {
 
-  private static final double SPINUP_LEAD_SEC = 2.0;
-  private static final double STOP_FEED_SEC   = 0.5;
+  private static final double SPINUP_LEAD_SEC   = 2.0;
+  private static final double STOP_FEED_SEC     = 0.5;
+  // How long into each inactive period we allow neutral-zone passing.
+  private static final double NEUTRAL_PASS_WINDOW_SEC = 15.0;
 
   public enum GamePhase {
     AUTO,
@@ -112,6 +115,11 @@ public class MatchPhaseTracker {
   private boolean redInactiveFirst = false;
   private boolean gameDataReceived = false;
   private double lastLoggedTime = -1.0;
+
+  // Match time recorded when our active period ended — used to open neutral pass window each inactive period.
+  // Reset to -1 at start of each of our active periods so the window is fresh when the period ends.
+  private double ourPeriodEndMatchTime = -1.0;
+  private boolean neutralPassWindowOpen = false;
 
   private int lastAnnouncedSecond = -1;
   private boolean announcedEndGame15 = false;
@@ -147,6 +155,7 @@ public class MatchPhaseTracker {
     }
 
     hubActive = newHubActive;
+    updateNeutralPassWindow(newHubActive, matchTime);
     runSimCommentary(matchTime, newHubActive);
     logToAdvantageKit(matchTime);
   }
@@ -167,6 +176,28 @@ public class MatchPhaseTracker {
       if (!computeHubActive(computePhase(futureTime))) return false;
     }
     return true;
+  }
+
+  // Zone-aware shoot gate — only active when match time is valid (FMS or Practice mode).
+  // Plain teleop (getMatchTime() == -1) always returns true (no suppression).
+  public boolean shouldShootInZone(ShootingZone zone) {
+    double matchTime = DriverStation.getMatchTime();
+    if (matchTime < 0) return true; // plain teleop — no suppression
+
+    switch (zone) {
+      case OPPONENT:
+        return false;
+      case ALLIANCE:
+        // Shoot freely when hub is active, TRANSITION, or END_GAME. Suppressed during opponent periods.
+        return hubActive;
+      case NEUTRAL:
+        // Pass back only within the first 15s of each inactive period.
+        // During TRANSITION or END_GAME neutral passing is button-gated (not handled here — always false).
+        if (currentPhase == GamePhase.TRANSITION_SHIFT || currentPhase == GamePhase.END_GAME) return false;
+        return !hubActive && neutralPassWindowOpen;
+      default:
+        return false;
+    }
   }
 
   public GamePhase getPhase()    { return currentPhase; }
@@ -205,6 +236,30 @@ public class MatchPhaseTracker {
   }
 
   // ---- Private helpers ----
+
+  // Tracks when our hub transitions active→inactive so we can open a 15s neutral pass window.
+  // Resets the window when we enter an active period (so each inactive period gets a fresh 15s).
+  private boolean wasHubActive = true;
+  private void updateNeutralPassWindow(boolean hubActiveNow, double matchTime) {
+    if (hubActiveNow && !wasHubActive) {
+      // Our period just ended — reset so next inactive period gets a fresh window
+      neutralPassWindowOpen = false;
+      ourPeriodEndMatchTime = -1.0;
+    } else if (!hubActiveNow && wasHubActive) {
+      // Opponent period just started — open the pass window and record the start time
+      ourPeriodEndMatchTime = matchTime;
+      neutralPassWindowOpen = true;
+    } else if (!hubActiveNow && neutralPassWindowOpen && ourPeriodEndMatchTime > 0) {
+      // Check if 15s have elapsed since the inactive period began
+      double elapsed = ourPeriodEndMatchTime - matchTime; // matchTime counts DOWN
+      if (elapsed >= NEUTRAL_PASS_WINDOW_SEC) {
+        neutralPassWindowOpen = false;
+        SmartLogger.logConsole("GAMEPHASES: Neutral pass window closed — collect mode", "GAMEPHASES");
+      }
+    }
+    wasHubActive = hubActiveNow;
+    Logger.recordOutput("MatchPhase/NeutralPassWindowOpen", neutralPassWindowOpen);
+  }
 
   private void onPhaseEnter(GamePhase phase, double matchTime, boolean hubActiveNow) {
     String t = String.format("%.1f", matchTime);

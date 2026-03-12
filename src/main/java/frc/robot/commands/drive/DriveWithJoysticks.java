@@ -101,15 +101,15 @@ public class DriveWithJoysticks extends Command {
     double omegaRadPerSec = omega * MAX_ANGULAR_SPEED_RAD_PER_SEC;
 
     // Apply speed scaling based on precision mode
-    double speedScale = precisionModeSupplier.getAsBoolean() 
-        ? PRECISION_SPEED_SCALE // Slow mode (30%)
-        : NORMAL_SPEED_SCALE; // Normal mode (60%)
+    boolean precision = precisionModeSupplier.getAsBoolean();
+    double translationScale = precision ? PRECISION_SPEED_SCALE     : NORMAL_SPEED_SCALE;
+    double rotationScale    = precision ? PRECISION_ROTATION_SCALE  : NORMAL_ROTATION_SCALE;
 
     // Send drive command
     driveSubsystem.drive(
-        xMetersPerSec * speedScale,
-        yMetersPerSec * speedScale,
-        omegaRadPerSec * speedScale,
+        xMetersPerSec     * translationScale,
+        yMetersPerSec     * translationScale,
+        omegaRadPerSec    * rotationScale,
         fieldRelativeSupplier.getAsBoolean());
   }
 

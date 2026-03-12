@@ -164,6 +164,9 @@ public class PoseInitializer {
   public Pose2d getStartPoseForAutoName(String autoName) {
     if (autoName == null || autoName.isEmpty()) return null;
 
+    // Java autos (no .auto file) — return their known starting pose directly
+    if (autoName.equals("ShootInPlace")) return Constants.StartingPositions.SHOOT_IN_PLACE_START;
+
     // Return cached result if same auto and same alliance is requested again (avoids file I/O every loop)
     boolean isRedNow = DriverStation.getAlliance()
         .map(a -> a == DriverStation.Alliance.Red).orElse(false);

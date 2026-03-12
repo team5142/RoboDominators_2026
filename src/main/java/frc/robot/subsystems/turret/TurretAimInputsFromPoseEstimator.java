@@ -18,12 +18,13 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
   private final Supplier<Pose2d> targetPoseSupplier;
   private final TurretAimInputs inputs = new TurretAimInputs();
 
-  // Low-pass filter on heading only — smooths QuestNav angular jitter without lagging XY position.
-  // alpha=0.10: ~200ms time constant. Balances jitter rejection vs response speed.
+  // Low-pass filter on heading — only active when nearly stopped to suppress QuestNav standstill jitter.
+  // During rotation the raw heading is used directly so the turret doesn't lag behind.
   private static final double HEADING_FILTER_ALPHA = 0.10;
-  // Dead zone: ignore heading changes smaller than this — rejects QuestNav noise at the source.
-  // 0.25deg = 0.00436 rad. Changes larger than this (real robot rotation) pass through normally.
+  // Dead zone: ignore heading changes smaller than this at standstill — rejects QuestNav noise.
   private static final double HEADING_DEADZONE_RAD = Math.toRadians(0.25);
+  // Omega above which we bypass the filter entirely and use raw heading.
+  private static final double HEADING_FILTER_BYPASS_RPS = 0.15; // ~9 deg/s
   private double filteredHeadingRad = Double.NaN; // NaN = not yet initialized
 
   public TurretAimInputsFromPoseEstimator(
@@ -45,18 +46,20 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
   public TurretAimInputs get() {
     Pose2d pose = poseEstimator.getEstimatedPose();
 
-    // Low-pass filter the heading to suppress QuestNav angular jitter.
-    // First call: seed the filter directly so there's no startup transient.
+    // Low-pass filter the heading to suppress QuestNav standstill jitter.
+    // Bypassed during rotation so the turret doesn't lag behind the actual heading.
     double rawHeadingRad = pose.getRotation().getRadians();
+    double omega = Math.abs(driveSubsystem.getRobotRelativeSpeeds().omegaRadiansPerSecond);
     if (Double.isNaN(filteredHeadingRad)) {
       filteredHeadingRad = rawHeadingRad;
+    } else if (omega >= HEADING_FILTER_BYPASS_RPS) {
+      // Robot is rotating — track raw heading directly, keep filter state in sync.
+      filteredHeadingRad = rawHeadingRad;
     } else {
-      // Wrap-aware delta — handles the -pi/+pi discontinuity correctly.
+      // Nearly stopped — apply low-pass + dead zone to suppress QuestNav jitter.
       double delta = rawHeadingRad - filteredHeadingRad;
       while (delta >  Math.PI) delta -= 2.0 * Math.PI;
       while (delta < -Math.PI) delta += 2.0 * Math.PI;
-      // Dead zone: ignore changes smaller than 0.25deg — rejects QuestNav standstill noise.
-      // Only update the filter when the robot is actually rotating.
       if (Math.abs(delta) >= HEADING_DEADZONE_RAD) {
         filteredHeadingRad += HEADING_FILTER_ALPHA * delta;
       }
@@ -75,6 +78,7 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
     double vx = driveSubsystem.getRobotRelativeSpeeds().vxMetersPerSecond;
     double vy = driveSubsystem.getRobotRelativeSpeeds().vyMetersPerSecond;
     inputs.robotSpeedMetersPerSecond = Math.hypot(vx, vy);
+    inputs.robotOmegaRadPerSecond = Math.abs(driveSubsystem.getRobotRelativeSpeeds().omegaRadiansPerSecond);
     // Rotate robot-relative velocity to field-relative for Phase 4 lead compensation.
     double headingRad = pose.getRotation().getRadians();
     inputs.robotFieldVxMetersPerSecond = vx * Math.cos(headingRad) - vy * Math.sin(headingRad);

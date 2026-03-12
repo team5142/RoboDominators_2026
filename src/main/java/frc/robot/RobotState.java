@@ -26,8 +26,10 @@ public class RobotState {
   private boolean autoShootMode = false;
   // When true: auto shoot is temporarily paused — ball stays staged, shooting is blocked.
   private boolean autoShootPaused = false;
-  // When true: robot is in a bump or net zone — auto shoot fire gate is suppressed.
-  private boolean shotSuppressed = false;
+  // Field zone suppression: bump, net, or tower shadow (set by TurretTargetSelector).
+  private boolean fieldZoneSuppressed = false;
+  // Deadzone suppression: target is behind the robot in the turret blind spot (set by TurretSubsystem).
+  private boolean deadzoneSuppressed = false;
   private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
   // Match phase and hub active tracking
@@ -64,7 +66,8 @@ public class RobotState {
     EXTENDING,      // moving outward
     EXTENDED,       // at full extension target rotation
     RETRACTING,     // moving inward toward limit switches
-    AGITATING       // partial retract to 6.5 rot, then re-extend to target
+    AGITATING,      // partial retract to 6.5 rot, then re-extend to target
+    BUMP_LIFTING    // tiny retract during bump traversal to clear slope, gravity returns it
   }
 
   // Spin direction of the intake rollers
@@ -77,6 +80,13 @@ public class RobotState {
   public enum ClimberState {
     IDLE,
     ACTIVE
+  }
+
+  // Which field zone the robot is currently in — set by TurretTargetSelector each loop.
+  public enum ShootingZone {
+    ALLIANCE,   // our side — shoot into hub when hub is active
+    NEUTRAL,    // mid-field — pass back during first 15s of opponent period
+    OPPONENT    // opponent side — never shoot
   }
 
   // Spin state of the spindexer cone
@@ -96,6 +106,7 @@ public class RobotState {
   private TurretState turretState = TurretState.IDLE;
   // Default to RETRACTED so extend/retract work when homing is disabled (ENABLE_INTAKE_HOMING = false).
   private IntakePosition intakePosition = IntakePosition.RETRACTED;
+  private ShootingZone shootingZone = ShootingZone.ALLIANCE;
   private IntakeRollerState intakeRollerState = IntakeRollerState.STOPPED;
   private ClimberState climberState = ClimberState.IDLE;
   private SpindexerState spindexerState = SpindexerState.STOPPED;
@@ -195,11 +206,27 @@ public class RobotState {
   public boolean isAutoShootPaused() { return autoShootPaused; }
   public void setAutoShootPaused(boolean paused) { autoShootPaused = paused; }
 
-  public boolean isShotSuppressed() { return shotSuppressed; }
-  public void setShotSuppressed(boolean value) {
-    if (shotSuppressed == value) return;
-    shotSuppressed = value;
-    SmartLogger.logReplay("RobotState/ShotSuppressed", value);
+  public boolean isShotSuppressed() { return fieldZoneSuppressed || deadzoneSuppressed; }
+
+  public ShootingZone getShootingZone() { return shootingZone; }
+  public void setShootingZone(ShootingZone zone) {
+    if (shootingZone == zone) return;
+    shootingZone = zone;
+    SmartLogger.logReplay("RobotState/ShootingZone", zone.toString());
+  }
+
+  public void setFieldZoneSuppressed(boolean value) {
+    if (fieldZoneSuppressed == value) return;
+    fieldZoneSuppressed = value;
+    SmartLogger.logReplay("RobotState/FieldZoneSuppressed", value);
+    SmartLogger.logReplay("RobotState/ShotSuppressed", isShotSuppressed());
+  }
+
+  public void setDeadzoneSuppressed(boolean value) {
+    if (deadzoneSuppressed == value) return;
+    deadzoneSuppressed = value;
+    SmartLogger.logReplay("RobotState/DeadzoneSuppressed", value);
+    SmartLogger.logReplay("RobotState/ShotSuppressed", isShotSuppressed());
   }
 
   public boolean isOperatorDriveLockout() {
@@ -410,6 +437,12 @@ public class RobotState {
   // stopEarlySeconds: stop feeding balls this many seconds before a window closes (flight time).
   public boolean shouldShoot(double leadSeconds, double stopEarlySeconds) {
     return matchPhaseTracker.shouldShoot(leadSeconds, stopEarlySeconds);
+  }
+
+  // Zone-aware shoot gate — checks match phase and current robot zone.
+  // Returns true when shooting/passing is allowed. Always true in plain teleop (no match time).
+  public boolean shouldShootInZone() {
+    return matchPhaseTracker.shouldShootInZone(shootingZone);
   }
 
   public MatchPhaseTracker.GamePhase getGamePhase() {

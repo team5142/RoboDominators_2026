@@ -12,6 +12,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 import frc.robot.subsystems.DriveSubsystem;
+import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
 import frc.robot.util.SmartLogger;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -80,6 +81,7 @@ public class DynamicBumpTraversalCommand extends Command {
 
   private final PoseEstimatorSubsystem poseEstimator;
   private final DriveSubsystem driveSubsystem;
+  private final IntakeSubsystem intakeSubsystem; // may be null if intake is disabled
   private final Side side;
   private final boolean modifierRequested;
   private final BumpConfig config;
@@ -94,12 +96,14 @@ public class DynamicBumpTraversalCommand extends Command {
       DriveSubsystem driveSubsystem,
       Side side,
       boolean modifierRequested,
-      BumpConfig config) {
+      BumpConfig config,
+      IntakeSubsystem intakeSubsystem) {
     this.poseEstimator = poseEstimator;
     this.driveSubsystem = driveSubsystem;
     this.side = side;
     this.modifierRequested = modifierRequested;
     this.config = config;
+    this.intakeSubsystem = intakeSubsystem;
   }
 
   @Override
@@ -125,10 +129,15 @@ public class DynamicBumpTraversalCommand extends Command {
     Command waitForDownhill = new WaitUntilCommand(this::hasPitchFlipped);
     Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.downhillConstraints);
 
+    // Lift intake slightly at uphill start and again at downhill start to clear the 15 deg slope.
+    Command liftUphill  = Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.bumpLift(); });
+    Command liftDownhill = Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.bumpLift(); });
+
     activeCommand = new SequentialCommandGroup(
         toStaging,
         settle,
-        Commands.race(toMid, waitForDownhill),
+        Commands.race(Commands.sequence(liftUphill, toMid), waitForDownhill),
+        liftDownhill,
         toExit);
     CommandScheduler.getInstance().schedule(activeCommand);
 

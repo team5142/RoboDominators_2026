@@ -6,6 +6,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.Constants;
 import frc.robot.RobotState;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
+import frc.robot.util.SmartLogger;
 import java.util.function.Supplier;
 
 // Selects hub or pass targets based on robot pose.
@@ -32,8 +33,9 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
   private static final double RED_TOWER_CENTER_Y  =
       Constants.Field.FIELD_WIDTH_METERS - BLUE_TOWER_CENTER_Y;
 
-  private boolean lastInAllianceZone = false;
-  private boolean lastOnLeftSide     = false;
+  private boolean lastInAllianceZone   = true;  // default true so robot starts tracking hub, not pass target
+  private boolean lastInOpponentZone   = false;
+  private boolean lastOnLeftSide       = false;
 
   public TurretTargetSelector(PoseEstimatorSubsystem poseEstimator, RobotState robotState) {
     this.poseEstimator = poseEstimator;
@@ -52,27 +54,48 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
         || isInsideNetZone(robotPose, blueHub, false)
         || isInsideNetZone(robotPose, redHub,  true)
         || isInsideTowerShadow(robotPose);
-    robotState.setShotSuppressed(suppressed);
+    robotState.setFieldZoneSuppressed(suppressed);
 
     double allianceEdge = isRed
         ? Constants.Field.FIELD_LENGTH_METERS - Constants.Field.ALLIANCE_ZONE_LENGTH_METERS
         : Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+    double opponentEdge = isRed
+        ? Constants.Field.ALLIANCE_ZONE_LENGTH_METERS
+        : Constants.Field.FIELD_LENGTH_METERS - Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
 
     // Hysteresis: widen the entry threshold vs exit threshold by ZONE_HYSTERESIS_METERS each side.
     if (lastInAllianceZone) {
-      // Already inside — only leave if clearly outside the zone
       lastInAllianceZone = isRed
           ? robotPose.getX() > allianceEdge - ZONE_HYSTERESIS_METERS
           : robotPose.getX() < allianceEdge + ZONE_HYSTERESIS_METERS;
     } else {
-      // Currently outside — only enter if clearly inside the zone
       lastInAllianceZone = isRed
           ? robotPose.getX() > allianceEdge + ZONE_HYSTERESIS_METERS
           : robotPose.getX() < allianceEdge - ZONE_HYSTERESIS_METERS;
     }
 
+    if (lastInOpponentZone) {
+      lastInOpponentZone = isRed
+          ? robotPose.getX() < opponentEdge + ZONE_HYSTERESIS_METERS
+          : robotPose.getX() > opponentEdge - ZONE_HYSTERESIS_METERS;
+    } else {
+      lastInOpponentZone = isRed
+          ? robotPose.getX() < opponentEdge - ZONE_HYSTERESIS_METERS
+          : robotPose.getX() > opponentEdge + ZONE_HYSTERESIS_METERS;
+    }
+
+    // Update shooting zone on RobotState for phase-aware shoot suppression.
+    RobotState.ShootingZone zone = lastInAllianceZone ? RobotState.ShootingZone.ALLIANCE
+        : lastInOpponentZone ? RobotState.ShootingZone.OPPONENT
+        : RobotState.ShootingZone.NEUTRAL;
+    robotState.setShootingZone(zone);
+
     if (lastInAllianceZone) {
-      return isRed ? Constants.HubCenters.RED_HUB_CENTER : Constants.HubCenters.BLUE_HUB_CENTER;
+      Pose2d target = isRed ? Constants.HubCenters.RED_HUB_CENTER : Constants.HubCenters.BLUE_HUB_CENTER;
+      SmartLogger.logReplay("NeutralZonePassing/Zone", zone.toString());
+      SmartLogger.logReplay("NeutralZonePassing/SelectedTarget", target);
+      SmartLogger.logReplay("NeutralZonePassing/IsLeftSide", lastOnLeftSide);
+      return target;
     }
 
     double fieldMidY = Constants.Field.FIELD_WIDTH_METERS / 2.0;
@@ -82,11 +105,17 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
       lastOnLeftSide = robotPose.getY() > fieldMidY + ZONE_HYSTERESIS_METERS;
     }
 
+    Pose2d passTarget;
     if (lastOnLeftSide) {
-      return isRed ? Constants.PassTargets.RED_PASS_TARGET_LEFT : Constants.PassTargets.BLUE_PASS_TARGET_LEFT;
+      passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_RIGHT : Constants.PassTargets.BLUE_PASS_TARGET_LEFT;
+    } else {
+      passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_LEFT : Constants.PassTargets.BLUE_PASS_TARGET_RIGHT;
     }
 
-    return isRed ? Constants.PassTargets.RED_PASS_TARGET_RIGHT : Constants.PassTargets.BLUE_PASS_TARGET_RIGHT;
+    SmartLogger.logReplay("NeutralZonePassing/Zone", zone.toString());
+    SmartLogger.logReplay("NeutralZonePassing/SelectedTarget", passTarget);
+    SmartLogger.logReplay("NeutralZonePassing/IsLeftSide", lastOnLeftSide);
+    return passTarget;
   }
 
   // True when robot is inside the 73in x 47in bump rectangle centered on hubCenter

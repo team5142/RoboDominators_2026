@@ -78,6 +78,12 @@ public class TurretSubsystem extends SubsystemBase {
   // Hood homing state — hood creeps down until the limit switch fires, then zeroes encoder
   private boolean hoodHomed  = false;
   private boolean hoodHoming = false;
+
+  // Chain-jam stall recovery — if the turret hasn't moved toward its target for
+  // TURRET_STALL_TIMEOUT_SECS, snap the MM target to current position to stop fighting.
+  // Clears automatically once the turret starts moving again (chain frees itself).
+  private double stallTimerSecs   = 0.0;
+  private boolean stallGiveUpActive = false; // true while holding current position after timeout
   private int hoodHomingStallLoopCount = 0; // fallback stall counter if limit switch fails
 
   // Edge detection for hall sensor — log once on rising edge for console visibility
@@ -376,6 +382,9 @@ public class TurretSubsystem extends SubsystemBase {
 
   public boolean updateAimFromProvider(TurretAimProvider provider) {
     if (provider == null || !trackingEnabled) return false;
+    // While stall give-up is active, block the pipeline from overwriting the snapped position.
+    // The turret will resume tracking as soon as the chain frees and velocity recovers.
+    if (stallGiveUpActive) return false;
     boolean valid = provider.update(providerGoal);
     // Always apply the goal — even when enable=false (deadzone), we need aimGoal.enable
     // and targetReachable to update so the turret holds position instead of chasing a stale target.
@@ -547,6 +556,34 @@ public class TurretSubsystem extends SubsystemBase {
 
     // Turret soft limits: block open-loop percent commands that would drive past either end of travel.
     // Also clamps any active MotionMagic position target so it can never be commanded past the limits.
+    // Chain-jam stall recovery: if the turret has been stuck (not moving, but not on target)
+    // for TURRET_STALL_TIMEOUT_SECS, snap the MM target to the current position so it stops
+    // fighting the jam. Clears automatically once the turret starts moving again.
+    if (homed && !homing && setpoints.useTurretPosition) {
+      double posErr = Math.abs(setpoints.turretPositionMotorRotations - inputs.turretAbsolutePositionRotations);
+      boolean isStuck = Math.abs(inputs.turretVelocityRps) < Constants.Turret.TURRET_STALL_VELOCITY_THRESHOLD_RPS
+          && posErr > Constants.Turret.TURRET_STALL_ERROR_THRESHOLD_ROT;
+
+      if (isStuck) {
+        stallTimerSecs += 0.02;
+      } else {
+        stallTimerSecs = 0.0;
+        stallGiveUpActive = false; // chain freed — resume normal tracking
+      }
+
+      if (stallTimerSecs >= Constants.Turret.TURRET_STALL_TIMEOUT_SECS) {
+        stallGiveUpActive = true;
+        stallTimerSecs = Constants.Turret.TURRET_STALL_TIMEOUT_SECS; // prevent runaway accumulation
+        setpoints.turretPositionMotorRotations = inputs.turretAbsolutePositionRotations;
+        SmartLogger.logConsole("Turret stall timeout — holding current position (chain jam?)", "Turret");
+      }
+      SmartLogger.logReplay("Turret/StallGiveUpActive", stallGiveUpActive);
+      SmartLogger.logReplay("Turret/StallTimerSecs",    stallTimerSecs);
+    } else {
+      stallTimerSecs    = 0.0;
+      stallGiveUpActive = false;
+    }
+
     // Only enforced after homing so the limits are relative to a known zero.
     if (homed) {
       double turretPos = inputs.turretAbsolutePositionRotations;
@@ -659,6 +696,7 @@ public class TurretSubsystem extends SubsystemBase {
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Turret/ReadyToShoot", isReadyToShoot());
     SmartLogger.logReplay("Turret/TargetReachable", aimGoal.targetReachable);
+    robotState.setDeadzoneSuppressed(!aimGoal.targetReachable);
   }
 
   // Sets a closed-loop position target in motor rotations (0 = CCW hard stop).
