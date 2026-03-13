@@ -92,7 +92,7 @@ public final class Constants {
 
     // PID gains (tuned via SysId characterization tool)
     public static final class SteerGains {
-      public static final double kP = 25.601;//25.601
+      public static final double kP = 25.601;
       public static final double kI = 0.0;
       public static final double kD = 0.62218;
       public static final double kS = 0.12222;
@@ -101,7 +101,7 @@ public final class Constants {
     }
 
     public static final class DriveGains {
-      public static final double kP = 0.13816;//0.16077;
+      public static final double kP = 0.13816;
       public static final double kI = 0.0;
       public static final double kD = 0.0;
       public static final double kS = 0.17978;//0.17399;
@@ -368,7 +368,7 @@ public final class Constants {
 
     // Slowed for testing 2026-03-06 — raised cruise/kS to overcome energy chain drag
     public static final double TURRET_CRUISE_VELOCITY_RPS  = 10.0; // motor rot/sec (~360 deg/sec)
-    public static final double TURRET_ACCELERATION_RPS2    = 20.0; // motor rot/sec^2
+    public static final double TURRET_ACCELERATION_RPS2    = 30.0; // motor rot/sec^2
     public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
 
     // Chain-jam stall recovery — if the turret hasn't moved for this long while a target
@@ -386,10 +386,10 @@ public final class Constants {
     // kD: damping — opposes velocity during the move to reduce overshoot.
     public static final double TURRET_KS = 0.5;
     public static final double TURRET_KV = 0.12;
-    public static final double TURRET_KP = 9.0;   // reduced from 15.0 to reduce stall whistle (2026-03-11)
+    public static final double TURRET_KP = 9.0;
     public static final double TURRET_KD = 0.3;
 
-    // Motor inversion — TODO: confirm directions on hardware
+    // Motor inversion — confirmed on hardware
     public static final boolean TURRET_MOTOR_INVERTED        = false;
     public static final boolean HOOD_MOTOR_INVERTED           = true;  // inverted 2026-03-06
     public static final boolean FLYWHEEL_FRONT_MOTOR_INVERTED = true;
@@ -404,7 +404,7 @@ public final class Constants {
     // Stall detection during homing — if current stays above threshold for this many loops,
     // homing aborts. Turret stator limit is 20A, so threshold is set just below that.
     // 10 loops = ~200ms — long enough to ignore startup inrush, short enough to protect the stop.
-    public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 35.0; // energy chain drag peaks ~18A — hard stop is higher
+    public static final double TURRET_HOMING_STALL_CURRENT_AMPS = 28.0; // below 30A breaker; hard stop hits ~40A with tensioner
     public static final int    TURRET_HOMING_STALL_LOOP_THRESHOLD = 10;
 
     // Hall sensor is near the CCW hard stop (gear relocated to front-left 2026-03-06, dead zone now back-right).
@@ -443,7 +443,7 @@ public final class Constants {
     // Hood MotionMagic gains — start conservative, tune kP up until no steady-state error
     public static final double HOOD_KS                   = 0.4;  // static friction override — increase if hood won't start moving
     public static final double HOOD_KV                   = 0.12; // velocity feedforward
-    public static final double HOOD_KP                   = 14.0; // raised from 8.0 — was stopping 0.05 rot short (kP*error was barely exceeding kS)
+    public static final double HOOD_KP = 14.0;
     public static final double HOOD_CRUISE_VELOCITY_RPS  = 9.0;  // motor rot/s
     public static final double HOOD_ACCELERATION_RPS2    = 30.0; // motor rot/s^2
     public static final double HOOD_HOME_ROTATIONS           = 0.0;  // encoder value at home (limit switch pressed)
@@ -463,8 +463,12 @@ public final class Constants {
     // Requires homing to be completed first (ENABLE_TURRET_HOMING = true in RobotContainer).
     public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_4_ON_THE_MOVE;
 
-    // Phase 3+: only allow firing when chassis is below this speed
-    public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 0.5;  // Phase 3 fire gate — robot must be near-stopped to shoot
+    // Phase 3+: only allow firing when chassis translation is below this speed.
+    // Wired into isReadyToShoot() for all phases — set to a large value to effectively disable.
+    // TODO(beam-breaks): tune this once beam breaks are working so we can safely gate mid-match.
+    //   Suggested starting value: 0.5 m/s. Currently disabled (999) to avoid pausing the feed
+    //   chain without sensor feedback — a paused singulator mid-travel causes dead zone jams.
+    public static final double CHASSIS_SPEED_FIRE_THRESHOLD_MPS = 999.0;
     public static final double CHASSIS_SPEED_LATCH_THRESHOLD_MPS = 0.1; // latch freezes below this — essentially stopped
     public static final double CHASSIS_OMEGA_LATCH_THRESHOLD_RPS = 0.5; // ~29 deg/s — only freeze latch when truly settled, not just slow
 
@@ -472,6 +476,15 @@ public final class Constants {
     public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
     public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01; // TODO: tune in rotations
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint
+    // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
+    public static final double FLYWHEEL_SPINUP_MIN_RPM = 1500.0; // tune to match actual spin-up curve
+
+    // Consecutive loops turret must stay within tolerance before isAimed()/isReadyToShoot() pass.
+    // Prevents firing during a large slew where the turret is briefly passing through the tolerance band.
+    // TODO(beam-breaks): set to 3-5 loops (60-100ms) once beam breaks are working.
+    //   Currently 0 (disabled) — without sensors a delayed start burns time from the shoot window
+    //   and we can't tell if a ball is staged anyway.
+    public static final int TURRET_ON_TARGET_SETTLE_LOOPS = 0;
 
     // Shooter geometry:
     // Two hex shafts (front roller and top/back roller) separated by a fixed distance.
@@ -498,15 +511,10 @@ public final class Constants {
     // CLOSE: robot bumper pressed against the hub face (~0.6m — robot half-length + hub clearance)
     // MID:   halfway between close and far corners (~3.1m)
     // FAR:   robot in the far corner near (0,0), farthest shot in blue alliance zone (~5.5m)
-    // Flywheel percents are initial estimates (Kraken X60 ~5400 RPM loaded max) — tune on hardware.
-    // Hood rotations are placeholder — measure motor encoder value at each distance and replace.
-    // [ ] CLOSE row: robot against hub, verify RPM and hood, fire test balls
-    // [ ] MID   row: ~3.1m from hub, verify RPM and hood, fire test balls
-    // [ ] FAR   row: far corner (~0,0), verify RPM and hood, fire test balls
     public static final double[] SHOT_TABLE_DISTANCES_M        = { 0.6,    3.1,    5.5   };
-    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 }; // tune on hardware
-    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.50,   0.84,   0.90  }; // increased 2026-03-06 — was 0.75, bumped to 0.50 test
-    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  2.404 }; // FAR measured 2026-03-07; CLOSE/MID TODO
+    public static final double[] SHOT_TABLE_FLYWHEEL_FRONT_PCT = { 0.435,  0.546,  0.638 };
+    public static final double[] SHOT_TABLE_FLYWHEEL_BACK_PCT  = { 0.50,   0.84,   0.90  };
+    public static final double[] SHOT_TABLE_HOOD_ROTATIONS     = { 0.181,  0.153,  2.404 };
 
     // Measured 2026-03-07 via RPM recorder (settle 3s per step, 8-step 30-100% sweep).
     // Use these for VelocityVoltage closed-loop instead of percent. Front motor runs ~10% faster than back.
@@ -589,7 +597,6 @@ public final class Constants {
     public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // NEO 500 - roller spin
     public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X60 - arm extend/retract, 4:1 gear ratio
 
-    // TODO (checklist item 3/4): flip to true if motor runs backwards on first test
     public static final boolean EXTENSION_MOTOR_INVERTED = false;
     public static final boolean ROLLER_MOTOR_INVERTED    = false;
 
@@ -627,7 +634,7 @@ public final class Constants {
     public static final double LIMIT_SWITCH_VALID_WINDOW_ROTATIONS = 1.5;
 
     // Roller duty cycle outputs
-    public static final double ROLLER_INTAKE_SPEED  =  1.00; // intaking
+    public static final double ROLLER_INTAKE_SPEED  =  0.85; // intaking
     public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
 
     // Current limits
@@ -652,8 +659,9 @@ public final class Constants {
     // TODO: tune after observing Intake/RollerCurrentAmps in AdvantageScope with/without balls
     public static final double ROLLER_LOAD_CURRENT_AMPS = 20.0; // placeholder — NEO under ball load
     // Jam recovery: brief reverse pulse duration when roller is under sustained load.
-    public static final double ROLLER_JAM_REVERSE_SEC  = 0.15; // duration of reverse pulse
-    public static final int    ROLLER_JAM_LOOP_THRESHOLD = 10; // ~200ms sustained overload before pulsing
+    public static final boolean ROLLER_JAM_RECOVERY_ENABLED = false; // disabled until tuned on hardware
+    public static final double ROLLER_JAM_REVERSE_SEC  = 0.15;
+    public static final int    ROLLER_JAM_LOOP_THRESHOLD = 10;
   }
 
   // Climber mechanism hardware IDs and tuning
@@ -776,8 +784,9 @@ public final class Constants {
     // AUTO RESET POSE PRECISE
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
 
-    // ShootInPlace auto starting pose — hub close right side, facing forward
-    public static final Pose2d SHOOT_IN_PLACE_START = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0));
+    // ShootInPlace auto starting poses — Blue side. PoseInitializer flips these for Red automatically.
+    public static final Pose2d SHOOT_IN_PLACE_START_RIGHT = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOOT_IN_PLACE_START_LEFT  = new Pose2d(3.620, Field.FIELD_WIDTH_METERS - 2.515, Rotation2d.fromDegrees(0.0));
   }
 
   // Field constants used for fixed target mirroring

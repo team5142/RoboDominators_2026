@@ -12,6 +12,8 @@ public class TurretAimGoal {
   // True when the target bearing falls within the turret's physical travel range.
   // False = target is in the blind spot; robot needs to rotate to bring it in range.
   public boolean targetReachable = true;
+  // Last chassis speed from the aim pipeline — used by isReadyToShoot() speed gate.
+  public double chassisSpeedMps = 0.0;
 
   public void clear() {
     turretRotations = 0.0;
@@ -22,5 +24,6 @@ public class TurretAimGoal {
     flywheelBackRps  = 0.0;
     enable = false;
     targetReachable = true;
+    chassisSpeedMps = 0.0;
   }
 }

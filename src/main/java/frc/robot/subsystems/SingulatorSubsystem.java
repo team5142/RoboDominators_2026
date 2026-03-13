@@ -51,6 +51,13 @@ public class SingulatorSubsystem extends SubsystemBase {
   private final Timer primeTimer = new Timer();
   private boolean priming = false;
 
+  // Dead zone recovery: if a ball is stuck in the dead zone while feeding, reverse once to kick it loose.
+  // Only one attempt per continuous blockage — if it fails, resume feeding and wait for operator to retry.
+  private final Timer deadZoneTimer = new Timer();
+  private boolean deadZoneTimerRunning = false;
+  private boolean deadZoneRecoveryActive = false;
+  private boolean deadZoneRecoveryAttempted = false; // one attempt per blockage event
+
   // Rolling shot rate: track timestamps of the last few shots to compute balls/sec
   private static final int RATE_WINDOW = 5;
   private final double[] shotTimestamps = new double[RATE_WINDOW];
@@ -65,10 +72,15 @@ public class SingulatorSubsystem extends SubsystemBase {
     laserCan = new LaserCan(Constants.Singulator.LASERCAN_ID);
     deadZoneLaserCan = new LaserCan(Constants.Singulator.DEAD_ZONE_LASERCAN_ID);
     try {
+      // SHORT mode: better ambient light rejection at close range (<1.3m).
+      // 33ms budget: updates ~every 2 robot loops, fast enough to catch any ball passing through.
+      // 4x4 ROI centered at 8,8: narrows the beam to ~18mm at 150mm — sees ball, ignores channel walls.
       laserCan.setRangingMode(LaserCan.RangingMode.SHORT);
       laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
+      laserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 4, 4));
       deadZoneLaserCan.setRangingMode(LaserCan.RangingMode.SHORT);
       deadZoneLaserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
+      deadZoneLaserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 4, 4));
     } catch (au.grapplerobotics.ConfigurationFailedException e) {
       SmartLogger.logConsole("LaserCAN config failed: " + e.getMessage(), "Singulator");
     }
@@ -105,6 +117,11 @@ public class SingulatorSubsystem extends SubsystemBase {
   public void pause() {
     if (robotState.getSingulatorState() == RobotState.SingulatorState.PAUSED) return;
     priming = false;
+    // Reset dead zone recovery so the next RT press starts clean
+    deadZoneRecoveryActive = false;
+    deadZoneRecoveryAttempted = false;
+    deadZoneTimerRunning = false;
+    deadZoneTimer.stop();
     motor.set(0.0);
     robotState.setSingulatorState(RobotState.SingulatorState.PAUSED);
   }
@@ -145,7 +162,43 @@ public class SingulatorSubsystem extends SubsystemBase {
     boolean ballBlocked = isBallPresent();
     RobotState.SingulatorState singState = robotState.getSingulatorState();
 
-    // Falling edge while feeding forward: ball just exited toward flywheels
+    // Dead zone recovery: only while actively feeding, one attempt per continuous blockage.
+    // If the ball is still stuck after the reverse pulse completes, give up and resume feeding.
+    // Operator must release and re-press RT to trigger another attempt.
+    boolean deadZoneBlocked = isDeadZoneBallPresent();
+    if (singState == RobotState.SingulatorState.FEEDING && !deadZoneRecoveryActive) {
+      if (deadZoneBlocked && !deadZoneRecoveryAttempted) {
+        if (!deadZoneTimerRunning) {
+          deadZoneTimer.restart();
+          deadZoneTimerRunning = true;
+        } else if (deadZoneTimer.hasElapsed(1.0)) {
+          // Ball stuck for 1+ seconds — fire one reverse pulse
+          deadZoneRecoveryActive = true;
+          deadZoneRecoveryAttempted = true;
+          deadZoneTimerRunning = false;
+          priming = false;
+          motor.set(Constants.Singulator.REVERSE_SPEED);
+          robotState.setSingulatorState(RobotState.SingulatorState.REVERSING);
+          SmartLogger.logConsole("Dead zone ball detected — reverse pulse", "Singulator");
+        }
+      } else if (!deadZoneBlocked) {
+        // Ball cleared — reset so a future new blockage can trigger recovery again
+        deadZoneTimerRunning = false;
+        deadZoneRecoveryAttempted = false;
+        deadZoneTimer.stop();
+      }
+    }
+
+    // Recovery pulse complete — resume feeding regardless of whether ball cleared
+    if (deadZoneRecoveryActive && deadZoneTimer.hasElapsed(Constants.Singulator.DEAD_ZONE_REVERSE_SECS)) {
+      deadZoneRecoveryActive = false;
+      deadZoneTimerRunning = false;
+      motor.set(Constants.Singulator.FEED_SPEED);
+      robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
+      SmartLogger.logConsole("Dead zone recovery complete — resuming feed", "Singulator");
+    }
+
+    SmartLogger.logReplay("Singulator/DeadZoneRecoveryActive", deadZoneRecoveryActive);
     if (!ballBlocked && lastBeamBreakBlocked
         && singState == RobotState.SingulatorState.FEEDING) {
       robotState.incrementBallsFed();
@@ -160,7 +213,6 @@ public class SingulatorSubsystem extends SubsystemBase {
 
     robotState.setSingulatorBeamBreak(ballBlocked);
 
-    boolean deadZoneBlocked = isDeadZoneBallPresent();
     robotState.setDeadZoneBeamBreak(deadZoneBlocked);
 
     SmartLogger.logReplay("Singulator/BallPresent", ballBlocked);

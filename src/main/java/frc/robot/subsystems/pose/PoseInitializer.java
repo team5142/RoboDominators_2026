@@ -106,47 +106,44 @@ public class PoseInitializer {
   }
   
   public InitResult attemptInitialization() {
-    // === COMP_SEED MODE: Disabled + FMS attached (prevents mid-auto re-init) ===
-    if (DriverStation.isDisabled()) {
+    // === COMP_SEED MODE: FMS attached — always seed Quest to auto start pose ===
+    if (DriverStation.isDisabled() && DriverStation.isFMSAttached()) {
       Pose2d autoStartPose = getExpectedAutoStartPose();
       if (autoStartPose != null && isWithinField(autoStartPose.getTranslation())) {
         initState = InitializationState.INITIALIZED;
-
-        double waitTime = initWaitTimer.get();
-        Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
-
+        Logger.recordOutput("PoseEstimator/InitWaitSeconds", initWaitTimer.get());
         Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
-        Logger.recordOutput("PoseEstimator/InitMode",
-            DriverStation.isFMSAttached() ? "COMP_SEED" : "PRACTICE_AUTO_SEED");
-
-        return new InitResult(
-            autoStartPose,
-            true,
-            DriverStation.isFMSAttached()
-                ? "COMP_SEED: Auto start pose from chooser"
-                : "PRACTICE_AUTO_SEED: Auto start pose from chooser");
+        Logger.recordOutput("PoseEstimator/InitMode", "COMP_SEED");
+        return new InitResult(autoStartPose, true, "COMP_SEED: Auto start pose from chooser");
       }
     }
-    
-    // === SHOP_RESUME MODE: Teleop or disabled without FMS ===
-    // Pose is UNANCHORED - skip field bounds check, just sanity-check
+
+    // === SHOP_RESUME / PRACTICE MODE: No FMS ===
+    // If Quest is already tracking a sane pose, resume from it — do NOT overwrite with auto start.
+    // Only fall back to auto start pose if Quest has no tracking (e.g. first boot, tracker lost).
     if (!DriverStation.isFMSAttached()) {
-      
       Pose2d questNavPose = questNavSubsystem.getRobotPose().orElse(null);
       if (questNavPose != null && isSanePose(questNavPose)) {
         initState = InitializationState.INITIALIZED;
-        
-        double waitTime = initWaitTimer.get();
-        Logger.recordOutput("PoseEstimator/InitWaitSeconds", waitTime);
-        
-        SmartLogger.logConsole("SHOP_RESUME: Quest tracking unanchored, pose: " + SmartLogger.formatPose(questNavPose));
-        SmartLogger.logConsoleError("WARNING: Not field-aligned - teleop practice only!");
-        
+        Logger.recordOutput("PoseEstimator/InitWaitSeconds", initWaitTimer.get());
         Logger.recordOutput("PoseEstimator/InitializedViaQuestNav", true);
         Logger.recordOutput("PoseEstimator/InitMode", "SHOP_RESUME");
         Logger.recordOutput("PoseEstimator/UnanchoredFrame", true);
-        
+        SmartLogger.logConsole("SHOP_RESUME: Quest tracking unanchored, pose: " + SmartLogger.formatPose(questNavPose));
+        SmartLogger.logConsoleError("WARNING: Not field-aligned - teleop practice only!");
         return new InitResult(questNavPose, false, "SHOP_RESUME: Quest existing tracking (UNANCHORED - teleop only)");
+      }
+
+      // Quest not tracking — fall back to auto start pose so the robot at least has a known origin
+      if (DriverStation.isDisabled()) {
+        Pose2d autoStartPose = getExpectedAutoStartPose();
+        if (autoStartPose != null && isWithinField(autoStartPose.getTranslation())) {
+          initState = InitializationState.INITIALIZED;
+          Logger.recordOutput("PoseEstimator/InitWaitSeconds", initWaitTimer.get());
+          Logger.recordOutput("PoseEstimator/InitializedFromAuto", true);
+          Logger.recordOutput("PoseEstimator/InitMode", "PRACTICE_AUTO_SEED");
+          return new InitResult(autoStartPose, true, "PRACTICE_AUTO_SEED: Quest not tracking, using auto start pose");
+        }
       }
     }
     
@@ -164,8 +161,22 @@ public class PoseInitializer {
   public Pose2d getStartPoseForAutoName(String autoName) {
     if (autoName == null || autoName.isEmpty()) return null;
 
-    // Java autos (no .auto file) — return their known starting pose directly
-    if (autoName.equals("ShootInPlace")) return Constants.StartingPositions.SHOOT_IN_PLACE_START;
+    // Java autos (no .auto file) — return their known starting pose, flipped for Red if needed.
+    // Blue-side poses are defined in Constants; the isRedNow flip below handles Red automatically.
+    Pose2d javaAutoPose = null;
+    if (autoName.equals("ShootInPlaceRight")) javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
+    if (autoName.equals("ShootInPlaceLeft"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
+    if (javaAutoPose != null) {
+      boolean isRedNow = DriverStation.getAlliance()
+          .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+      if (isRedNow) {
+        javaAutoPose = new Pose2d(
+            FIELD_LENGTH_METERS - javaAutoPose.getX(),
+            FIELD_WIDTH_METERS  - javaAutoPose.getY(),
+            Rotation2d.fromDegrees(javaAutoPose.getRotation().getDegrees() + 180.0));
+      }
+      return javaAutoPose;
+    }
 
     // Return cached result if same auto and same alliance is requested again (avoids file I/O every loop)
     boolean isRedNow = DriverStation.getAlliance()

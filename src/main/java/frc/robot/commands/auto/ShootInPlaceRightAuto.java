@@ -10,12 +10,12 @@ import frc.robot.subsystems.SingulatorSubsystem;
 import frc.robot.subsystems.SpindexerSubsystem;
 import frc.robot.subsystems.turret.TurretSubsystem;
 
-// Stationary shoot auto — no driving.
-// Enables tracking, spins up flywheels, deploys intake, then feeds all loaded balls into the hub.
+// Stationary shoot auto — no driving. Right side of field (works for both alliances).
+// Pose is seeded from PoseInitializer which flips for Red automatically, same as PP autos.
 // Tune SPINUP_SECONDS and SHOOT_SECONDS in Constants.Auto.
-public class ShootInPlaceAuto extends SequentialCommandGroup {
+public class ShootInPlaceRightAuto extends SequentialCommandGroup {
 
-  public ShootInPlaceAuto(
+  public ShootInPlaceRightAuto(
       TurretSubsystem turret,
       SpindexerSubsystem spindexer,
       SingulatorSubsystem singulator,
@@ -23,14 +23,19 @@ public class ShootInPlaceAuto extends SequentialCommandGroup {
       PoseEstimatorSubsystem poseEstimator,
       DriveSubsystem drive) {
 
-    addCommands(
-        // Seed pose so aim solver knows where we are on the field
-        Commands.runOnce(() -> poseEstimator.manualCompSeed(
-            Constants.StartingPositions.SHOOT_IN_PLACE_START,
-            drive.getGyroRotation())),
+    setName("ShootInPlaceRight");
 
-        // Enable tracking, spin up flywheels, deploy intake — all at once
+    addCommands(
+        // Seed pose — PoseInitializer applies the Red flip automatically if needed
         Commands.runOnce(() -> {
+          edu.wpi.first.math.geometry.Pose2d startPose = poseEstimator.getStartPoseForAutoName("ShootInPlaceRight");
+          if (startPose != null) poseEstimator.manualCompSeed(startPose, drive.getGyroRotation());
+        }),
+
+        // Enable tracking, spin up flywheels, deploy intake.
+        // Holds the turret requirement so the default command can't zero the flywheels.
+        // Phase 1: run for the minimum spinup time regardless of aim state.
+        Commands.run(() -> {
           turret.enableTracking();
           turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
           turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
@@ -38,10 +43,16 @@ public class ShootInPlaceAuto extends SequentialCommandGroup {
             intake.extend();
             intake.spinIn();
           }
-        }, turret),
+        }, turret)
+            .withTimeout(Constants.Auto.SHOOT_IN_PLACE_SPINUP_SECONDS),
 
-        // Wait for flywheels to reach speed
-        Commands.waitSeconds(Constants.Auto.SHOOT_IN_PLACE_SPINUP_SECONDS),
+        // Phase 2: keep holding flywheels at speed while waiting for turret to reach target.
+        // Still holds the turret requirement so the default command stays interrupted.
+        Commands.run(() -> {
+          turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
+          turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
+        }, turret)
+            .until(turret::isAimed),
 
         // Start the feed chain
         Commands.runOnce(() -> {
@@ -62,7 +73,7 @@ public class ShootInPlaceAuto extends SequentialCommandGroup {
         }, turret, spindexer, singulator)
     );
 
-    setName("ShootInPlace");
+    setName("ShootInPlaceRight");
   }
 }
 

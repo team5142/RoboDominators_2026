@@ -25,6 +25,7 @@ public class SetStartingPoseCommand extends Command {
   private final Pose2d targetPose;
   private final String positionName;
   private final GyroSubsystem gyro;
+  private final QuestNavSubsystem questNav;
   private final DriveSubsystem drive;
   private final PoseEstimatorSubsystem poseEstimator;
 
@@ -37,12 +38,13 @@ public class SetStartingPoseCommand extends Command {
       Pose2d targetPose,
       String positionName,
       GyroSubsystem gyro,
-      QuestNavSubsystem questNav, // kept for call-site compatibility, not used internally
+      QuestNavSubsystem questNav,
       DriveSubsystem drive,
       PoseEstimatorSubsystem poseEstimator) {
     this.targetPose = targetPose;
     this.positionName = positionName;
     this.gyro = gyro;
+    this.questNav = questNav;
     this.drive = drive;
     this.poseEstimator = poseEstimator;
     addRequirements(poseEstimator);
@@ -76,6 +78,11 @@ public class SetStartingPoseCommand extends Command {
     gyro.setHeading(0.0);
     Rotation2d confirmedGyroAngle = drive.getGyroRotation();
     poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
+    // Seed QuestNav directly so it stops fighting the new pose estimator position.
+    // Without this, incoming QuestNav measurements pull the fused estimate back to the old pose.
+    if (questNav.isTracking()) {
+      questNav.seedToPose(targetPose);
+    }
     seedAttempts = 1;
 
     confirmTimer.reset();
@@ -116,6 +123,9 @@ public class SetStartingPoseCommand extends Command {
       SmartLogger.logConsole("Seed not confirmed - retry " + seedAttempts + "/" + MAX_SEED_ATTEMPTS);
       SmartDashboard.putString("Seed/Status", "RETRY " + seedAttempts);
       poseEstimator.manualCompSeed(targetPose, drive.getGyroRotation());
+      if (questNav.isTracking()) {
+        questNav.seedToPose(targetPose);
+      }
       confirmTimer.reset();
     }
   }

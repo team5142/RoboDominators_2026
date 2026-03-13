@@ -127,6 +127,7 @@ public class TurretAimSolver {
     goal.flywheelFrontRps = shot.flywheelFrontRps;
     goal.flywheelBackRps  = shot.flywheelBackRps;
     goal.flywheelPercent  = 0.0; // unused when useRps=true
+    goal.chassisSpeedMps  = inputs.robotSpeedMetersPerSecond;
 
     // Phase 2: only enable goal when robot is effectively stationary
     if (phase == Constants.Turret.TurretPhase.PHASE_2_TRACKING) {

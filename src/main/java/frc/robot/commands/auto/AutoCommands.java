@@ -46,6 +46,18 @@ public final class AutoCommands {
                 intake.stopRollers();
                 intake.retract();
             }, intake));
+
+            // Start rollers only — arm position unchanged
+            NamedCommands.registerCommand("IntakeRollersOn", Commands.runOnce(
+                intake::spinIn, intake));
+
+            // Stop rollers only — arm position unchanged
+            NamedCommands.registerCommand("IntakeRollersOff", Commands.runOnce(
+                intake::stopRollers, intake));
+
+            // Agitate: brief reverse pulse to free a stuck ball — arm position unchanged
+            NamedCommands.registerCommand("IntakeAgitate", Commands.runOnce(
+                intake::agitate, intake));
         }
 
         // --- Shoot ---

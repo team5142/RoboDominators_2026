@@ -45,6 +45,11 @@ public class TurretSubsystem extends SubsystemBase {
   // Until this is true, updateAimFromProvider() is a no-op and no motors move.
   private boolean trackingEnabled = false;
 
+  // Settle counter — counts consecutive loops the turret has been within tolerance.
+  // isAimed()/isReadyToShoot() require this to reach TURRET_ON_TARGET_SETTLE_LOOPS.
+  // Currently 0 (disabled) — enable once beam breaks are working.
+  private int turretOnTargetLoops = 0;
+
   // Hood step positions: 10% increments of travel (0%, 10%, 20%, ... 100%)
   private static final double[] HOOD_STEPS = {
     0.0,
@@ -99,15 +104,7 @@ public class TurretSubsystem extends SubsystemBase {
   private final SysIdRoutine sysIdFront;
   private final SysIdRoutine sysIdBack;
 
-  // Flywheel RPM settle recorder — samples RPM 3s after each bumper press, prints table when all 8 done.
-  private static final int SETTLE_LOOPS = 150; // 3s at 50Hz
-  private static final int RPM_TABLE_SIZE = 8;
-  private final double[] rpmTablePct      = new double[RPM_TABLE_SIZE];
-  private final double[] rpmTableFrontRpm = new double[RPM_TABLE_SIZE];
-  private final double[] rpmTableBackRpm  = new double[RPM_TABLE_SIZE];
-  private int rpmTableCount   = 0; // how many steps have been recorded
-  private int settleLoopsLeft = -1; // -1 = idle, >0 = counting down
-  private double pendingPct   = 0.0;
+
 
   public TurretSubsystem(RobotState robotState, TurretIO io) {
     this.robotState = robotState;
@@ -151,16 +148,6 @@ public class TurretSubsystem extends SubsystemBase {
   public Command sysIdBackQuasistatic(SysIdRoutine.Direction dir)  { return sysIdBack.quasistatic(dir); }
   public Command sysIdBackDynamic(SysIdRoutine.Direction dir)      { return sysIdBack.dynamic(dir); }
 
-  // ---- Flywheel RPM settle recorder ----
-
-  // Call right after bumping the flywheel speed. Samples both RPMs 3s later, then
-  // prints a formatted table to the console once all RPM_TABLE_SIZE steps are done.
-  public void scheduleFlywheelRpmRecord(double pct) {
-    pendingPct = pct;
-    settleLoopsLeft = SETTLE_LOOPS;
-    System.out.println("[RPM Recorder] Scheduled step " + (rpmTableCount + 1) + "/8 at " + (int)(pct * 100) + "% - sampling in 3s");
-  }
-
   // ---- Fire interlock ----
 
   // Must be called by the operator (e.g. hold button) before any shot is allowed
@@ -169,10 +156,15 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Allows the aim pipeline to start running. Called once after the lockout confirm.
   public void enableTracking() { trackingEnabled = true; }
+  public boolean isTrackingEnabled() { return trackingEnabled; }
 
   // True when the current target bearing is within the turret's physical travel range.
   // False = target is in the ~28 deg blind spot; robot must rotate to bring it in range.
   public boolean isTurretReachable() { return aimGoal.targetReachable; }
+
+  // True when the aim pipeline has computed a valid goal (pose is good and target is reachable).
+  // Use this to confirm the turret is actually tracking before gating a shot.
+  public boolean hasAimGoal() { return aimGoal.enable; }
 
   // RPS values last solved by the aim pipeline for the current robot distance.
   public double getAimGoalFrontRps() { return aimGoal.flywheelFrontRps; }
@@ -188,6 +180,11 @@ public class TurretSubsystem extends SubsystemBase {
     if (!homed && Constants.Turret.CURRENT_PHASE != Constants.Turret.TurretPhase.PHASE_1_STATIC) {
       SmartLogger.logReplay("Turret/ReadyToShoot", false);
       SmartLogger.logReplay("Turret/WhyNotReady", "not homed");
+      return false;
+    }
+    if (aimGoal.chassisSpeedMps > Constants.Turret.CHASSIS_SPEED_FIRE_THRESHOLD_MPS) {
+      SmartLogger.logReplay("Turret/ReadyToShoot", false);
+      SmartLogger.logReplay("Turret/WhyNotReady", "chassis too fast");
       return false;
     }
     if (!isTurretOnTarget()) {
@@ -210,16 +207,39 @@ public class TurretSubsystem extends SubsystemBase {
     return true;
   }
 
+  // True when turret, flywheel, and hood are all on target — no fire interlock required.
+  // Use this in autos to gate feeding until the turret has actually rotated into position.
+  // Also requires an active aim goal so this doesn't pass trivially before the pipeline acquires a target.
+  public boolean isAimed() {
+    return aimGoal.enable && isTurretOnTarget() && isFlywheelOnTarget() && isHoodOnTarget();
+  }
+
   private boolean isTurretOnTarget() {
-    if (!aimGoal.enable) return true; // open loop — no target to check against
+    if (!aimGoal.enable) {
+      turretOnTargetLoops = 0;
+      return true; // open loop — no target to check against
+    }
     double error = Math.abs(aimGoal.turretRotations - inputs.turretAbsolutePositionRotations);
-    return error < Constants.Turret.TURRET_ON_TARGET_TOLERANCE_ROT;
+    if (error < Constants.Turret.TURRET_ON_TARGET_TOLERANCE_ROT) {
+      turretOnTargetLoops++;
+    } else {
+      turretOnTargetLoops = 0;
+    }
+    return turretOnTargetLoops >= Constants.Turret.TURRET_ON_TARGET_SETTLE_LOOPS;
   }
 
   private boolean isFlywheelOnTarget() {
     if (Math.abs(aimGoal.flywheelPercent) < ACTIVE_PERCENT_THRESHOLD) return true;
     double error = Math.abs(aimGoal.flywheelPercent - outputs.flywheelPercent);
     return error < Constants.Turret.FLYWHEEL_ON_TARGET_TOLERANCE_PCT;
+  }
+
+  // True when both flywheels are spinning at or above the minimum useful shoot speed.
+  // Used by the RT shoot gate: if the operator spins up manually, feed as soon as this passes.
+  // Threshold is conservative — just needs to confirm the motor is spinning, not precisely on-target.
+  public boolean isFlywheelSpinningFast() {
+    return inputs.flywheelVelocityRpm >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM
+        && inputs.flywheelBackVelocityRpm >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM;
   }
 
   private boolean isHoodOnTarget() {
@@ -378,6 +398,7 @@ public class TurretSubsystem extends SubsystemBase {
     aimGoal.flywheelBackRps  = goal.flywheelBackRps;
     aimGoal.enable           = goal.enable;
     aimGoal.targetReachable  = goal.targetReachable;
+    aimGoal.chassisSpeedMps  = goal.chassisSpeedMps;
   }
 
   public boolean updateAimFromProvider(TurretAimProvider provider) {
@@ -409,46 +430,6 @@ public class TurretSubsystem extends SubsystemBase {
   public void periodic() {
     io.updateInputs(inputs);
     state.updateFromInputs(inputs);
-
-    // RPM settle recorder: count down after bumper press, then sample.
-    // Ignores duplicate pct values (wrapping past 100% restarts from 30%).
-    // Prints the table as soon as the 100% step is recorded.
-    if (settleLoopsLeft > 0) {
-      settleLoopsLeft--;
-    } else if (settleLoopsLeft == 0) {
-      settleLoopsLeft = -1;
-      // Skip if we already recorded this pct (handles wrap-around extra presses)
-      boolean alreadyRecorded = false;
-      for (int i = 0; i < rpmTableCount; i++) {
-        if (Math.abs(rpmTablePct[i] - pendingPct) < 0.001) { alreadyRecorded = true; break; }
-      }
-      if (!alreadyRecorded && rpmTableCount < RPM_TABLE_SIZE) {
-        rpmTablePct[rpmTableCount]      = pendingPct;
-        rpmTableFrontRpm[rpmTableCount] = inputs.flywheelVelocityRpm;
-        rpmTableBackRpm[rpmTableCount]  = inputs.flywheelBackVelocityRpm;
-        System.out.println(String.format("[RPM Recorder] Step %d: %.0f%% -> front=%.1f back=%.1f",
-            rpmTableCount + 1, pendingPct * 100,
-            rpmTableFrontRpm[rpmTableCount], rpmTableBackRpm[rpmTableCount]));
-        SmartLogger.logReplay("Turret/RpmRecorder/Step",     (double)(rpmTableCount + 1));
-        SmartLogger.logReplay("Turret/RpmRecorder/FrontRpm", rpmTableFrontRpm[rpmTableCount]);
-        SmartLogger.logReplay("Turret/RpmRecorder/BackRpm",  rpmTableBackRpm[rpmTableCount]);
-        rpmTableCount++;
-        // Print table as soon as 100% (the last step) is recorded
-        if (Math.abs(pendingPct - 1.00) < 0.001) {
-          StringBuilder sb = new StringBuilder("\n=== FLYWHEEL RPM TABLE ===\n");
-          sb.append(String.format("%-6s  %-10s  %-10s%n", "PCT", "FRONT_RPM", "BACK_RPM"));
-          for (int i = 0; i < rpmTableCount; i++) {
-            sb.append(String.format("%-6.0f  %-10.1f  %-10.1f%n",
-                rpmTablePct[i] * 100, rpmTableFrontRpm[i], rpmTableBackRpm[i]));
-          }
-          sb.append("==========================");
-          String tableStr = sb.toString();
-          System.out.println(tableStr);
-          SmartLogger.logReplay("Turret/RpmRecorder/Table", tableStr);
-          rpmTableCount = 0; // reset for re-run
-        }
-      }
-    }
 
     // If the motor rebooted mid-match (brownout), restore the encoder from our saved position.
     // The sticky fault fires for exactly one loop then is cleared by TurretIOCTRE.
@@ -559,7 +540,7 @@ public class TurretSubsystem extends SubsystemBase {
     // Chain-jam stall recovery: if the turret has been stuck (not moving, but not on target)
     // for TURRET_STALL_TIMEOUT_SECS, snap the MM target to the current position so it stops
     // fighting the jam. Clears automatically once the turret starts moving again.
-    if (homed && !homing && setpoints.useTurretPosition) {
+    if (homed && !homing && setpoints.useTurretPosition && edu.wpi.first.wpilibj.DriverStation.isEnabled()) {
       double posErr = Math.abs(setpoints.turretPositionMotorRotations - inputs.turretAbsolutePositionRotations);
       boolean isStuck = Math.abs(inputs.turretVelocityRps) < Constants.Turret.TURRET_STALL_VELOCITY_THRESHOLD_RPS
           && posErr > Constants.Turret.TURRET_STALL_ERROR_THRESHOLD_ROT;
@@ -568,12 +549,12 @@ public class TurretSubsystem extends SubsystemBase {
         stallTimerSecs += 0.02;
       } else {
         stallTimerSecs = 0.0;
-        stallGiveUpActive = false; // chain freed — resume normal tracking
+        stallGiveUpActive = false;
       }
 
-      if (stallTimerSecs >= Constants.Turret.TURRET_STALL_TIMEOUT_SECS) {
+      if (stallTimerSecs >= Constants.Turret.TURRET_STALL_TIMEOUT_SECS && !stallGiveUpActive) {
         stallGiveUpActive = true;
-        stallTimerSecs = Constants.Turret.TURRET_STALL_TIMEOUT_SECS; // prevent runaway accumulation
+        stallTimerSecs = Constants.Turret.TURRET_STALL_TIMEOUT_SECS;
         setpoints.turretPositionMotorRotations = inputs.turretAbsolutePositionRotations;
         SmartLogger.logConsole("Turret stall timeout — holding current position (chain jam?)", "Turret");
       }

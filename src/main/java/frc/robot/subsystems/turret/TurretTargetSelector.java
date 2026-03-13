@@ -45,7 +45,10 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
   @Override
   public Pose2d get() {
     Pose2d robotPose = poseEstimator.getEstimatedPose();
-    boolean isRed = DriverStation.getAlliance().map(a -> a == DriverStation.Alliance.Red).orElse(false);
+    // Use the cached alliance from RobotState — never call DriverStation.getAlliance() directly
+    // in a periodic loop, as it can return empty on a DS blip and silently default to Blue,
+    // corrupting the hysteresis state for the rest of the match.
+    boolean isRed = robotState.getAlliance() == DriverStation.Alliance.Red;
 
     // Suppress auto fire when on the bump, in the net zone, or behind the alliance tower
     Pose2d blueHub = Constants.HubCenters.BLUE_HUB_CENTER;
@@ -56,12 +59,15 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
         || isInsideTowerShadow(robotPose);
     robotState.setFieldZoneSuppressed(suppressed);
 
+    // Alliance-side boundary: use the neutral zone edge, not the alliance zone line.
+    // The gap between ALLIANCE_ZONE_LENGTH and NEUTRAL_ZONE_LOW_X is the hub/bump/trench area —
+    // robots there should still aim at their own hub, not switch to a pass target.
     double allianceEdge = isRed
-        ? Constants.Field.FIELD_LENGTH_METERS - Constants.Field.ALLIANCE_ZONE_LENGTH_METERS
-        : Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+        ? Constants.Field.NEUTRAL_ZONE_HIGH_X_METERS
+        : Constants.Field.NEUTRAL_ZONE_LOW_X_METERS;
     double opponentEdge = isRed
-        ? Constants.Field.ALLIANCE_ZONE_LENGTH_METERS
-        : Constants.Field.FIELD_LENGTH_METERS - Constants.Field.ALLIANCE_ZONE_LENGTH_METERS;
+        ? Constants.Field.NEUTRAL_ZONE_LOW_X_METERS
+        : Constants.Field.NEUTRAL_ZONE_HIGH_X_METERS;
 
     // Hysteresis: widen the entry threshold vs exit threshold by ZONE_HYSTERESIS_METERS each side.
     if (lastInAllianceZone) {

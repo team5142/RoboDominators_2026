@@ -44,6 +44,11 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
 
   @Override
   public TurretAimInputs get() {
+    // Don't feed the solver a garbage pose — wait until the estimator has been seeded.
+    if (!poseEstimator.isInitialized()) {
+      return null;
+    }
+
     Pose2d pose = poseEstimator.getEstimatedPose();
 
     // Low-pass filter the heading to suppress QuestNav standstill jitter.

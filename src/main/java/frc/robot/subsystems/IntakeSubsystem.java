@@ -97,6 +97,12 @@ public class IntakeSubsystem extends SubsystemBase {
   // Target position for bump lift — set by bumpLift(), cleared when arm reaches it
   private double bumpLiftTarget = -1.0;
 
+  // Called when the arm finishes extending to EXTENDED — used to conditionally start rollers.
+  // Set by RobotContainer via setOnExtendComplete() so the roller-enabled flag stays in one place.
+  private Runnable onExtendComplete = null;
+
+  public void setOnExtendComplete(Runnable callback) { onExtendComplete = callback; }
+
   // Set true during SysId tests to bypass stall detection (high current is expected during characterization)
   private boolean sysIdActive = false;
 
@@ -363,7 +369,7 @@ public class IntakeSubsystem extends SubsystemBase {
       if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
         stopExtension();
         robotState.setIntakePosition(IntakePosition.EXTENDED);
-        // spinIn(); // rollers now manual via operator B button
+        if (onExtendComplete != null) onExtendComplete.run();
       } else if (distToTarget <= Constants.Intake.EXTEND_SLOW_ZONE_ROTATIONS) {
         extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SLOW_SPEED));
       }
@@ -440,35 +446,39 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Intake/State", pos.toString());
 
     // Roller load detection and jam recovery.
-    // If sustained overload while intaking: fire a brief reverse pulse then resume.
+    // Roller jam recovery — disabled via ROLLER_JAM_RECOVERY_ENABLED until tuned on hardware.
     double rollerAmps = rollerMotor.getOutputCurrent();
     double nowSec = edu.wpi.first.wpilibj.Timer.getFPGATimestamp();
 
-    if (rollerJamPulsing) {
-      // Currently in reverse pulse — check if duration has elapsed
-      if (nowSec - rollerJamPulseStartSec >= Constants.Intake.ROLLER_JAM_REVERSE_SEC) {
-        rollerJamPulsing = false;
+    if (Constants.Intake.ROLLER_JAM_RECOVERY_ENABLED) {
+      if (rollerJamPulsing) {
+        if (nowSec - rollerJamPulseStartSec >= Constants.Intake.ROLLER_JAM_REVERSE_SEC) {
+          rollerJamPulsing = false;
+          rollerLoadLoopCount = 0;
+          rollerMotor.set(Constants.Intake.ROLLER_INTAKE_SPEED);
+          robotState.setIntakeRollerState(IntakeRollerState.INTAKING);
+          SmartLogger.logConsole("Intake roller jam cleared — resuming intake", "Intake");
+        }
+      } else if (robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
+          && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS) {
+        rollerLoadLoopCount++;
+        rollerUnderLoad = true;
+        if (rollerLoadLoopCount >= Constants.Intake.ROLLER_JAM_LOOP_THRESHOLD) {
+          rollerLoadLoopCount = 0;
+          rollerJamPulsing = true;
+          rollerJamPulseStartSec = nowSec;
+          rollerMotor.set(Constants.Intake.ROLLER_REVERSE_SPEED);
+          robotState.setIntakeRollerState(IntakeRollerState.REVERSING);
+          SmartLogger.logConsole("Intake roller jam — reverse pulse", "Intake");
+        }
+      } else {
         rollerLoadLoopCount = 0;
-        rollerMotor.set(Constants.Intake.ROLLER_INTAKE_SPEED);
-        robotState.setIntakeRollerState(IntakeRollerState.INTAKING);
-        SmartLogger.logConsole("Intake roller jam cleared — resuming intake", "Intake");
-      }
-    } else if (robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
-        && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS) {
-      rollerLoadLoopCount++;
-      rollerUnderLoad = true;
-      if (rollerLoadLoopCount >= Constants.Intake.ROLLER_JAM_LOOP_THRESHOLD) {
-        rollerLoadLoopCount = 0;
-        rollerJamPulsing = true;
-        rollerJamPulseStartSec = nowSec;
-        rollerMotor.set(Constants.Intake.ROLLER_REVERSE_SPEED);
-        robotState.setIntakeRollerState(IntakeRollerState.REVERSING);
-        SmartLogger.logConsole("Intake roller jam — reverse pulse", "Intake");
+        rollerUnderLoad = robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
+            && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS;
       }
     } else {
       rollerLoadLoopCount = 0;
-      rollerUnderLoad = robotState.getIntakeRollerState() == IntakeRollerState.INTAKING
-          && rollerAmps > Constants.Intake.ROLLER_LOAD_CURRENT_AMPS;
+      rollerUnderLoad = false;
     }
     SmartLogger.logReplay("Intake/RollerCurrentAmps", rollerAmps);
     SmartLogger.logReplay("Intake/RollerUnderLoad", rollerUnderLoad);

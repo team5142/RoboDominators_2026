@@ -232,6 +232,12 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     return initializer.isInitialized();
   }
 
+  // Returns the starting pose for a named auto, flipped for Red alliance if needed.
+  // Same logic used for PathPlanner autos — auto commands call this so they don't need hardcoded poses.
+  public Pose2d getStartPoseForAutoName(String name) {
+    return initializer.getStartPoseForAutoName(name);
+  }
+
   // Called at teleopInit to re-seed gyro and field perspective from auto end pose.
   // Without this, field orientation is stale if auto ended at a different heading.
   public void onTeleopInit() {

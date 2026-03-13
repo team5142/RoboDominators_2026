@@ -246,6 +246,7 @@ public class Robot extends LoggedRobot {
     robotState.setMode(RobotState.Mode.ENABLED_TELEOP);
     
     robotContainer.poseEstimator.onTeleopInit();
+    robotContainer.onTeleopInit();
 
     // Homing is triggered manually by the operator Start button — not auto on enable.
 
