@@ -164,8 +164,9 @@ public class PoseInitializer {
     // Java autos (no .auto file) — return their known starting pose, flipped for Red if needed.
     // Blue-side poses are defined in Constants; the isRedNow flip below handles Red automatically.
     Pose2d javaAutoPose = null;
-    if (autoName.equals("ShootInPlaceRight")) javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
-    if (autoName.equals("ShootInPlaceLeft"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
+    if (autoName.equals("ShootInPlaceRight"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
+    if (autoName.equals("ShootInPlaceLeft"))   javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
+    if (autoName.equals("DoNothingCenter"))    javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_CENTER;
     if (javaAutoPose != null) {
       boolean isRedNow = DriverStation.getAlliance()
           .map(a -> a == DriverStation.Alliance.Red).orElse(false);

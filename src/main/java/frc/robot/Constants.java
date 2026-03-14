@@ -37,8 +37,8 @@ public final class Constants {
     public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 4.0;
 
     // Driver speed modes (multiply by max speed)
-    public static final double NORMAL_SPEED_SCALE         = 0.30; // 5.21 * 0.30 = ~1.56 m/s  (was 0.40 ~2.1 m/s)
-    public static final double NORMAL_ROTATION_SCALE      = 0.20; // 4pi  * 0.20 = ~2.5 rad/s (was 0.40)
+    public static final double NORMAL_SPEED_SCALE         = 0.50; // 5.21 * 0.50 = ~2.6 m/s
+    public static final double NORMAL_ROTATION_SCALE      = 0.30; // 4pi  * 0.30 = ~3.8 rad/s
     public static final double PRECISION_SPEED_SCALE      = 0.20; // 5.21 * 0.20 = ~1.0 m/s
     public static final double PRECISION_ROTATION_SCALE   = 0.10;
     public static final double FAST_SPEED_SCALE           = 1.0;
@@ -478,6 +478,9 @@ public final class Constants {
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint
     // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
     public static final double FLYWHEEL_SPINUP_MIN_RPM = 1500.0; // tune to match actual spin-up curve
+    // Fallback warmup speed used when LT spins up flywheels but the aim pipeline has no target yet.
+    public static final double FLYWHEEL_WARMUP_FRONT_RPS = 60.0;
+    public static final double FLYWHEEL_WARMUP_BACK_RPS  = 60.0;
 
     // Consecutive loops turret must stay within tolerance before isAimed()/isReadyToShoot() pass.
     // Prevents firing during a large slew where the turret is briefly passing through the tolerance band.
@@ -785,8 +788,9 @@ public final class Constants {
     public static final Pose2d PRECISE_BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(6.033, 0.985, Rotation2d.fromDegrees(180.0));
 
     // ShootInPlace auto starting poses — Blue side. PoseInitializer flips these for Red automatically.
-    public static final Pose2d SHOOT_IN_PLACE_START_RIGHT = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d SHOOT_IN_PLACE_START_LEFT  = new Pose2d(3.620, Field.FIELD_WIDTH_METERS - 2.515, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOOT_IN_PLACE_START_RIGHT  = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOOT_IN_PLACE_START_LEFT   = new Pose2d(3.620, Field.FIELD_WIDTH_METERS - 2.515, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOOT_IN_PLACE_START_CENTER = new Pose2d(3.620, Field.FIELD_WIDTH_METERS / 2.0, Rotation2d.fromDegrees(0.0));
   }
 
   // Field constants used for fixed target mirroring
