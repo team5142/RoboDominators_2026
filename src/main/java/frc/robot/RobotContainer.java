@@ -10,6 +10,7 @@ import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
+import java.util.Optional;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.XboxController;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
@@ -66,8 +67,6 @@ public class RobotContainer {
 
   // When REQUIRE_TURRET_FORWARD_CONFIRM=true, bindings are deferred until Back+A confirm.
   private boolean bindingsConfigured = false;
-  // Flywheel warm-up toggle state — toggled by operator LT.
-  private boolean flywheelOn = false;
   // Intake roller global enable — toggled by operator B. True by default so deploy auto-starts rollers.
   private boolean intakeRollersEnabled = true;
 
@@ -88,6 +87,9 @@ public class RobotContainer {
   // Autonomous chooser shown on dashboard; selection drives pose preview and auto init
   private final SendableChooser<Command> autoChooser;
   private Command lastSelectedAuto = null; // Track selection for preview updates
+
+  // Shot seed pose chooser — shown in Elastic as a dropdown; START button reads the selection.
+  private final SendableChooser<Pose2d> shotSeedChooser = new SendableChooser<>();
 
   // Preview thread writes these; main thread reads them via applyPendingAutoPreviewPose()
   // volatile ensures changes are visible across threads without synchronization
@@ -131,28 +133,27 @@ public class RobotContainer {
     // While no higher-priority command holds the turret, it continuously solves bearing to target.
     // The aim goal only enables when phase >= PHASE_2 and pose is initialized.
     if (turretSubsystem != null) {
+      TurretAimSolver aimSolver = new TurretAimSolver();
       TurretAimPipeline aimPipeline = new TurretAimPipeline(
           poseEstimator,
           driveSubsystem,
           new TurretTargetSelector(poseEstimator, robotState),
-          new TurretAimSolver());
+          aimSolver);
       turretSubsystem.setDefaultCommand(
           Commands.run(() -> {
             turretSubsystem.updateAimFromProvider(aimPipeline);
-            // Flywheel RPS is fully operator-controlled — not driven by the aim pipeline automatically.
-            // Each loop: apply pipeline RPS when on, or hold zero when off.
-            if (flywheelOn) {
+            if (robotState.isFlywheelOn()) {
               double frontRps = turretSubsystem.getAimGoalFrontRps();
               double backRps  = turretSubsystem.getAimGoalBackRps();
-              // Fall back to warmup speed if the aim pipeline hasn't solved a target yet
               if (frontRps <= 0.0) frontRps = Constants.Turret.FLYWHEEL_WARMUP_FRONT_RPS;
               if (backRps  <= 0.0) backRps  = Constants.Turret.FLYWHEEL_WARMUP_BACK_RPS;
               turretSubsystem.setFlywheelFrontRps(frontRps);
               turretSubsystem.setFlywheelBackRps(backRps);
             } else {
-              turretSubsystem.setFlywheelPercent(0.0); // open-loop zero = coast, not closed-loop hold
+              turretSubsystem.setFlywheelPercent(0.0);
             }
           }, turretSubsystem)
+              .beforeStarting(() -> aimSolver.resetLatch())
               .withName("TurretTrackingDefault"));
     }
     //climberSubsystem = ENABLE_CLIMBER ? new ClimberSubsystem(this.robotState) : null;
@@ -211,13 +212,21 @@ public class RobotContainer {
     }
     
     autoChooser = AutoBuilder.buildAutoChooser(""); // Scans deploy/pathplanner/autos/ for named autos
-    autoChooser.setDefaultOption("ShootInPlaceRight", new ShootInPlaceRightAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem));
-    autoChooser.addOption("ShootInPlaceLeft",  new ShootInPlaceLeftAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem));
+    autoChooser.setDefaultOption("ShootInPlaceRight", new ShootInPlaceRightAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
+    autoChooser.addOption("ShootInPlaceLeft",  new ShootInPlaceLeftAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     autoChooser.addOption("DoNothingCenter",   new DoNothingCenterAuto(turretSubsystem, poseEstimator, driveSubsystem));
     SmartDashboard.putData("Auto Chooser", autoChooser); // Sends chooser widget to dashboard
     robotState.setSysIdMode(SYSID_MODE);
     poseEstimator.setAutoChooser(autoChooser); // Lets pose estimator read auto start poses
     startAutoPreviewMonitor(); // Background thread: watches chooser and queues pose previews
+
+    shotSeedChooser.setDefaultOption("HUBCLOSE (1.28m)", Constants.StartingPositions.SHOT_SEED_HUBCLOSE);
+    shotSeedChooser.addOption("2M",   Constants.StartingPositions.SHOT_SEED_2M);
+    shotSeedChooser.addOption("2.5M", Constants.StartingPositions.SHOT_SEED_2_5M);
+    shotSeedChooser.addOption("3M",   Constants.StartingPositions.SHOT_SEED_3M);
+    shotSeedChooser.addOption("4M",   Constants.StartingPositions.SHOT_SEED_4M);
+    shotSeedChooser.addOption("4.5M", Constants.StartingPositions.SHOT_SEED_4_5M);
+    SmartDashboard.putData("Shot Seed Pose", shotSeedChooser);
     
     SmartLogger.logConsole("RobotContainer initialized - all subsystems ready", "Init Complete", 5);
   }
@@ -277,9 +286,15 @@ public class RobotContainer {
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
 
-    // START: Save current position
+    // START: Seed pose selected from "Shot Seed Pose" dropdown in Elastic.
+    // Restore to getRebuiltRightCornerPose() for competition.
     new JoystickButton(driverController, XboxController.Button.kStart.value)
-        .onTrue(new SetStartingPoseCommand(getRebuiltRightCornerPose(), "RIGHT CORNER", gyro, questNav, driveSubsystem, poseEstimator));
+        .onTrue(Commands.runOnce(() -> {
+          Pose2d seed = shotSeedChooser.getSelected();
+          if (seed == null) seed = Constants.StartingPositions.SHOT_SEED_2M;
+          new SetStartingPoseCommand(seed, "SHOT SEED", gyro, questNav, driveSubsystem, poseEstimator)
+              .schedule();
+        }));
 
     // D-PAD DOWN: Toggle QuestNav emergency mode (locks turret to HUBCLOSE, blocks pose-dependent commands).
     new Trigger(() -> driverController.getPOV() == 180)
@@ -381,14 +396,14 @@ public class RobotContainer {
     new Trigger(() -> operatorController.getLeftTriggerAxis() > 0.5)
         .onTrue(Commands.runOnce(() -> {
           if (turretSubsystem == null) return;
-          flywheelOn = !flywheelOn;
-          if (!flywheelOn) turretSubsystem.setFlywheelPercent(0.0);
+          robotState.setFlywheelOn(!robotState.isFlywheelOn());
+          if (!robotState.isFlywheelOn()) turretSubsystem.setFlywheelPercent(0.0);
         }));
 
-    new Trigger(() -> (operatorController.getLeftTriggerAxis() > 0.1 && operatorController.getLeftTriggerAxis() < 0.5)) // Allow LT to toggle flywheels even when both triggers are pressed (for dynamic snap+shoot)
-        .onTrue(Commands.runOnce(() -> {
-          turretSubsystem.setFlywheelPercent(30);
-        })); //remove soon
+    // new Trigger(() -> (operatorController.getLeftTriggerAxis() > 0.1 && operatorController.getLeftTriggerAxis() < 0.5)) // Allow LT to toggle flywheels even when both triggers are pressed (for dynamic snap+shoot)
+    //     .onTrue(Commands.runOnce(() -> {
+    //       turretSubsystem.setFlywheelPercent(30);
+    //     })); //remove soon
 
     // RT (hold): shoot.
     // If flywheels are already on, feed immediately.
@@ -396,12 +411,11 @@ public class RobotContainer {
     // Releases spindexer and singulator when trigger is released.
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.run(() -> {
-          if (!robotState.shouldShootInZone()) return;
           if (turretSubsystem == null) return;
 
           // If flywheel was off, turn it on now — it will spin up this loop and be checked below
-          if (!flywheelOn) {
-            flywheelOn = true;
+          if (!robotState.isFlywheelOn()) {
+            robotState.setFlywheelOn(true);
           }
 
           // Only start feeding once flywheels are up to speed
@@ -590,8 +604,16 @@ public class RobotContainer {
     return cachedAlliance == Alliance.Red;
   }
 
-  private static void updateAllianceFromDriverStation() {
-    cachedAlliance = DriverStation.getAlliance().orElse(Alliance.Blue);
+  private void updateAllianceFromDriverStation() {
+    Optional<Alliance> fmsAlliance = DriverStation.getAlliance();
+    if (fmsAlliance.isPresent()) {
+      cachedAlliance = fmsAlliance.get();
+    } else {
+      // No FMS — infer from seeded pose X. Robot on Red side has X > field midpoint.
+      double midX = Constants.Field.FIELD_LENGTH_METERS / 2.0;
+      double poseX = poseEstimator.getEstimatedPose().getX();
+      cachedAlliance = (poseX > midX) ? Alliance.Red : Alliance.Blue;
+    }
   }
 
   // Called from periodic() (main thread) to apply a pose queued by the preview thread.

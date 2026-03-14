@@ -30,6 +30,8 @@ public class RobotState {
   private boolean fieldZoneSuppressed = false;
   // Deadzone suppression: target is behind the robot in the turret blind spot (set by TurretSubsystem).
   private boolean deadzoneSuppressed = false;
+  // Flywheel warm-up state — readable by auto commands and the default turret command.
+  private boolean flywheelOn = false;
   private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
   // Match phase and hub active tracking
@@ -196,6 +198,9 @@ public class RobotState {
     questNavEmergencyMode = active;
     SmartLogger.logConsole("QuestNav emergency mode " + (active ? "ACTIVE — pose commands blocked" : "cleared"), "Emergency");
   }
+
+  public boolean isFlywheelOn() { return flywheelOn; }
+  public void setFlywheelOn(boolean on) { flywheelOn = on; }
 
   public boolean isAutoShootMode() { return autoShootMode; }
   public void setAutoShootMode(boolean active) {

@@ -69,6 +69,7 @@ public class SetStartingPoseCommand extends Command {
     SmartLogger.logConsole("=== MANUAL POSE RESET: " + positionName + " ===");
     SmartLogger.logConsole("Target: " + SmartLogger.formatPose(targetPose));
     SmartDashboard.putString("Seed/Status", "SEEDING...");
+    SmartLogger.logReplay("ManualReset/SeedRequested", true);
 
     // Reset gyro to 0 so CTRE field-centric offset stays consistent.
     // The pose estimator stores the heading internally via WPILib's resetPosition offset.

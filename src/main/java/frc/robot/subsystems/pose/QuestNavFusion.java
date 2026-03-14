@@ -155,6 +155,13 @@ public class QuestNavFusion {
       Matrix<N3, N1> stdDevs = VecBuilder.fill(0.02, 0.02, Math.toRadians(2.0));
       swervePoseEstimator.addVisionMeasurement(questPose, timestamp, stdDevs);
       
+      // Hard-reset estimator to the new Quest pose so the display snaps immediately.
+      // addVisionMeasurement alone won't move the pose if odometry hasn't moved since auto.
+      swervePoseEstimator.resetPosition(
+          driveSubsystem.getGyroRotation(),
+          driveSubsystem.getModulePositions(),
+          questPose);
+      
       SmartLogger.logConsole("  Frame fused to estimator", "QuestNav");
       
       lastAcceptedQuestTimestamp = timestamp;

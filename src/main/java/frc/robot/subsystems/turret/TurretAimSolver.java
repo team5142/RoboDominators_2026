@@ -20,6 +20,13 @@ public class TurretAimSolver {
   private boolean latchInitialized      = false;
   private boolean wasInDeadzone         = false; // true last cycle — forces one free latch update on re-entry
 
+  // Call whenever the pipeline restarts (enable transition, new auto) so stale latched values
+  // from a previous run don't feed into the first solve() call.
+  public void resetLatch() {
+    latchInitialized = false;
+    wasInDeadzone    = false;
+  }
+
   public void solve(TurretAimInputs inputs, TurretAimGoal goal) {
     Constants.Turret.TurretPhase phase = Constants.Turret.CURRENT_PHASE;
 

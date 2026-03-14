@@ -637,7 +637,7 @@ public final class Constants {
     public static final double LIMIT_SWITCH_VALID_WINDOW_ROTATIONS = 1.5;
 
     // Roller duty cycle outputs
-    public static final double ROLLER_INTAKE_SPEED  =  0.85; // intaking
+    public static final double ROLLER_INTAKE_SPEED  =  0.90; // intaking
     public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
 
     // Current limits
@@ -777,8 +777,17 @@ public final class Constants {
     public static final Pose2d PRECISE_BLUE_ALLIANCE_RIGHTBUMP = new Pose2d(3.712, 2.393, Rotation2d.fromDegrees(0.0)); 
     public static final Pose2d BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.755, 3.29, Rotation2d.fromDegrees(.0)); 
     public static final Pose2d PRECISE_BLUE_ALLIANCE_RIGHTOWER = new Pose2d(1.555, 3.29, Rotation2d.fromDegrees(.0)); 
-    
-   
+
+    // Straight-on shot seed poses — robot faces hub at 0deg, Y=4.022 (hub center Y).
+    // X = hub_center_x(4.612) - robot_center_to_hub_distance. Use START button to seed these.
+    // HUBCLOSE original measured pose (not straight-on, kept for reference):
+    public static final Pose2d SHOT_SEED_HUBCLOSE = new Pose2d(3.369, 4.022, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOT_SEED_2M   = new Pose2d(2.612, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-2.0
+    public static final Pose2d SHOT_SEED_2_5M = new Pose2d(2.112, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-2.5
+    public static final Pose2d SHOT_SEED_3M   = new Pose2d(1.612, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-3.0
+    public static final Pose2d SHOT_SEED_4M   = new Pose2d(0.612, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-4.0
+    public static final Pose2d SHOT_SEED_4_5M = new Pose2d(0.112, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-4.5
+
     // AUTO RESET POSE STAGING
     public static final Pose2d BLUE_AUTO_START_POS_FAR_RIGHT = new Pose2d(5.533, 1.185, Rotation2d.fromDegrees(180.0));
     
@@ -913,6 +922,74 @@ public final class Constants {
     public static final double OUTPOST_FRONT_RPS      = 63.05;  // -3% from 65.0 (2026-03-08 turret mods)
     public static final double OUTPOST_BACK_RPS       = 60.82;  // -3% from 62.7
     public static final double OUTPOST_TOF_SECONDS    = 0.990;  // -10% from 1.1 (2026-03-09)
+
+    /*
+     * STRAIGHT-SHOT DISTANCE TABLE - extrapolated from solver interpolation.
+     * Pivot distances: HUBCLOSE=1.45m, MIDRANGE=3.38m, OUTPOST=5.70m.
+     * Robot-center distance ~ pivot distance + 0.17m (turret pivot offset).
+     * Turret rot = FORWARD (6.078) - robot faces hub directly for all these shots.
+     * All values are estimates - tune on field 2026-03-14.
+     *
+     * 2M_STRAIGHT: robot ~2.0m from hub center, pivot ~1.83m
+     *   t = (1.83-1.45)/(3.38-1.45) = 0.197  between HUBCLOSE and MIDRANGE
+     *   HOOD:  0.343 + 0.197*(1.258-0.343) = 0.523
+     *   FRONT: 57.23 + 0.197*(51.41-57.23) = 56.08
+     *   BACK:  52.96 + 0.197*(48.50-52.96) = 52.08
+     *   TOF:   1.013 + 0.197*(1.017-1.013) = 1.014
+     *   public static final double M2_TURRET_ROT  = 6.078;
+     *   public static final double M2_HOOD_ROT    = 0.523;
+     *   public static final double M2_FRONT_RPS   = 56.08;
+     *   public static final double M2_BACK_RPS    = 52.08;
+     *   public static final double M2_TOF_SECONDS = 1.014;
+     *
+     * 2_5M_STRAIGHT: robot ~2.5m from hub center, pivot ~2.33m
+     *   t = (2.33-1.45)/(3.38-1.45) = 0.456  between HUBCLOSE and MIDRANGE
+     *   HOOD:  0.343 + 0.456*(1.258-0.343) = 0.760
+     *   FRONT: 57.23 + 0.456*(51.41-57.23) = 54.58
+     *   BACK:  52.96 + 0.456*(48.50-52.96) = 50.93
+     *   TOF:   1.013 + 0.456*(1.017-1.013) = 1.015
+     *   public static final double M2_5_TURRET_ROT  = 6.078;
+     *   public static final double M2_5_HOOD_ROT    = 0.760;
+     *   public static final double M2_5_FRONT_RPS   = 54.58;
+     *   public static final double M2_5_BACK_RPS    = 50.93;
+     *   public static final double M2_5_TOF_SECONDS = 1.015;
+     *
+     * 3M_STRAIGHT: robot ~3.0m from hub center, pivot ~2.83m
+     *   t = (2.83-1.45)/(3.38-1.45) = 0.715  between HUBCLOSE and MIDRANGE
+     *   HOOD:  0.343 + 0.715*(1.258-0.343) = 0.997
+     *   FRONT: 57.23 + 0.715*(51.41-57.23) = 53.07
+     *   BACK:  52.96 + 0.715*(48.50-52.96) = 49.77
+     *   TOF:   1.013 + 0.715*(1.017-1.013) = 1.016
+     *   public static final double M3_TURRET_ROT  = 6.078;
+     *   public static final double M3_HOOD_ROT    = 0.997;
+     *   public static final double M3_FRONT_RPS   = 53.07;
+     *   public static final double M3_BACK_RPS    = 49.77;
+     *   public static final double M3_TOF_SECONDS = 1.016;
+     *
+     * 4M_STRAIGHT: robot ~4.0m from hub center, pivot ~3.83m
+     *   t = (3.83-3.38)/(5.70-3.38) = 0.194  between MIDRANGE and OUTPOST
+     *   HOOD:  1.258 + 0.194*(2.402-1.258) = 1.480
+     *   FRONT: 51.41 + 0.194*(63.05-51.41) = 53.67
+     *   BACK:  48.50 + 0.194*(60.82-48.50) = 50.89
+     *   TOF:   1.017 + 0.194*(0.990-1.017) = 1.012
+     *   public static final double M4_TURRET_ROT  = 6.078;
+     *   public static final double M4_HOOD_ROT    = 1.480;
+     *   public static final double M4_FRONT_RPS   = 53.67;
+     *   public static final double M4_BACK_RPS    = 50.89;
+     *   public static final double M4_TOF_SECONDS = 1.012;
+     *
+     * 4_5M_STRAIGHT: robot ~4.5m from hub center, pivot ~4.33m
+     *   t = (4.33-3.38)/(5.70-3.38) = 0.409  between MIDRANGE and OUTPOST
+     *   HOOD:  1.258 + 0.409*(2.402-1.258) = 1.726
+     *   FRONT: 51.41 + 0.409*(63.05-51.41) = 56.17
+     *   BACK:  48.50 + 0.409*(60.82-48.50) = 53.54
+     *   TOF:   1.017 + 0.409*(0.990-1.017) = 1.006
+     *   public static final double M4_5_TURRET_ROT  = 6.078;
+     *   public static final double M4_5_HOOD_ROT    = 1.726;
+     *   public static final double M4_5_FRONT_RPS   = 56.17;
+     *   public static final double M4_5_BACK_RPS    = 53.54;
+     *   public static final double M4_5_TOF_SECONDS = 1.006;
+     */
   }
 
   // AutoPilot precision navigation library (singleton instances)

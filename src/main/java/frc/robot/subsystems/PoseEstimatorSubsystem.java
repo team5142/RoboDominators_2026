@@ -201,9 +201,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     SmartLogger.logConsole("Validation configured: COMP_SEED", "Pose");
     
     // Mark as initialized (prevent PoseInitializer from re-initing)
-    if (!initializer.isInitialized()) {
-      initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
-    }
+    // Also sync lastSeededAutoName so the auto-change detector doesn't immediately
+    // flip init back to WAITING and override this manual seed with the auto start pose.
+    initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
+    lastSeededAutoName = initializer.getSelectedAutoName();
     SmartLogger.logConsole("Initialization state set", "Pose");
     
     // Consolidated logging (avoid duplicates)
