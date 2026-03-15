@@ -45,6 +45,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   
   private int logCounter = 0;
   private static final int LOG_SKIP_CYCLES = 4;
+  // Incremented every time the pose is hard-reset. Consumers can watch this to invalidate cached state.
+  private int seedGeneration = 0;
 
   private final Field2d field = new Field2d();
 
@@ -142,6 +144,7 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   }
 
   public void resetPose(Pose2d pose, Rotation2d gyroAngle, SwerveModulePosition[] modulePositions) {
+    seedGeneration++;
     poseEstimator.resetPosition(gyroAngle, modulePositions, pose);
     questNavFusion.notifyEstimatorReset();
     
@@ -223,7 +226,10 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     
     Logger.recordOutput("PoseEstimator/ManualCompSeed/VerifyPose", actualPose);
     Logger.recordOutput("PoseEstimator/ManualCompSeed/VerifyGyro", actualGyro);
+    seedGeneration++;
   }
+
+  public int getSeedGeneration() { return seedGeneration; }
 
   public PoseInitializer.InitializationState getInitializationState() {
     return initializer.getInitState();

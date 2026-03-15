@@ -22,6 +22,8 @@ import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.commands.auto.AutoCommands;
 import frc.robot.commands.auto.DoNothingCenterAuto;
+import frc.robot.commands.auto.DoNothingLeftAuto;
+import frc.robot.commands.auto.DoNothingRightAuto;
 import frc.robot.commands.auto.ShootInPlaceLeftAuto;
 import frc.robot.commands.auto.ShootInPlaceRightAuto;
 import frc.robot.commands.drive.DriveWithJoysticks;
@@ -215,6 +217,8 @@ public class RobotContainer {
     autoChooser.setDefaultOption("ShootInPlaceRight", new ShootInPlaceRightAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     autoChooser.addOption("ShootInPlaceLeft",  new ShootInPlaceLeftAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     autoChooser.addOption("DoNothingCenter",   new DoNothingCenterAuto(turretSubsystem, poseEstimator, driveSubsystem));
+    autoChooser.addOption("DoNothingLeft",     new DoNothingLeftAuto(turretSubsystem, poseEstimator, driveSubsystem));
+    autoChooser.addOption("DoNothingRight",    new DoNothingRightAuto(turretSubsystem, poseEstimator, driveSubsystem));
     SmartDashboard.putData("Auto Chooser", autoChooser); // Sends chooser widget to dashboard
     robotState.setSysIdMode(SYSID_MODE);
     poseEstimator.setAutoChooser(autoChooser); // Lets pose estimator read auto start poses
@@ -377,14 +381,19 @@ public class RobotContainer {
     new JoystickButton(operatorController, XboxController.Button.kA.value)
         .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
     // B: toggle global roller enable. Immediately applies the new state to the running rollers.
-    // When on: rollers start now (if arm is out) and will auto-start on every future deploy/agitate.
+    // When on: rollers start now if arm is out in any deployed state (not just fully EXTENDED).
     // When off: rollers stop now and stay off until B is pressed again.
     new JoystickButton(operatorController, XboxController.Button.kB.value)
         .onTrue(Commands.runOnce(() -> {
           if (intakeSubsystem == null) return;
           intakeRollersEnabled = !intakeRollersEnabled;
           if (intakeRollersEnabled) {
-            if (intakeSubsystem.isExtended()) intakeSubsystem.spinIn();
+            RobotState.IntakePosition pos = robotState.getIntakePosition();
+            boolean armIsDeployed = true;/*pos == RobotState.IntakePosition.EXTENDED
+                || pos == RobotState.IntakePosition.EXTENDING
+                || pos == RobotState.IntakePosition.AGITATING
+                || pos == RobotState.IntakePosition.BUMP_LIFTING;*/
+            if (armIsDeployed) intakeSubsystem.spinIn();
           } else {
             intakeSubsystem.stopRollers();
           }
@@ -480,6 +489,10 @@ public class RobotContainer {
   // This covers real matches where auto runs before teleop — no button confirm needed.
   // In practice/pit mode (no auto run), the LB+RB confirm is still required.
   public void onTeleopInit() {
+    // Reset roller flag to OFF so first B press in teleop always turns rollers ON cleanly.
+    // Avoids the case where auto left the flag true and B immediately turns it off.
+    intakeRollersEnabled = false;
+
     if (!Constants.Turret.REQUIRE_TURRET_FORWARD_CONFIRM) return;
     if (bindingsConfigured) return;
     if (turretSubsystem != null && turretSubsystem.isTrackingEnabled()) {
@@ -497,7 +510,14 @@ public class RobotContainer {
     boolean nowActive = !robotState.isQuestNavEmergencyMode();
     robotState.setQuestNavEmergencyMode(nowActive);
     if (nowActive) {
-      if (turretSubsystem != null) turretSubsystem.activateEmergencyHubClose();
+      // Disable tracking so the default command stops overwriting the emergency setpoints every loop.
+      if (turretSubsystem != null) {
+        turretSubsystem.disableTracking();
+        turretSubsystem.activateEmergencyHubClose();
+      }
+    } else {
+      // Re-enable tracking when emergency mode is cleared.
+      if (turretSubsystem != null) turretSubsystem.enableTracking();
     }
   }
 

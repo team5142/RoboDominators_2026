@@ -26,6 +26,7 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
   // Omega above which we bypass the filter entirely and use raw heading.
   private static final double HEADING_FILTER_BYPASS_RPS = 0.15; // ~9 deg/s
   private double filteredHeadingRad = Double.NaN; // NaN = not yet initialized
+  private int lastSeedGeneration = -1; // tracks pose reseeds to reset heading filter + latch
 
   public TurretAimInputsFromPoseEstimator(
       PoseEstimatorSubsystem poseEstimator,
@@ -44,10 +45,18 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
 
   @Override
   public TurretAimInputs get() {
-    // Don't feed the solver a garbage pose — wait until the estimator has been seeded.
     if (!poseEstimator.isInitialized()) {
       return null;
     }
+
+    // Detect pose reseeds — reset heading filter so stale filtered heading doesn't persist.
+    int currentGen = poseEstimator.getSeedGeneration();
+    boolean reseeded = currentGen != lastSeedGeneration;
+    if (reseeded) {
+      lastSeedGeneration = currentGen;
+      filteredHeadingRad = Double.NaN;
+    }
+    inputs.poseReseeded = reseeded;
 
     Pose2d pose = poseEstimator.getEstimatedPose();
 

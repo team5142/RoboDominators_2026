@@ -37,7 +37,7 @@ public final class Constants {
     public static final double MAX_ANGULAR_SPEED_RAD_PER_SEC = Math.PI * 4.0;
 
     // Driver speed modes (multiply by max speed)
-    public static final double NORMAL_SPEED_SCALE         = 0.50; // 5.21 * 0.50 = ~2.6 m/s
+    public static final double NORMAL_SPEED_SCALE         = 0.65; // 5.21 * 0.50 = ~2.6 m/s
     public static final double NORMAL_ROTATION_SCALE      = 0.30; // 4pi  * 0.30 = ~3.8 rad/s
     public static final double PRECISION_SPEED_SCALE      = 0.20; // 5.21 * 0.20 = ~1.0 m/s
     public static final double PRECISION_ROTATION_SCALE   = 0.10;
@@ -459,9 +459,9 @@ public final class Constants {
     // PHASE_3: turret tracks while driving, fire only when chassis slows below threshold
     // PHASE_4: stub — same behavior as PHASE_3 (velocity comp math not yet implemented)
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
-    // PHASE_2: turret tracks continuously; aim goal only enables when robot is near-stationary.
-    // Requires homing to be completed first (ENABLE_TURRET_HOMING = true in RobotContainer).
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_4_ON_THE_MOVE;
+    // PHASE_1: turret locked forward (0 rot), hood+flywheel still auto-adjust by distance.
+    // Advance to PHASE_2+ once turret rotation is re-enabled.
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
 
     // Phase 3+: only allow firing when chassis translation is below this speed.
     // Wired into isReadyToShoot() for all phases — set to a large value to effectively disable.

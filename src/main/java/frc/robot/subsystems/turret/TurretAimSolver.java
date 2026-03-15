@@ -1,6 +1,5 @@
 package frc.robot.subsystems.turret;
 
-import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.Constants;
 import frc.robot.util.SmartLogger;
 
@@ -30,9 +29,39 @@ public class TurretAimSolver {
   public void solve(TurretAimInputs inputs, TurretAimGoal goal) {
     Constants.Turret.TurretPhase phase = Constants.Turret.CURRENT_PHASE;
 
-    // Phase 1: no automatic aim — caller sets goal directly via setAimGoal() or open loop
+    // Phase 1: turret locked forward (0 rot), but hood+flywheel still auto-adjust by distance.
+    // QuestNav still runs for odometry — we just don't rotate the turret.
     if (phase == Constants.Turret.TurretPhase.PHASE_1_STATIC) {
-      goal.enable = false;
+      if (inputs.robotPose == null || inputs.targetPose == null) {
+        goal.enable = false;
+        return;
+      }
+      double rawH1 = inputs.robotPose.getRotation().getRadians();
+      double cosH1 = Math.cos(rawH1);
+      double sinH1 = Math.sin(rawH1);
+      double pivotX1 = inputs.robotPose.getX()
+          + cosH1 * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
+          - sinH1 * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+      double pivotY1 = inputs.robotPose.getY()
+          + sinH1 * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
+          + cosH1 * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+      double dist1 = Math.hypot(
+          inputs.targetPose.getX() - pivotX1,
+          inputs.targetPose.getY() - pivotY1);
+      TurretShotProfile shot1 = TurretShotProfile.getForDistance(dist1);
+      goal.turretRotations  = 0.0; // locked forward
+      goal.hoodRotations    = shot1.hoodRotations;
+      goal.useRps           = true;
+      goal.flywheelFrontRps = shot1.flywheelFrontRps;
+      goal.flywheelBackRps  = shot1.flywheelBackRps;
+      goal.flywheelPercent  = 0.0;
+      goal.targetReachable  = true;
+      goal.chassisSpeedMps  = inputs.robotSpeedMetersPerSecond;
+      goal.enable           = true;
+      SmartLogger.logReplay("Turret/AimSolver/DistanceM", dist1);
+      SmartLogger.logReplay("Turret/AimSolver/HoodRot", shot1.hoodRotations);
+      SmartLogger.logReplay("Turret/AimSolver/FlywheelFrontRps", shot1.flywheelFrontRps);
+      SmartLogger.logReplay("Turret/AimSolver/FlywheelBackRps",  shot1.flywheelBackRps);
       return;
     }
 
@@ -41,6 +70,12 @@ public class TurretAimSolver {
       goal.enable = false;
       SmartLogger.logReplay("Turret/AimSolver/WhyNotReady", "null pose");
       return;
+    }
+
+    // If the pose was just reseeded (new alliance, new auto start), drop the stale latch
+    // so the first solve after seeding uses the fresh bearing, not the previous frozen value.
+    if (inputs.poseReseeded) {
+      resetLatch();
     }
 
     boolean stationary = inputs.robotSpeedMetersPerSecond
@@ -78,7 +113,11 @@ public class TurretAimSolver {
     }
 
     double targetBearingRad = Math.atan2(dy, dx);
-    double turretRelativeRad = Rotation2d.fromRadians(-(targetBearingRad - rawHeadingRad)).getRadians();
+    // Normalize the turret-relative angle to [-π, π] so rawTurretRotations stays in [-0.5, +0.5].
+    // Rotation2d.fromRadians().getRadians() does NOT normalize — it returns the raw value,
+    // which exceeds ±π when robot heading is ~180° (Red alliance), producing bogus latch values.
+    double relativeRad = -(targetBearingRad - rawHeadingRad);
+    double turretRelativeRad = Math.atan2(Math.sin(relativeRad), Math.cos(relativeRad));
     double rawTurretRotations = turretRelativeRad / (2.0 * Math.PI);
 
     double motorTargetRaw = rawTurretRotations * Constants.Turret.TURRET_GEAR_RATIO

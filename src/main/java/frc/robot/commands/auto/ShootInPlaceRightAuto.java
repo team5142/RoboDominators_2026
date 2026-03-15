@@ -37,7 +37,7 @@ public class ShootInPlaceRightAuto extends SequentialCommandGroup {
         // Enable tracking and spin up flywheels. No turret requirement here — default aim
         // pipeline keeps running so the turret actually rotates to the computed bearing.
         Commands.runOnce(() -> {
-          turret.enableTracking();
+          //turret.enableTracking();
           robotState.setFlywheelOn(true);
           if (intake != null) {
             intake.extend();

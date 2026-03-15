@@ -167,6 +167,8 @@ public class PoseInitializer {
     if (autoName.equals("ShootInPlaceRight"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
     if (autoName.equals("ShootInPlaceLeft"))   javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
     if (autoName.equals("DoNothingCenter"))    javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_CENTER;
+    if (autoName.equals("DoNothingLeft"))      javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
+    if (autoName.equals("DoNothingRight"))     javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
     if (javaAutoPose != null) {
       boolean isRedNow = DriverStation.getAlliance()
           .map(a -> a == DriverStation.Alliance.Red).orElse(false);

@@ -156,6 +156,7 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Allows the aim pipeline to start running. Called once after the lockout confirm.
   public void enableTracking() { trackingEnabled = true; }
+  public void disableTracking() { trackingEnabled = false; }
   public boolean isTrackingEnabled() { return trackingEnabled; }
 
   // True when the current target bearing is within the turret's physical travel range.
