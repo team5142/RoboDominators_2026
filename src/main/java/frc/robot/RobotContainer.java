@@ -21,11 +21,14 @@ import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.commands.auto.AutoCommands;
+import frc.robot.commands.auto.CenterMoveToShootAuto;
 import frc.robot.commands.auto.DoNothingCenterAuto;
 import frc.robot.commands.auto.DoNothingLeftAuto;
 import frc.robot.commands.auto.DoNothingRightAuto;
 import frc.robot.commands.auto.ShootInPlaceLeftAuto;
+import frc.robot.commands.auto.ShootInPlaceLeftBotRotateAuto;
 import frc.robot.commands.auto.ShootInPlaceRightAuto;
+import frc.robot.commands.auto.ShootInPlaceRightBotRotateAuto;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
 import frc.robot.commands.drive.AllianceZoneSweepSimplifiedCommand;
@@ -136,14 +139,26 @@ public class RobotContainer {
     // The aim goal only enables when phase >= PHASE_2 and pose is initialized.
     if (turretSubsystem != null) {
       TurretAimSolver aimSolver = new TurretAimSolver();
+      TurretTargetSelector targetSelector = new TurretTargetSelector(poseEstimator, robotState);
       TurretAimPipeline aimPipeline = new TurretAimPipeline(
           poseEstimator,
           driveSubsystem,
-          new TurretTargetSelector(poseEstimator, robotState),
+          targetSelector,
           aimSolver);
       turretSubsystem.setDefaultCommand(
           Commands.run(() -> {
-            turretSubsystem.updateAimFromProvider(aimPipeline);
+            // Phase1Fallback or QuestNav emergency: hold turret forward under PID,
+            // hood+flywheel still track distance. Bypasses trackingEnabled.
+            if (robotState.isTurretPhase1Fallback() || robotState.isQuestNavEmergencyMode()) {
+              edu.wpi.first.math.geometry.Pose2d robotPose = poseEstimator.getEstimatedPose();
+              edu.wpi.first.math.geometry.Pose2d targetPose = targetSelector.get();
+              double distanceM = (robotPose != null && targetPose != null)
+                  ? robotPose.getTranslation().getDistance(targetPose.getTranslation())
+                  : frc.robot.Constants.Turret.FALLBACK_DISTANCE_METERS;
+              turretSubsystem.holdForwardUnderPID(distanceM);
+            } else {
+              turretSubsystem.updateAimFromProvider(aimPipeline);
+            }
             if (robotState.isFlywheelOn()) {
               double frontRps = turretSubsystem.getAimGoalFrontRps();
               double backRps  = turretSubsystem.getAimGoalBackRps();
@@ -219,6 +234,9 @@ public class RobotContainer {
     autoChooser.addOption("DoNothingCenter",   new DoNothingCenterAuto(turretSubsystem, poseEstimator, driveSubsystem));
     autoChooser.addOption("DoNothingLeft",     new DoNothingLeftAuto(turretSubsystem, poseEstimator, driveSubsystem));
     autoChooser.addOption("DoNothingRight",    new DoNothingRightAuto(turretSubsystem, poseEstimator, driveSubsystem));
+    autoChooser.addOption("ShootInPlaceRightBotRotate", new ShootInPlaceRightBotRotateAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
+    autoChooser.addOption("ShootInPlaceLeftBotRotate",  new ShootInPlaceLeftBotRotateAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
+    autoChooser.addOption("CenterMoveToShoot",          new CenterMoveToShootAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     SmartDashboard.putData("Auto Chooser", autoChooser); // Sends chooser widget to dashboard
     robotState.setSysIdMode(SYSID_MODE);
     poseEstimator.setAutoChooser(autoChooser); // Lets pose estimator read auto start poses
@@ -303,6 +321,14 @@ public class RobotContainer {
     // D-PAD DOWN: Toggle QuestNav emergency mode (locks turret to HUBCLOSE, blocks pose-dependent commands).
     new Trigger(() -> driverController.getPOV() == 180)
         .onTrue(Commands.runOnce(this::toggleQuestNavEmergencyMode));
+
+    // D-PAD UP: Toggle turret Phase1 fallback — locks turret forward under PID, hood/flywheel
+    // still track distance. Use mid-match if turret aim is wrong but shooting is still needed.
+    new Trigger(() -> driverController.getPOV() == 0)
+        .onTrue(Commands.runOnce(() -> {
+          boolean nowActive = !robotState.isTurretPhase1Fallback();
+          robotState.setTurretPhase1Fallback(nowActive);
+        }));
 
     // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
 

@@ -242,7 +242,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
   // Returns the starting pose for a named auto, flipped for Red alliance if needed.
   // Same logic used for PathPlanner autos — auto commands call this so they don't need hardcoded poses.
   public Pose2d getStartPoseForAutoName(String name) {
-    return initializer.getStartPoseForAutoName(name);
+    boolean isRed = robotState.getAlliance() == edu.wpi.first.wpilibj.DriverStation.Alliance.Red;
+    return initializer.getStartPoseForAutoName(name, isRed);
   }
 
   // Called at teleopInit to re-seed gyro and field perspective from auto end pose.
@@ -395,7 +396,8 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       // is in the right spot before enabling. Marker disappears once enabled.
       if (robotState.getMode() == RobotState.Mode.DISABLED) {
         String autoName = initializer.getSelectedAutoName();
-        Pose2d autoTarget = autoName != null ? initializer.getStartPoseForAutoName(autoName) : null;
+        boolean isRed = robotState.getAlliance() == edu.wpi.first.wpilibj.DriverStation.Alliance.Red;
+        Pose2d autoTarget = autoName != null ? initializer.getStartPoseForAutoName(autoName, isRed) : null;
         if (autoTarget != null) {
           field.getObject("AutoTarget").setPose(autoTarget);
         } else {

@@ -22,6 +22,7 @@ public class RobotState {
   private boolean operatorDriveLockout = false;
   // When true: QuestNav is unreliable — pose-dependent commands are blocked, turret uses fixed preset.
   private boolean questNavEmergencyMode = false;
+  private boolean turretPhase1Fallback  = false;
   // When true: auto shoot mode active — flywheels, singulator, and spindexer run automatically.
   private boolean autoShootMode = false;
   // When true: auto shoot is temporarily paused — ball stays staged, shooting is blocked.
@@ -197,6 +198,13 @@ public class RobotState {
   public void setQuestNavEmergencyMode(boolean active) {
     questNavEmergencyMode = active;
     SmartLogger.logConsole("QuestNav emergency mode " + (active ? "ACTIVE — pose commands blocked" : "cleared"), "Emergency");
+  }
+
+  public boolean isTurretPhase1Fallback() { return turretPhase1Fallback; }
+  public void setTurretPhase1Fallback(boolean active) {
+    turretPhase1Fallback = active;
+    SmartLogger.logConsole("Turret Phase1 fallback " + (active ? "ACTIVE — turret locked forward" : "cleared"), "Emergency");
+    SmartLogger.logReplay("RobotState/TurretPhase1Fallback", active);
   }
 
   public boolean isFlywheelOn() { return flywheelOn; }

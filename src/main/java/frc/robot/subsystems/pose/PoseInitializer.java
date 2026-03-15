@@ -159,20 +159,31 @@ public class PoseInitializer {
   }
   
   public Pose2d getStartPoseForAutoName(String autoName) {
+    // Use the FMS-provided alliance, falling back to Red=false (Blue) only if truly unknown.
+    // Callers with a reliable cached alliance should use getStartPoseForAutoName(name, isRed).
+    boolean isRed = DriverStation.getAlliance()
+        .map(a -> a == DriverStation.Alliance.Red).orElse(false);
+    return getStartPoseForAutoName(autoName, isRed);
+  }
+
+  // Preferred overload — pass cachedAlliance from RobotContainer/RobotState so we never
+  // default to Blue during the FMS handshake window at match start.
+  public Pose2d getStartPoseForAutoName(String autoName, boolean isRed) {
     if (autoName == null || autoName.isEmpty()) return null;
 
     // Java autos (no .auto file) — return their known starting pose, flipped for Red if needed.
-    // Blue-side poses are defined in Constants; the isRedNow flip below handles Red automatically.
+    // Blue-side poses are defined in Constants; the isRed flag handles Red automatically.
     Pose2d javaAutoPose = null;
     if (autoName.equals("ShootInPlaceRight"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
     if (autoName.equals("ShootInPlaceLeft"))   javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
+    if (autoName.equals("ShootInPlaceRightBotRotate")) javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
+    if (autoName.equals("ShootInPlaceLeftBotRotate"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
     if (autoName.equals("DoNothingCenter"))    javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_CENTER;
+    if (autoName.equals("CenterMoveToShoot"))  javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_CENTER;
     if (autoName.equals("DoNothingLeft"))      javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_LEFT;
     if (autoName.equals("DoNothingRight"))     javaAutoPose = Constants.StartingPositions.SHOOT_IN_PLACE_START_RIGHT;
     if (javaAutoPose != null) {
-      boolean isRedNow = DriverStation.getAlliance()
-          .map(a -> a == DriverStation.Alliance.Red).orElse(false);
-      if (isRedNow) {
+      if (isRed) {
         javaAutoPose = new Pose2d(
             FIELD_LENGTH_METERS - javaAutoPose.getX(),
             FIELD_WIDTH_METERS  - javaAutoPose.getY(),
@@ -182,9 +193,7 @@ public class PoseInitializer {
     }
 
     // Return cached result if same auto and same alliance is requested again (avoids file I/O every loop)
-    boolean isRedNow = DriverStation.getAlliance()
-        .map(a -> a == DriverStation.Alliance.Red).orElse(false);
-    String cacheKey = autoName + (isRedNow ? "_red" : "_blue");
+    String cacheKey = autoName + (isRed ? "_red" : "_blue");
     if (cacheKey.equals(cachedAutoName)) return cachedAutoStartPose;
 
     try {
@@ -238,7 +247,7 @@ public class PoseInitializer {
       Pose2d pose = new Pose2d(x, y, Rotation2d.fromDegrees(rotDeg));
 
       // Paths are authored on blue side. Rotate 180 deg around field center for red.
-      if (isRedNow) {
+      if (isRed) {
         pose = new Pose2d(
             FIELD_LENGTH_METERS - x,
             FIELD_WIDTH_METERS - y,
@@ -246,7 +255,7 @@ public class PoseInitializer {
       }
 
       Logger.recordOutput("PoseInitializer/AutoStartPose", pose);
-      Logger.recordOutput("PoseInitializer/AutoStartPoseFlipped", isRedNow);
+      Logger.recordOutput("PoseInitializer/AutoStartPoseFlipped", isRed);
       cachedAutoName = cacheKey;
       cachedAutoStartPose = pose;
       return pose;

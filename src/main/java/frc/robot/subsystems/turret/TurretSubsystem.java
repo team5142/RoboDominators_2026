@@ -415,6 +415,25 @@ public class TurretSubsystem extends SubsystemBase {
     return valid;
   }
 
+  // Bypasses trackingEnabled — holds turret at forward (0 rot) under MotionMagic PID
+  // with hood and flywheel set by distance. Used for Phase1Fallback and QuestNav emergency.
+  // Safe to call every loop while either emergency flag is active.
+  public void holdForwardUnderPID(double distanceMeters) {
+    TurretShotProfile shot = TurretShotProfile.getForDistance(distanceMeters);
+    providerGoal.turretRotations  = 0.0;
+    providerGoal.hoodRotations    = shot.hoodRotations;
+    providerGoal.useRps           = true;
+    providerGoal.flywheelFrontRps = shot.flywheelFrontRps;
+    providerGoal.flywheelBackRps  = shot.flywheelBackRps;
+    providerGoal.flywheelPercent  = 0.0;
+    providerGoal.targetReachable  = true;
+    providerGoal.enable           = true;
+    manualPositionOverride = false;
+    setAimGoal(providerGoal);
+    SmartLogger.logReplay("Turret/HoldForward/DistanceM", distanceMeters);
+    SmartLogger.logReplay("Turret/HoldForward/Active", true);
+  }
+
   public void stopAll() {
     fireEnabled = false;
     homing = false;

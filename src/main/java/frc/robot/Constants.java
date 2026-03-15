@@ -461,7 +461,7 @@ public final class Constants {
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
     // PHASE_1: turret locked forward (0 rot), hood+flywheel still auto-adjust by distance.
     // Advance to PHASE_2+ once turret rotation is re-enabled.
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_4_ON_THE_MOVE;
 
     // Phase 3+: only allow firing when chassis translation is below this speed.
     // Wired into isReadyToShoot() for all phases — set to a large value to effectively disable.
@@ -481,6 +481,8 @@ public final class Constants {
     // Fallback warmup speed used when LT spins up flywheels but the aim pipeline has no target yet.
     public static final double FLYWHEEL_WARMUP_FRONT_RPS = 60.0;
     public static final double FLYWHEEL_WARMUP_BACK_RPS  = 60.0;
+    // Distance used for hood/flywheel lookup when pose is unavailable during Phase1Fallback.
+    public static final double FALLBACK_DISTANCE_METERS  = 4.0;
 
     // Consecutive loops turret must stay within tolerance before isAimed()/isReadyToShoot() pass.
     // Prevents firing during a large slew where the turret is briefly passing through the tolerance band.

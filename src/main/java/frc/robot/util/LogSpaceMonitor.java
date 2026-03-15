@@ -6,15 +6,17 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.Comparator;
 
-// Monitors roboRIO disk space and deletes old .wpilog files to stay healthy.
-// Logs are flat .wpilog files stored directly in LOG_DIR.
-// Cleanup deletes oldest files first until enough space is recovered.
+// Monitors roboRIO disk space and deletes old .hoot files to stay healthy.
+// .wpilog (AKit) files are NEVER deleted — fetch them with fetch-logs.ps1 after each event.
+// .hoot (CTRE SignalLogger) files are deleted oldest-first when space is low.
+// SignalLogger.stop() in robotInit() prevents new .hoot files from being created,
+// but this cleanup handles any that already exist on disk.
 // DS alerts are shown once per state transition — no log spam.
 public class LogSpaceMonitor {
 
-  private static final double WARNING_THRESHOLD_GB  = 1.5; // delete old logs below this
-  private static final double CRITICAL_THRESHOLD_GB = 0.5; // DS error below this
-  private static final double TARGET_FREE_GB        = 2.0; // recover to this after cleanup
+  private static final double WARNING_THRESHOLD_GB  = 1.5;
+  private static final double CRITICAL_THRESHOLD_GB = 0.5;
+  private static final double TARGET_FREE_GB        = 2.0;
   private static final int    CHECK_INTERVAL_SECONDS = 30;
   private static final String LOG_DIR_PATH = "/home/lvuser/logs";
 
@@ -22,7 +24,7 @@ public class LogSpaceMonitor {
   private static DiskState s_lastState = DiskState.OK;
 
   private static double s_lastCheckTime = 0.0;
-  private static final File ROOT    = new File("/"); // actual roboRIO root filesystem
+  private static final File ROOT    = new File("/");
   private static final File LOG_DIR = new File(LOG_DIR_PATH);
 
   public static void periodic() {
@@ -33,7 +35,7 @@ public class LogSpaceMonitor {
     double freeGB = toGB(ROOT.getFreeSpace());
 
     if (freeGB < WARNING_THRESHOLD_GB) {
-      cleanupOldSessions();
+      cleanupHootFiles();
       freeGB = toGB(ROOT.getFreeSpace());
     }
 
@@ -46,7 +48,6 @@ public class LogSpaceMonitor {
     SmartLogger.logReplay("LogSpace/TotalGB",     totalGB);
     SmartLogger.logReplay("LogSpace/UsedPercent", usedPct);
 
-    // Compute new state and only alert on transitions
     DiskState newState;
     if (freeGB < CRITICAL_THRESHOLD_GB)      newState = DiskState.CRITICAL;
     else if (freeGB < WARNING_THRESHOLD_GB)  newState = DiskState.WARNING;
@@ -55,10 +56,10 @@ public class LogSpaceMonitor {
     if (newState != s_lastState) {
       if (newState == DiskState.CRITICAL) {
         DriverStation.reportError(
-            "!!! LOGS FULL - LOGGING WILL FAIL - DELETE OLD LOGS NOW !!!", false);
+            "!!! DISK FULL - FETCH LOGS AND DELETE .HOOT FILES FROM ROBORIO !!!", false);
       } else if (newState == DiskState.WARNING) {
         DriverStation.reportWarning(
-            "WARNING: LOGS FULL - CLEAR OLD LOG FILES FROM ROBORIO", false);
+            "WARNING: DISK SPACE LOW - FETCH LOGS FROM ROBORIO SOON", false);
       }
       if (newState == DiskState.OK) {
         SmartLogger.logConsole("Disk space recovered - logging healthy", "LogSpace");
@@ -68,7 +69,6 @@ public class LogSpaceMonitor {
 
     SmartLogger.logReplay("LogSpace/Status", newState.name());
 
-    // Print to console once every 5 minutes (not every 30s)
     if ((int)(now / CHECK_INTERVAL_SECONDS) % 10 == 0) {
       SmartLogger.logConsole(
           String.format("[LogSpace] %.2fGB / %.2fGB free (%.1f%% used)", freeGB, totalGB, usedPct),
@@ -83,27 +83,25 @@ public class LogSpaceMonitor {
         freeGB, totalGB, ((totalGB - freeGB) / totalGB) * 100.0);
   }
 
-  // Deletes oldest .wpilog files until TARGET_FREE_GB is reached.
-  // Never deletes the single most-recently-modified file.
-  private static void cleanupOldSessions() {
+  // Deletes .hoot files (oldest first) until TARGET_FREE_GB is reached.
+  // .wpilog files are never touched — they are our match replay logs.
+  private static void cleanupHootFiles() {
     if (!LOG_DIR.exists() || !LOG_DIR.isDirectory()) return;
 
-    File[] logs = LOG_DIR.listFiles(f -> f.isFile() && f.getName().endsWith(".wpilog"));
-    if (logs == null || logs.length <= 1) return;
+    File[] hoots = LOG_DIR.listFiles(f -> f.isFile() && f.getName().endsWith(".hoot"));
+    if (hoots == null || hoots.length == 0) return;
 
-    Arrays.sort(logs, Comparator.comparingLong(File::lastModified));
-    long newestTime = logs[logs.length - 1].lastModified();
+    Arrays.sort(hoots, Comparator.comparingLong(File::lastModified));
 
     int deleted = 0;
-    for (File log : logs) {
+    for (File hoot : hoots) {
       if (toGB(ROOT.getFreeSpace()) >= TARGET_FREE_GB) break;
-      if (log.lastModified() == newestTime) continue;
-      if (log.delete()) deleted++;
+      if (hoot.delete()) deleted++;
     }
 
     if (deleted > 0) {
       SmartLogger.logConsole(
-          "Deleted " + deleted + " old log files to free space", "LogSpace", 5);
+          "Deleted " + deleted + " .hoot files to free space (.wpilog files preserved)", "LogSpace", 5);
     }
   }
 
