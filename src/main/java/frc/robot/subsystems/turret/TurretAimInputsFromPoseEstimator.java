@@ -3,6 +3,7 @@ package frc.robot.subsystems.turret;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
+import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import frc.robot.Constants;
 import frc.robot.subsystems.DriveSubsystem;
 import frc.robot.subsystems.PoseEstimatorSubsystem;
@@ -59,11 +60,13 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
     inputs.poseReseeded = reseeded;
 
     Pose2d pose = poseEstimator.getEstimatedPose();
+    // Cache once — used for heading filter, speed magnitude, omega, and field-relative velocity.
+    ChassisSpeeds speeds = driveSubsystem.getRobotRelativeSpeeds();
 
     // Low-pass filter the heading to suppress QuestNav standstill jitter.
     // Bypassed during rotation so the turret doesn't lag behind the actual heading.
     double rawHeadingRad = pose.getRotation().getRadians();
-    double omega = Math.abs(driveSubsystem.getRobotRelativeSpeeds().omegaRadiansPerSecond);
+    double omega = Math.abs(speeds.omegaRadiansPerSecond);
     if (Double.isNaN(filteredHeadingRad)) {
       filteredHeadingRad = rawHeadingRad;
     } else if (omega >= HEADING_FILTER_BYPASS_RPS) {
@@ -87,12 +90,13 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
     double pivotY = pose.getY() + dx * Math.sin(filteredHeadingRad) + dy * Math.cos(filteredHeadingRad);
     inputs.robotPose = new Pose2d(new Translation2d(pivotX, pivotY), Rotation2d.fromRadians(filteredHeadingRad));
 
-    inputs.targetPose = resolveTargetPose(pose);
+    inputs.targetPose = resolveTargetPose();
 
-    double vx = driveSubsystem.getRobotRelativeSpeeds().vxMetersPerSecond;
-    double vy = driveSubsystem.getRobotRelativeSpeeds().vyMetersPerSecond;
+    // Cache speeds once — used for magnitude, omega, and field-relative rotation below.
+    double vx = speeds.vxMetersPerSecond;
+    double vy = speeds.vyMetersPerSecond;
     inputs.robotSpeedMetersPerSecond = Math.hypot(vx, vy);
-    inputs.robotOmegaRadPerSecond = Math.abs(driveSubsystem.getRobotRelativeSpeeds().omegaRadiansPerSecond);
+    inputs.robotOmegaRadPerSecond = Math.abs(speeds.omegaRadiansPerSecond);
     // Rotate robot-relative velocity to field-relative for Phase 4 lead compensation.
     double headingRad = pose.getRotation().getRadians();
     inputs.robotFieldVxMetersPerSecond = vx * Math.cos(headingRad) - vy * Math.sin(headingRad);
@@ -101,12 +105,10 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
     return inputs;
   }
 
-  private Pose2d resolveTargetPose(Pose2d fallbackPose) {
-    if (targetPoseSupplier == null) {
-      return fallbackPose;
-    }
-
-    Pose2d targetPose = targetPoseSupplier.get();
-    return targetPose != null ? targetPose : fallbackPose;
+  // Returns the target pose from the supplier, or null if unavailable.
+  // Callers (TurretAimSolver) already handle null by disabling the goal.
+  private Pose2d resolveTargetPose() {
+    if (targetPoseSupplier == null) return null;
+    return targetPoseSupplier.get();
   }
 }

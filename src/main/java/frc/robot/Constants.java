@@ -475,7 +475,8 @@ public final class Constants {
     // "Ready to shoot" tolerances — all must pass for isReadyToShoot() to return true
     public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
     public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01; // TODO: tune in rotations
-    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint
+    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint (legacy, unused)
+    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_RPS = 2.0;  // within 2 RPS of target
     // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
     public static final double FLYWHEEL_SPINUP_MIN_RPM = 1500.0; // tune to match actual spin-up curve
     // Fallback warmup speed used when LT spins up flywheels but the aim pipeline has no target yet.

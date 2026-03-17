@@ -36,25 +36,12 @@ public class TurretAimSolver {
         goal.enable = false;
         return;
       }
-      double rawH1 = inputs.robotPose.getRotation().getRadians();
-      double cosH1 = Math.cos(rawH1);
-      double sinH1 = Math.sin(rawH1);
-      double pivotX1 = inputs.robotPose.getX()
-          + cosH1 * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
-          - sinH1 * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
-      double pivotY1 = inputs.robotPose.getY()
-          + sinH1 * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
-          + cosH1 * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
-      double dist1 = Math.hypot(
-          inputs.targetPose.getX() - pivotX1,
-          inputs.targetPose.getY() - pivotY1);
+      double dist1 = pivotToTargetDistance(inputs);
       TurretShotProfile shot1 = TurretShotProfile.getForDistance(dist1);
-      goal.turretRotations  = 0.0; // locked forward
+      goal.turretRotations  = 0.0;
       goal.hoodRotations    = shot1.hoodRotations;
-      goal.useRps           = true;
       goal.flywheelFrontRps = shot1.flywheelFrontRps;
       goal.flywheelBackRps  = shot1.flywheelBackRps;
-      goal.flywheelPercent  = 0.0;
       goal.targetReachable  = true;
       goal.chassisSpeedMps  = inputs.robotSpeedMetersPerSecond;
       goal.enable           = true;
@@ -169,10 +156,8 @@ public class TurretAimSolver {
 
     goal.turretRotations  = latchedTurretRotations;
     goal.hoodRotations    = shot.hoodRotations;
-    goal.useRps           = true;
     goal.flywheelFrontRps = shot.flywheelFrontRps;
     goal.flywheelBackRps  = shot.flywheelBackRps;
-    goal.flywheelPercent  = 0.0; // unused when useRps=true
     goal.chassisSpeedMps  = inputs.robotSpeedMetersPerSecond;
 
     // Phase 2: only enable goal when robot is effectively stationary
@@ -217,5 +202,12 @@ public class TurretAimSolver {
     SmartLogger.logReplay("Turret/AimSolver/FlywheelFrontRps", shot.flywheelFrontRps);
     SmartLogger.logReplay("Turret/AimSolver/FlywheelBackRps",  shot.flywheelBackRps);
     SmartLogger.logReplay("Turret/AimSolver/HoodRot", shot.hoodRotations);
+  }
+
+  // Distance from the turret pivot to the target, using the pivot-shifted robot pose.
+  private static double pivotToTargetDistance(TurretAimInputs inputs) {
+    return Math.hypot(
+        inputs.targetPose.getX() - inputs.robotPose.getX(),
+        inputs.targetPose.getY() - inputs.robotPose.getY());
   }
 }

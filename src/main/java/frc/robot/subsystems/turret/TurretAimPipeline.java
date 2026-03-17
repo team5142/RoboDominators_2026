@@ -6,10 +6,9 @@ import edu.wpi.first.math.geometry.Pose2d;
 import java.util.function.Supplier;
 
 // Connects sensors and solver into an aim provider
-public class TurretAimPipeline implements TurretAimProvider {
+public class TurretAimPipeline {
   private final Supplier<TurretAimInputs> inputsSupplier;
   private final TurretAimSolver solver;
-  private final TurretAimInputs inputs = new TurretAimInputs();
 
   public TurretAimPipeline(Supplier<TurretAimInputs> inputsSupplier, TurretAimSolver solver) {
     this.inputsSupplier = inputsSupplier;
@@ -31,7 +30,6 @@ public class TurretAimPipeline implements TurretAimProvider {
     this(new TurretAimInputsFromPoseEstimator(poseEstimator, driveSubsystem, targetPoseSupplier), solver);
   }
 
-  @Override
   public boolean update(TurretAimGoal goal) {
     TurretAimInputs latest = inputsSupplier.get();
     if (latest == null) {
@@ -39,15 +37,7 @@ public class TurretAimPipeline implements TurretAimProvider {
       return false;
     }
 
-    inputs.robotPose = latest.robotPose;
-    inputs.targetPose = latest.targetPose;
-    inputs.robotSpeedMetersPerSecond = latest.robotSpeedMetersPerSecond;
-    inputs.robotOmegaRadPerSecond = latest.robotOmegaRadPerSecond;
-    inputs.robotFieldVxMetersPerSecond = latest.robotFieldVxMetersPerSecond;
-    inputs.robotFieldVyMetersPerSecond = latest.robotFieldVyMetersPerSecond;
-    inputs.targetLatencySeconds = latest.targetLatencySeconds;
-
-    solver.solve(inputs, goal);
+    solver.solve(latest, goal);
     return goal.enable;
   }
 }

@@ -13,9 +13,6 @@ public class TurretShotProfile {
   // Ball time-of-flight in seconds — used for moving-target lead compensation.
   public final double timeOfFlightSeconds;
 
-  // Pivot distances for each named shot position (meters, turret-pivot to hub)
-  private static final double[] DISTANCES = { 1.45, 3.38, 5.70 };
-
   public TurretShotProfile(double flywheelFrontRps, double flywheelBackRps, double hoodRotations, double timeOfFlightSeconds) {
     this.flywheelFrontRps    = flywheelFrontRps;
     this.flywheelBackRps     = flywheelBackRps;
@@ -23,48 +20,50 @@ public class TurretShotProfile {
     this.timeOfFlightSeconds = timeOfFlightSeconds;
   }
 
+  // Pivot distances for each named shot position (meters, turret-pivot to hub)
+  private static final double[] DISTANCES = { 1.45, 3.38, 5.70 };
+  private static final double[] FRONT_RPS = {
+    Constants.TurretTargets.HUBCLOSE_FRONT_RPS,
+    Constants.TurretTargets.MIDRANGE_FRONT_RPS,
+    Constants.TurretTargets.OUTPOST_FRONT_RPS
+  };
+  private static final double[] BACK_RPS = {
+    Constants.TurretTargets.HUBCLOSE_BACK_RPS,
+    Constants.TurretTargets.MIDRANGE_BACK_RPS,
+    Constants.TurretTargets.OUTPOST_BACK_RPS
+  };
+  private static final double[] HOODS = {
+    Constants.TurretTargets.HUBCLOSE_HOOD_ROT,
+    Constants.TurretTargets.MIDRANGE_HOOD_ROT,
+    Constants.TurretTargets.OUTPOST_HOOD_ROT
+  };
+  private static final double[] TOFS = {
+    Constants.TurretTargets.HUBCLOSE_TOF_SECONDS,
+    Constants.TurretTargets.MIDRANGE_TOF_SECONDS,
+    Constants.TurretTargets.OUTPOST_TOF_SECONDS
+  };
+
   // Returns an interpolated shot profile for a given pivot-to-hub distance in meters.
   // Clamps to nearest table edge if outside range.
   public static TurretShotProfile getForDistance(double distanceMeters) {
-    double[] frontRps = {
-      Constants.TurretTargets.HUBCLOSE_FRONT_RPS,
-      Constants.TurretTargets.MIDRANGE_FRONT_RPS,
-      Constants.TurretTargets.OUTPOST_FRONT_RPS
-    };
-    double[] backRps = {
-      Constants.TurretTargets.HUBCLOSE_BACK_RPS,
-      Constants.TurretTargets.MIDRANGE_BACK_RPS,
-      Constants.TurretTargets.OUTPOST_BACK_RPS
-    };
-    double[] hoods = {
-      Constants.TurretTargets.HUBCLOSE_HOOD_ROT,
-      Constants.TurretTargets.MIDRANGE_HOOD_ROT,
-      Constants.TurretTargets.OUTPOST_HOOD_ROT
-    };
-    double[] tofs = {
-      Constants.TurretTargets.HUBCLOSE_TOF_SECONDS,
-      Constants.TurretTargets.MIDRANGE_TOF_SECONDS,
-      Constants.TurretTargets.OUTPOST_TOF_SECONDS
-    };
-
     if (distanceMeters <= DISTANCES[0]) {
-      return new TurretShotProfile(frontRps[0], backRps[0], hoods[0], tofs[0]);
+      return new TurretShotProfile(FRONT_RPS[0], BACK_RPS[0], HOODS[0], TOFS[0]);
     }
     int last = DISTANCES.length - 1;
     if (distanceMeters >= DISTANCES[last]) {
-      return new TurretShotProfile(frontRps[last], backRps[last], hoods[last], tofs[last]);
+      return new TurretShotProfile(FRONT_RPS[last], BACK_RPS[last], HOODS[last], TOFS[last]);
     }
     for (int i = 0; i < last; i++) {
       if (distanceMeters <= DISTANCES[i + 1]) {
         double t = (distanceMeters - DISTANCES[i]) / (DISTANCES[i + 1] - DISTANCES[i]);
         return new TurretShotProfile(
-          lerp(frontRps[i], frontRps[i + 1], t),
-          lerp(backRps[i],  backRps[i + 1],  t),
-          lerp(hoods[i],    hoods[i + 1],    t),
-          lerp(tofs[i],     tofs[i + 1],     t));
+          lerp(FRONT_RPS[i], FRONT_RPS[i + 1], t),
+          lerp(BACK_RPS[i],  BACK_RPS[i + 1],  t),
+          lerp(HOODS[i],     HOODS[i + 1],      t),
+          lerp(TOFS[i],      TOFS[i + 1],       t));
       }
     }
-    return new TurretShotProfile(frontRps[last], backRps[last], hoods[last], tofs[last]);
+    return new TurretShotProfile(FRONT_RPS[last], BACK_RPS[last], HOODS[last], TOFS[last]);
   }
 
   private static double lerp(double a, double b, double t) {

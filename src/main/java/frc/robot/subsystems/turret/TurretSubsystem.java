@@ -28,10 +28,7 @@ public class TurretSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final TurretIO io;
   private final TurretIOInputs inputs = new TurretIOInputs();
-  private final TurretState state = new TurretState();
   private final TurretSetpoints setpoints = new TurretSetpoints();
-  private final TurretOutput outputs = new TurretOutput();
-  private final TurretController controller = new TurretController();
   private final TurretAimGoal aimGoal = new TurretAimGoal();
   private final TurretAimGoal providerGoal = new TurretAimGoal();
   private final TurretSetpointGenerator setpointGenerator = new TurretSetpointGenerator();
@@ -104,8 +101,6 @@ public class TurretSubsystem extends SubsystemBase {
   private final SysIdRoutine sysIdFront;
   private final SysIdRoutine sysIdBack;
 
-
-
   public TurretSubsystem(RobotState robotState, TurretIO io) {
     this.robotState = robotState;
     this.io = io;
@@ -173,39 +168,27 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Returns true only when all conditions are satisfied for a safe shot
   public boolean isReadyToShoot() {
-    if (!fireEnabled) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "fire not enabled");
-      return false;
-    }
-    if (!homed && Constants.Turret.CURRENT_PHASE != Constants.Turret.TurretPhase.PHASE_1_STATIC) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "not homed");
-      return false;
-    }
-    if (aimGoal.chassisSpeedMps > Constants.Turret.CHASSIS_SPEED_FIRE_THRESHOLD_MPS) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "chassis too fast");
-      return false;
-    }
-    if (!isTurretOnTarget()) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "turret not on target");
-      return false;
-    }
-    if (!isFlywheelOnTarget()) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "flywheel not up to speed");
-      return false;
-    }
-    if (!isHoodOnTarget()) {
-      SmartLogger.logReplay("Turret/ReadyToShoot", false);
-      SmartLogger.logReplay("Turret/WhyNotReady", "hood not on target");
-      return false;
-    }
+    if (!fireEnabled)
+      return failReady("fire not enabled");
+    if (!homed && Constants.Turret.CURRENT_PHASE != Constants.Turret.TurretPhase.PHASE_1_STATIC)
+      return failReady("not homed");
+    if (aimGoal.chassisSpeedMps > Constants.Turret.CHASSIS_SPEED_FIRE_THRESHOLD_MPS)
+      return failReady("chassis too fast");
+    if (!isTurretOnTarget())
+      return failReady("turret not on target");
+    if (!isFlywheelOnTarget())
+      return failReady("flywheel not up to speed");
+    if (!isHoodOnTarget())
+      return failReady("hood not on target");
     SmartLogger.logReplay("Turret/ReadyToShoot", true);
     SmartLogger.logReplay("Turret/WhyNotReady", "");
     return true;
+  }
+
+  private boolean failReady(String reason) {
+    SmartLogger.logReplay("Turret/ReadyToShoot", false);
+    SmartLogger.logReplay("Turret/WhyNotReady", reason);
+    return false;
   }
 
   // True when turret, flywheel, and hood are all on target — no fire interlock required.
@@ -220,7 +203,10 @@ public class TurretSubsystem extends SubsystemBase {
       turretOnTargetLoops = 0;
       return true; // open loop — no target to check against
     }
-    double error = Math.abs(aimGoal.turretRotations - inputs.turretAbsolutePositionRotations);
+    // Compare motor target (encoder frame) against actual motor position.
+    double motorTarget = aimGoal.turretRotations * Constants.Turret.TURRET_GEAR_RATIO
+        + Constants.Turret.TURRET_FORWARD_MOTOR_ROT;
+    double error = Math.abs(motorTarget - inputs.turretAbsolutePositionRotations);
     if (error < Constants.Turret.TURRET_ON_TARGET_TOLERANCE_ROT) {
       turretOnTargetLoops++;
     } else {
@@ -230,9 +216,11 @@ public class TurretSubsystem extends SubsystemBase {
   }
 
   private boolean isFlywheelOnTarget() {
-    if (Math.abs(aimGoal.flywheelPercent) < ACTIVE_PERCENT_THRESHOLD) return true;
-    double error = Math.abs(aimGoal.flywheelPercent - outputs.flywheelPercent);
-    return error < Constants.Turret.FLYWHEEL_ON_TARGET_TOLERANCE_PCT;
+    if (aimGoal.flywheelFrontRps < ACTIVE_PERCENT_THRESHOLD) return true;
+    double frontError = Math.abs(aimGoal.flywheelFrontRps - inputs.flywheelVelocityRpm / 60.0);
+    double backError  = Math.abs(aimGoal.flywheelBackRps  - inputs.flywheelBackVelocityRpm / 60.0);
+    return frontError < Constants.Turret.FLYWHEEL_ON_TARGET_TOLERANCE_RPS
+        && backError  < Constants.Turret.FLYWHEEL_ON_TARGET_TOLERANCE_RPS;
   }
 
   // True when both flywheels are spinning at or above the minimum useful shoot speed.
@@ -393,8 +381,6 @@ public class TurretSubsystem extends SubsystemBase {
   public void setAimGoal(TurretAimGoal goal) {
     aimGoal.turretRotations  = goal.turretRotations;
     aimGoal.hoodRotations    = goal.hoodRotations;
-    aimGoal.flywheelPercent  = goal.flywheelPercent;
-    aimGoal.useRps           = goal.useRps;
     aimGoal.flywheelFrontRps = goal.flywheelFrontRps;
     aimGoal.flywheelBackRps  = goal.flywheelBackRps;
     aimGoal.enable           = goal.enable;
@@ -402,7 +388,7 @@ public class TurretSubsystem extends SubsystemBase {
     aimGoal.chassisSpeedMps  = goal.chassisSpeedMps;
   }
 
-  public boolean updateAimFromProvider(TurretAimProvider provider) {
+  public boolean updateAimFromProvider(TurretAimPipeline provider) {
     if (provider == null || !trackingEnabled) return false;
     // While stall give-up is active, block the pipeline from overwriting the snapped position.
     // The turret will resume tracking as soon as the chain frees and velocity recovers.
@@ -422,10 +408,8 @@ public class TurretSubsystem extends SubsystemBase {
     TurretShotProfile shot = TurretShotProfile.getForDistance(distanceMeters);
     providerGoal.turretRotations  = 0.0;
     providerGoal.hoodRotations    = shot.hoodRotations;
-    providerGoal.useRps           = true;
     providerGoal.flywheelFrontRps = shot.flywheelFrontRps;
     providerGoal.flywheelBackRps  = shot.flywheelBackRps;
-    providerGoal.flywheelPercent  = 0.0;
     providerGoal.targetReachable  = true;
     providerGoal.enable           = true;
     manualPositionOverride = false;
@@ -449,7 +433,6 @@ public class TurretSubsystem extends SubsystemBase {
   @Override
   public void periodic() {
     io.updateInputs(inputs);
-    state.updateFromInputs(inputs);
 
     // If the motor rebooted mid-match (brownout), restore the encoder from our saved position.
     // The sticky fault fires for exactly one loop then is cleared by TurretIOCTRE.
@@ -548,10 +531,8 @@ public class TurretSubsystem extends SubsystemBase {
 
     // Hood soft limit: stop upward movement at the top of the travel range.
     // No physical hard stop at the top — this is the only protection against over-travel.
-    // Clears both the output and the setpoint so the controller doesn't fight it next loop.
     if (!hoodHoming && inputs.hoodMotorPositionRotations >= Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS
-        && outputs.hoodPercent > 0.0) {
-      outputs.hoodPercent  = 0.0;
+        && setpoints.hoodPercent > 0.0) {
       setpoints.hoodPercent = 0.0;
     }
 
@@ -588,66 +569,69 @@ public class TurretSubsystem extends SubsystemBase {
     // Only enforced after homing so the limits are relative to a known zero.
     if (homed) {
       double turretPos = inputs.turretAbsolutePositionRotations;
-      if (turretPos <= Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT && outputs.turretPercent < 0.0) {
-        outputs.turretPercent  = 0.0;
+      if (turretPos <= Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT && setpoints.turretPercent < 0.0) {
         setpoints.turretPercent = 0.0;
       }
-      if (turretPos >= Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT && outputs.turretPercent > 0.0) {
-        outputs.turretPercent  = 0.0;
+      if (turretPos >= Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT && setpoints.turretPercent > 0.0) {
         setpoints.turretPercent = 0.0;
       }
       // Clamp the MotionMagic target so overshoots or stale setpoints can't command past the limits.
-      if (outputs.useTurretPosition) {
-        outputs.turretPositionMotorRotations = Math.max(
+      if (setpoints.useTurretPosition) {
+        setpoints.turretPositionMotorRotations = Math.max(
             Constants.Turret.TURRET_SOFT_LIMIT_LEFT_MOTOR_ROT,
-            Math.min(outputs.turretPositionMotorRotations, Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT));
+            Math.min(setpoints.turretPositionMotorRotations, Constants.Turret.TURRET_SOFT_LIMIT_RIGHT_MOTOR_ROT));
       }
     }
 
-    // If not actively homing, run the normal aim pipeline unless a manual position override is active
+    // If not actively homing, run the normal aim pipeline unless a manual position override is active.
+    // Clamp percent outputs to [-1, 1] before sending to hardware.
     if (!homing) {
       if (!manualPositionOverride) {
-        setpointGenerator.update(state, aimGoal, setpoints);
+        setpointGenerator.update(aimGoal, setpoints);
       }
-      controller.update(state, setpoints, outputs);
+      setpoints.flywheelPercent      = clamp(setpoints.flywheelPercent);
+      setpoints.flywheelFrontPercent = clamp(setpoints.flywheelFrontPercent);
+      setpoints.flywheelBackPercent  = clamp(setpoints.flywheelBackPercent);
+      setpoints.hoodPercent          = clamp(setpoints.hoodPercent);
+      setpoints.turretPercent        = clamp(setpoints.turretPercent);
     }
 
-    if (outputs.useIndependentFlywheel) {
-      if (outputs.useFlywheelRps) {
-        io.setFlywheelFrontRps(outputs.flywheelFrontRps);
-        io.setFlywheelBackRps(outputs.flywheelBackRps);
+    if (setpoints.useIndependentFlywheel) {
+      if (setpoints.useFlywheelRps) {
+        io.setFlywheelFrontRps(setpoints.flywheelFrontRps);
+        io.setFlywheelBackRps(setpoints.flywheelBackRps);
       } else {
-        io.setFlywheelFrontPercent(outputs.flywheelFrontPercent);
-        io.setFlywheelBackPercent(outputs.flywheelBackPercent);
+        io.setFlywheelFrontPercent(setpoints.flywheelFrontPercent);
+        io.setFlywheelBackPercent(setpoints.flywheelBackPercent);
       }
     } else {
-      io.setFlywheelPercent(outputs.flywheelPercent);
+      io.setFlywheelPercent(setpoints.flywheelPercent);
     }
     if (hoodHoming) {
       io.setHoodPercent(-Constants.Turret.HOOD_HOME_SPEED_PERCENT);
-    } else if (outputs.useHoodPosition) {
-      io.setHoodPosition(outputs.hoodPositionMotorRotations);
+    } else if (setpoints.useHoodPosition) {
+      io.setHoodPosition(setpoints.hoodPositionMotorRotations);
     } else {
-      io.setHoodPercent(outputs.hoodPercent);
+      io.setHoodPercent(setpoints.hoodPercent);
     }
 
     // Homing uses open-loop percent. After homing, MotionMagic takes over when a position
     // target is active, otherwise open-loop percent is used (e.g. manual joystick).
     if (homing) {
       io.setTurretPercent(-Constants.Turret.TURRET_HOME_SPEED_FAST_PERCENT);
-    } else if (outputs.useTurretPosition) {
-      io.setTurretPosition(outputs.turretPositionMotorRotations);
+    } else if (setpoints.useTurretPosition) {
+      io.setTurretPosition(setpoints.turretPositionMotorRotations);
     } else {
-      io.setTurretPercent(outputs.turretPercent);
+      io.setTurretPercent(setpoints.turretPercent);
     }
 
-    robotState.setTurretFlywheelPercent(outputs.flywheelPercent);
-    robotState.setTurretHoodPercent(outputs.hoodPercent);
-    robotState.setTurretRotationPercent(outputs.turretPercent);
+    robotState.setTurretFlywheelPercent(setpoints.flywheelPercent);
+    robotState.setTurretHoodPercent(setpoints.hoodPercent);
+    robotState.setTurretRotationPercent(setpoints.turretPercent);
 
-    boolean active = Math.abs(outputs.flywheelPercent) > ACTIVE_PERCENT_THRESHOLD
-        || Math.abs(outputs.hoodPercent) > ACTIVE_PERCENT_THRESHOLD
-        || Math.abs(outputs.turretPercent) > ACTIVE_PERCENT_THRESHOLD;
+    boolean active = Math.abs(setpoints.flywheelPercent) > ACTIVE_PERCENT_THRESHOLD
+        || Math.abs(setpoints.hoodPercent) > ACTIVE_PERCENT_THRESHOLD
+        || Math.abs(setpoints.turretPercent) > ACTIVE_PERCENT_THRESHOLD;
     robotState.setTurretState(active ? RobotState.TurretState.ACTIVE : RobotState.TurretState.IDLE);
 
     robotState.setTurretHoodLimitSwitchRaw(inputs.hoodLimitSwitchRaw);
@@ -661,15 +645,15 @@ public class TurretSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Turret/HoodLimitSwitchPressed", inputs.hoodLimitSwitchRaw); // true = switch pressed (active-low after inversion)
     SmartLogger.logReplay("Turret/FireEnabled", fireEnabled);
 
-    SmartLogger.logReplay("Turret/TargetMotorRot", outputs.turretPositionMotorRotations);
+    SmartLogger.logReplay("Turret/TargetMotorRot", setpoints.turretPositionMotorRotations);
     SmartLogger.logReplay("Turret/RotationMotorRot", inputs.turretAbsolutePositionRotations);
     SmartLogger.logReplay("Turret/VelocityRps", inputs.turretVelocityRps);
     SmartLogger.logReplay("Turret/CurrentAmps", inputs.turretMotorCurrentAmps);
 
     // Hood PID tuning signals — plot HoodTargetRot vs HoodActualRot to tune kP/kV/kS
-    SmartLogger.logReplay("Turret/HoodTargetRot", outputs.hoodPositionMotorRotations);
+    SmartLogger.logReplay("Turret/HoodTargetRot", setpoints.hoodPositionMotorRotations);
     SmartLogger.logReplay("Turret/HoodActualRot", inputs.hoodMotorPositionRotations);
-    SmartLogger.logReplay("Turret/HoodErrorRot",  outputs.hoodPositionMotorRotations - inputs.hoodMotorPositionRotations);
+    SmartLogger.logReplay("Turret/HoodErrorRot",  setpoints.hoodPositionMotorRotations - inputs.hoodMotorPositionRotations);
     SmartLogger.logReplay("Turret/HoodCurrentAmps", inputs.hoodMotorCurrentAmps);
 
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
@@ -685,15 +669,15 @@ public class TurretSubsystem extends SubsystemBase {
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelBackRpm", inputs.flywheelBackVelocityRpm);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
-        "Turret/FlywheelFrontTargetRps", outputs.flywheelFrontRps);
+        "Turret/FlywheelFrontTargetRps", setpoints.flywheelFrontRps);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
-        "Turret/FlywheelBackTargetRps", outputs.flywheelBackRps);
+        "Turret/FlywheelBackTargetRps", setpoints.flywheelBackRps);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelFrontActualRps", inputs.flywheelVelocityRpm / 60.0);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
         "Turret/FlywheelBackActualRps", inputs.flywheelBackVelocityRpm / 60.0);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putNumber(
-        "Turret/FlywheelSetpointPct", outputs.flywheelFrontPercent);
+        "Turret/FlywheelSetpointPct", setpoints.flywheelFrontPercent);
     edu.wpi.first.wpilibj.smartdashboard.SmartDashboard.putBoolean(
         "Turret/ReadyToShoot", isReadyToShoot());
     SmartLogger.logReplay("Turret/TargetReachable", aimGoal.targetReachable);
@@ -721,6 +705,10 @@ public class TurretSubsystem extends SubsystemBase {
     setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
     setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
     SmartLogger.logConsole("EMERGENCY HUBCLOSE activated — tracking disabled, fixed preset loaded", "Emergency");
+  }
+
+  private static double clamp(double value) {
+    return Math.max(-1.0, Math.min(1.0, value));
   }
 }
 

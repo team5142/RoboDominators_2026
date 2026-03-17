@@ -24,7 +24,6 @@ public class TurretHoldPoseCommand extends RunCommand {
   private static TurretAimGoal profileToGoal(TurretShotProfile profile) {
     TurretAimGoal g = new TurretAimGoal();
     g.hoodRotations    = profile.hoodRotations;
-    g.useRps           = true;
     g.flywheelFrontRps = profile.flywheelFrontRps;
     g.flywheelBackRps  = profile.flywheelBackRps;
     g.enable           = true;

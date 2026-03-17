@@ -21,57 +21,6 @@ import frc.robot.Constants;
 // CTRE hardware implementation for the turret mechanism.
 // All motor inversion is controlled via Constants.Turret.*_INVERTED booleans -
 // flip those flags rather than changing wiring.
-//
-// TODO - FLYWHEEL CHECKLIST:
-// [ ] 1. Both FLYWHEEL_FRONT (CAN 20) and FLYWHEEL_BACK (CAN 21) appear in TunerX.
-// [ ] 2. Command a small positive output to each independently. Confirm both spin in
-//        the correct shooting direction. Set FLYWHEEL_MOTOR_INVERTED = true if backwards.
-// [ ] 3. Spin up to each SHOT_TABLE distance percent and check RPM via TunerX telemetry.
-//        Adjust SHOT_TABLE_FLYWHEEL_FRONT_PCT and SHOT_TABLE_FLYWHEEL_BACK_PCT in Constants.
-// [ ] 4. Fire a test ball at close range. If ball does not clear, raise flywheel percents.
-//
-// TODO - HOOD CHECKLIST:
-// [ ] 1. HOOD motor (CAN 22) appears in TunerX.
-// [ ] 2. Confirm DIO port HOOD_LIMIT_SWITCH_DIO (currently 2): go to Test mode, manually push the
-//        hood to its bottom stop and confirm Turret/HoodLimitRaw toggles in AdvantageScope.
-// [ ] 3. Command a small positive percent output. Confirm hood moves UP (away from bottom stop).
-//        If it moves down toward the stop, set HOOD_MOTOR_INVERTED = true in Constants.
-// [ ] 4. Run hoodHome() from TurretSubsystem. Hood should creep down, stop when limit switch fires,
-//        and Turret/HoodHomed should become true. Encoder should read near 0.
-// [ ] 5. Command hood to HOOD_SOFT_LIMIT_TOP_ROTATIONS. Observe where it stops physically.
-//        Measure the actual angle and update HOOD_SOFT_LIMIT_TOP_ROTATIONS in Constants.
-// [ ] 6. Update SHOT_TABLE_HOOD_ROTATIONS in Constants with measured motor encoder values at each
-//        shot distance. Replace the placeholder degree-derived values.
-// [ ] 7. Tune gravity feedforward (HOOD_KG): home the hood, command it to ~60 deg, let the P
-//        controller settle, then zero the P output and find the duty cycle that holds position.
-//        That value is the HOOD_KG seed. Add it to TurretSetpointGenerator as
-//        kG * Math.cos(hoodAngleRadians) on top of the P term. Hood is heavy + belt-driven
-//        so without this it will drift downward when the P error reaches zero.
-// TODO: when a CANcoder is available for the hood, re-add it here with absolute position feedback.
-//       Update TurretIOInputs, updateInputs(), zeroHoodEncoder(), and shot table accordingly.
-//
-// TODO - TURRET ROTATION CHECKLIST:
-// [x] 1. TURRET motor (CAN 23) appears in TunerX.
-// [ ] 2. Physically locate the two hard stops. The LEFT hard stop is home (encoder zero).
-//        The hall sensor magnet should be mounted so it triggers just before the left hard stop.
-//        Confirm at least 5-10 degrees of clearance between sensor fire and the physical stop.
-//        If the magnet is on the CW side instead, remount the magnet near the CCW hard stop.
-// [ ] 3. Confirm DIO port HALL_SENSOR_CCW_DIO (0):
-//        go to Test mode, hold the magnet near the sensor and confirm
-//        Turret/HallCCWRaw toggles in AdvantageScope.
-// [ ] 4. Before commanding any motor output, manually move the turret to the center of its range.
-//        This avoids slamming into a hard stop on first power-on.
-// [ ] 5. Command a small positive percent output (TURRET_KP is 0.15 - very slow).
-//        Positive should rotate LEFT (toward the left hard stop / hall sensor).
-//        If it goes right, set TURRET_MOTOR_INVERTED = true in Constants.
-// [ ] 6. Run home() from TurretSubsystem. Turret should creep left, stop when hall sensor fires,
-//        and Turret/Homed should become true in AdvantageScope. Encoder should read near 0.
-//        If it creeps right instead, recheck step 5.
-// [ ] 7. Manually sweep the full rotation range end-to-end. Confirm the turret reaches both
-//        hard stops without the hall sensor failing to trigger.
-// [ ] 8. Home the turret, then slowly drive it to the right hard stop. Read the motor encoder
-//        value from Turret/RotationDeg (divide by 360 to get rotations) and set
-//        TURRET_SOFT_LIMIT_RIGHT_ROTATIONS in Constants to ~95% of that value.
 public class TurretIOCTRE implements TurretIO {
   private final TalonFX flywheelFrontMotor;
   private final TalonFX flywheelBackMotor;
@@ -187,28 +136,21 @@ public class TurretIOCTRE implements TurretIO {
 
   @Override
   public void updateInputs(TurretIOInputs inputs) {
-    inputs.hoodLimitSwitchRaw = hoodLimitSwitch.get(); // true when switch is pressed
-    inputs.hallCCWRaw         = !hallCCW.get();          // active-low — true when magnet is sensed
+    inputs.hoodLimitSwitchRaw = hoodLimitSwitch.get();
+    inputs.hallCCWRaw         = !hallCCW.get(); // active-low — true when magnet is sensed
 
-    if (hoodMotor != null) {
-      inputs.hoodMotorPositionRotations = hoodMotor.getPosition().getValueAsDouble();
-      inputs.hoodMotorCurrentAmps       = hoodMotor.getStatorCurrent().getValueAsDouble();
-    }
+    inputs.hoodMotorPositionRotations = hoodMotor.getPosition().getValueAsDouble();
+    inputs.hoodMotorCurrentAmps       = hoodMotor.getStatorCurrent().getValueAsDouble();
+
     inputs.turretAbsolutePositionRotations = turretMotor.getPosition().getValueAsDouble();
     inputs.turretVelocityRps               = turretMotor.getVelocity().getValueAsDouble();
     inputs.turretMotorCurrentAmps          = turretMotor.getStatorCurrent().getValueAsDouble();
-    if (flywheelFrontMotor != null) {
-      double frontRps = flywheelFrontMotor.getVelocity().getValueAsDouble();
-      inputs.flywheelVelocityRpm      = frontRps * 60.0;
-      inputs.flywheelFrontVelocityRps = frontRps;
-      inputs.flywheelFrontVoltageVolts = flywheelFrontMotor.getMotorVoltage().getValueAsDouble();
-    }
-    if (flywheelBackMotor != null) {
-      double backRps = flywheelBackMotor.getVelocity().getValueAsDouble();
-      inputs.flywheelBackVelocityRpm  = backRps * 60.0;
-      inputs.flywheelBackVelocityRps  = backRps;
-      inputs.flywheelBackVoltageVolts = flywheelBackMotor.getMotorVoltage().getValueAsDouble();
-    }
+
+    double frontRps = flywheelFrontMotor.getVelocity().getValueAsDouble();
+    inputs.flywheelVelocityRpm = frontRps * 60.0;
+
+    double backRps = flywheelBackMotor.getVelocity().getValueAsDouble();
+    inputs.flywheelBackVelocityRpm = backRps * 60.0;
     // Read and immediately clear the sticky fault so it fires for exactly one loop
     bootDuringEnSignal.refresh();
     inputs.turretBootDuringEn = bootDuringEnSignal.getValue();
@@ -302,7 +244,6 @@ public class TurretIOCTRE implements TurretIO {
 
   @Override
   public void zeroHoodEncoder() {
-    if (hoodMotor == null) return;
     hoodMotor.setPosition(Constants.Turret.HOOD_HOME_ROTATIONS);
   }
 }

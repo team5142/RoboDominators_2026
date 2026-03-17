@@ -4,8 +4,6 @@ package frc.robot.subsystems.turret;
 public class TurretAimGoal {
   public double turretRotations = 0.0;
   public double hoodRotations = 0.0;
-  public double flywheelPercent = 0.0;   // legacy percent mode (unused when useRps=true)
-  public boolean useRps = false;         // when true, front/back RPS are used instead of flywheelPercent
   public double flywheelFrontRps = 0.0;
   public double flywheelBackRps  = 0.0;
   public boolean enable = false;
@@ -18,8 +16,6 @@ public class TurretAimGoal {
   public void clear() {
     turretRotations = 0.0;
     hoodRotations = 0.0;
-    flywheelPercent = 0.0;
-    useRps = false;
     flywheelFrontRps = 0.0;
     flywheelBackRps  = 0.0;
     enable = false;
