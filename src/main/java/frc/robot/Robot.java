@@ -2,8 +2,14 @@ package frc.robot;
 
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.IterativeRobotBase;
+import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.Watchdog;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import java.lang.reflect.Field;
+import java.util.HashMap;
+import java.util.Map;
 import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
@@ -21,6 +27,10 @@ public class Robot extends LoggedRobot {
   private Command autonomousCommand;
   private RobotContainer robotContainer;
   private RobotState robotState;
+
+  private double autoStart;
+  private boolean autoMessagePrinted;
+  private final Map<String, Integer> commandCounts = new HashMap<>();
   
   private boolean lowBatteryWarningShown = false;
   private boolean criticalBatteryWarningShown = false;
@@ -45,10 +55,36 @@ public class Robot extends LoggedRobot {
     Logger.addDataReceiver(new NT4Publisher());
     Logger.addDataReceiver(new WPILOGWriter("/home/lvuser/logs"));
     Logger.start();
-    
-    String initMsg = projectName + " " + teamNumber + " - " + robotName + "\n" 
-                    + "AdvantageKit: ACTIVE\n" + 
-                    "Battery: " + RobotController.getBatteryVoltage() + "V";
+
+    // Extend watchdog timeout to match our loop period so overrun warnings don't fire on heavy loops
+    try {
+      Field watchdogField = IterativeRobotBase.class.getDeclaredField("m_watchdog");
+      watchdogField.setAccessible(true);
+      ((Watchdog) watchdogField.get(this)).setTimeout(0.04); // 40ms — 2x loop period
+    } catch (Exception e) {
+      DriverStation.reportWarning("Could not extend watchdog timeout: " + e.getMessage(), false);
+    }
+
+    // Log every command start/finish/interrupt so replays show exactly what ran and when
+    CommandScheduler.getInstance().onCommandInitialize(cmd -> {
+      int count = commandCounts.getOrDefault(cmd.getName(), 0) + 1;
+      commandCounts.put(cmd.getName(), count);
+      Logger.recordOutput("Commands/" + cmd.getName(), true);
+    });
+    CommandScheduler.getInstance().onCommandFinish(cmd -> {
+      int count = Math.max(0, commandCounts.getOrDefault(cmd.getName(), 0) - 1);
+      commandCounts.put(cmd.getName(), count);
+      Logger.recordOutput("Commands/" + cmd.getName(), count > 0);
+    });
+    CommandScheduler.getInstance().onCommandInterrupt(cmd -> {
+      int count = Math.max(0, commandCounts.getOrDefault(cmd.getName(), 0) - 1);
+      commandCounts.put(cmd.getName(), count);
+      Logger.recordOutput("Commands/" + cmd.getName(), count > 0);
+    });
+
+    String initMsg = projectName + " " + teamNumber + " - " + robotName + "\n"
+                    + "AdvantageKit: ACTIVE\n"
+                    + "Battery: " + RobotController.getBatteryVoltage() + "V";
     SmartLogger.logConsole(initMsg, "Robot Init", 15);
     
     try {
@@ -147,6 +183,17 @@ public class Robot extends LoggedRobot {
     }
     
     LogSpaceMonitor.periodic();
+
+    // Print auto duration once when the auto command finishes
+    if (autonomousCommand != null && !autonomousCommand.isScheduled() && !autoMessagePrinted) {
+      autoMessagePrinted = true;
+      double elapsed = Timer.getTimestamp() - autoStart;
+      if (DriverStation.isAutonomousEnabled()) {
+        SmartLogger.logConsole(String.format("*** Auto finished in %.2f secs ***", elapsed), "Auto");
+      } else {
+        SmartLogger.logConsole(String.format("*** Auto cancelled at %.2f secs ***", elapsed), "Auto");
+      }
+    }
   }
 
   // Check battery with proper hysteresis (disabled mode only)
@@ -199,6 +246,8 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void autonomousInit() {
+    autoStart = Timer.getTimestamp();
+    autoMessagePrinted = false;
     matchActive = true;
     robotState.setEnabled(true);
     robotState.setMode(RobotState.Mode.ENABLED_AUTO);
@@ -283,4 +332,10 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void simulationPeriodic() {}
+
+  // Returns false during the first 30 seconds of real-robot operation to suppress
+  // hardware fault alerts that fire spuriously during boot and brownout recovery.
+  public static boolean showHardwareAlerts() {
+    return !RobotController.isBrownedOut() && Timer.getTimestamp() > 30.0;
+  }
 }

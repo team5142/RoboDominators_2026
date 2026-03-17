@@ -9,6 +9,8 @@ import com.pathplanner.lib.config.PIDConstants;
 import com.pathplanner.lib.config.RobotConfig;
 import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.wpilibj.Alert;
+import edu.wpi.first.wpilibj.Alert.AlertType;
 import edu.wpi.first.wpilibj.DriverStation;
 import java.util.Optional;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
@@ -18,7 +20,9 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
+import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
+import edu.wpi.first.math.filter.Debouncer.DebounceType;
 import edu.wpi.first.math.geometry.Rotation2d;
 import frc.robot.commands.auto.AutoCommands;
 import frc.robot.commands.auto.CenterMoveToShootAuto;
@@ -69,6 +73,9 @@ public class RobotContainer {
   private final XboxController driverController = new XboxController(DRIVER_CONTROLLER_PORT);
   // Operator Xbox controller on the next USB slot (port 1)
   private final XboxController operatorController = new XboxController(Constants.OPERATOR_CONTROLLER_PORT);
+
+  private final Alert driverDisconnected   = new Alert("Driver controller disconnected (port " + DRIVER_CONTROLLER_PORT + ").", AlertType.kWarning);
+  private final Alert operatorDisconnected = new Alert("Operator controller disconnected (port " + Constants.OPERATOR_CONTROLLER_PORT + ").", AlertType.kWarning);
 
   // When REQUIRE_TURRET_FORWARD_CONFIRM=true, bindings are deferred until Back+A confirm.
   private boolean bindingsConfigured = false;
@@ -413,26 +420,38 @@ public class RobotContainer {
           if (!robotState.isFlywheelOn()) turretSubsystem.setFlywheelPercent(0.0);
         }));
 
+    // LB / RB: step manual flywheel RPS down / up by FLYWHEEL_MANUAL_STEP_RPS.
+    // Back RPS is set automatically as front * FLYWHEEL_BACK_RATIO.
+    // Use during calibration to find the right speed for a new shot table entry —
+    // read Turret/ManualFlywheelFrontRps in AScope to record the value.
+    // Guard: only fire when the OTHER bumper is NOT held, so LB+RB chord still works as lockout confirm.
+    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
+        .and(() -> !operatorController.getRightBumperButton())
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.stepManualFlywheelRps(false); }));
+    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
+        .and(() -> !operatorController.getLeftBumperButton())
+        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.stepManualFlywheelRps(true); }));
+
     // new Trigger(() -> (operatorController.getLeftTriggerAxis() > 0.1 && operatorController.getLeftTriggerAxis() < 0.5)) // Allow LT to toggle flywheels even when both triggers are pressed (for dynamic snap+shoot)
     //     .onTrue(Commands.runOnce(() -> {
     //       turretSubsystem.setFlywheelPercent(30);
     //     })); //remove soon
 
     // RT (hold): shoot.
-    // If flywheels are already on, feed immediately.
-    // If flywheels are off, spin them up first and wait for them to reach speed before feeding.
-    // Releases spindexer and singulator when trigger is released.
+    // Outer trigger: RT held — spins up flywheels and gates feed commands.
+    // Inner debounce: feed only starts once flywheels are up to speed, and stays on
+    // for 100ms after speed drops (debounced falling edge) to absorb momentary wobble.
+    // Releasing RT cuts the outer command immediately via finallyDo — no linger.
+    Trigger flywheelReady = new Trigger(() ->
+        turretSubsystem != null && turretSubsystem.isFlywheelSpinningFast())
+        .debounce(0.1, DebounceType.kFalling);
+
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.run(() -> {
           if (turretSubsystem == null) return;
+          if (!robotState.isFlywheelOn()) robotState.setFlywheelOn(true);
 
-          // If flywheel was off, turn it on now — it will spin up this loop and be checked below
-          if (!robotState.isFlywheelOn()) {
-            robotState.setFlywheelOn(true);
-          }
-
-          // Only start feeding once flywheels are up to speed
-          if (!turretSubsystem.isFlywheelSpinningFast()) return;
+          if (!flywheelReady.getAsBoolean()) return;
 
           boolean spindexerAllowed = intakeSubsystem == null
               || (robotState.getIntakePosition() != RobotState.IntakePosition.EXTENDING
@@ -458,11 +477,6 @@ public class RobotContainer {
     // --- END TURRET ROTATION ---
 
     // --- TURRET HOOD ---
-    // D-pad up: step hood up. D-pad down: step hood down.
-    new Trigger(() -> operatorController.getPOV() == 0)
-        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); }));
-    new Trigger(() -> operatorController.getPOV() == 180)
-        .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); }));
     // --- END TURRET HOOD ---
 
     // ========== END OPERATOR CONTROLLER BINDINGS ==========
@@ -474,6 +488,39 @@ public class RobotContainer {
           if (turretSubsystem != null) turretSubsystem.home();
           SmartLogger.logConsole("Emergency turret re-home triggered (Back+Start) — hall sweep", "Homing");
         }));
+
+    // ========== MODE TRIGGERS ==========
+
+    // #2: Replace onTeleopInit() logic — auto-enable tracking if turret was already homed in auto
+    RobotModeTriggers.teleop().onTrue(Commands.runOnce(() -> {
+      if (turretSubsystem != null && turretSubsystem.isHomed()
+          && !turretSubsystem.isTrackingEnabled()) {
+        turretSubsystem.enableTracking();
+        SmartLogger.logConsole("Tracking auto-enabled on teleop init (homed in auto)", "Turret");
+      }
+    }).ignoringDisable(true));
+
+    // #3: Reset flywheel state cleanly when disabled so no stale on/off state carries into next match
+    RobotModeTriggers.disabled().onTrue(Commands.runOnce(() -> {
+      robotState.setFlywheelOn(false);
+      if (turretSubsystem != null) turretSubsystem.setFlywheelPercent(0.0);
+    }).ignoringDisable(true));
+
+    // #4: D-pad up/down: tap = one step, hold = repeat after 300ms delay at 100ms rate
+    new Trigger(() -> operatorController.getPOV() == 0)
+        .onTrue(
+            Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); })
+                .andThen(Commands.waitSeconds(0.3))
+                .andThen(Commands.repeatingSequence(
+                    Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepUp(); }),
+                    Commands.waitSeconds(0.1))));
+    new Trigger(() -> operatorController.getPOV() == 180)
+        .onTrue(
+            Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); })
+                .andThen(Commands.waitSeconds(0.3))
+                .andThen(Commands.repeatingSequence(
+                    Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.hoodStepDown(); }),
+                    Commands.waitSeconds(0.1))));
   }
 
   // HTML touchscreen interface
@@ -608,6 +655,10 @@ public class RobotContainer {
     if (DriverStation.isDisabled()) {
       applyPendingAutoPreviewPose();
     }
+
+    // #1: Controller disconnect alerts — shown in DS and AdvantageScope
+    driverDisconnected.set(!DriverStation.isJoystickConnected(driverController.getPort()));
+    operatorDisconnected.set(!DriverStation.isJoystickConnected(operatorController.getPort()));
 
     // Publish slow-changing fields at 10Hz - alliance/station/auto don't change every loop
     if (periodicCounter % 5 == 0) {

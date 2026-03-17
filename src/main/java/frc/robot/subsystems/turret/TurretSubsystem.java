@@ -47,6 +47,11 @@ public class TurretSubsystem extends SubsystemBase {
   // Currently 0 (disabled) — enable once beam breaks are working.
   private int turretOnTargetLoops = 0;
 
+  // Manual flywheel RPS — operator LB/RB steps front RPS, back is derived via FLYWHEEL_BACK_RATIO.
+  // Active when operator overrides the aim pipeline during calibration.
+  // Starts at HUBCLOSE front RPS so first press is a known reference point.
+  private double manualFlywheelFrontRps = Constants.TurretTargets.HUBCLOSE_FRONT_RPS;
+
   // Hood step positions: 10% increments of travel (0%, 10%, 20%, ... 100%)
   private static final double[] HOOD_STEPS = {
     0.0,
@@ -320,6 +325,24 @@ public class TurretSubsystem extends SubsystemBase {
     setpoints.useFlywheelRps = true;
     setpoints.flywheelBackRps = rps;
   }
+
+  // Steps the manual front RPS up or down by FLYWHEEL_MANUAL_STEP_RPS, clamped to min/max.
+  // Back RPS is set automatically as front * FLYWHEEL_BACK_RATIO.
+  // Call this during calibration to find the right speed for a new shot table entry.
+  public void stepManualFlywheelRps(boolean increase) {
+    double step = Constants.Turret.FLYWHEEL_MANUAL_STEP_RPS * (increase ? 1.0 : -1.0);
+    manualFlywheelFrontRps = Math.max(Constants.Turret.FLYWHEEL_MANUAL_MIN_RPS,
+        Math.min(Constants.Turret.FLYWHEEL_MANUAL_MAX_RPS,
+            manualFlywheelFrontRps + step));
+    double backRps = manualFlywheelFrontRps * Constants.Turret.FLYWHEEL_BACK_RATIO;
+    setFlywheelFrontRps(manualFlywheelFrontRps);
+    setFlywheelBackRps(backRps);
+    SmartLogger.logReplay("Turret/ManualFlywheelFrontRps", manualFlywheelFrontRps);
+    SmartLogger.logReplay("Turret/ManualFlywheelBackRps",  backRps);
+    SmartLogger.logConsole(String.format("Flywheel RPS -> front=%.1f back=%.1f", manualFlywheelFrontRps, backRps), "Turret");
+  }
+
+  public double getManualFlywheelFrontRps() { return manualFlywheelFrontRps; }
   public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; setpoints.useHoodPosition = false; }
 
   // Commands hood to a specific position. Requires hoodHomed. Clamps to soft limits.

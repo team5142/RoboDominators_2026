@@ -457,10 +457,15 @@ public final class Constants {
     // PHASE_1: fixed/manual setpoint, fire interlock only
     // PHASE_2: turret tracks target, robot must be near-stationary to fire
     // PHASE_3: turret tracks while driving, fire only when chassis slows below threshold
-    // PHASE_4: stub — same behavior as PHASE_3 (velocity comp math not yet implemented)
+    // PHASE_4: full on-the-move — lead compensation offsets target by velocity * TOF so ball lands on hub while robot is moving.
+    //   TOF values (~1.0s) were measured via slo-mo video: time from ball appearing at turret mouth to breaking the goal plane.
+    //   Shots are parabolic (lobbed arc with gravity), not flat — TOF does not scale linearly with distance.
+    //   At 3 m/s robot speed and 1.0s TOF, lead offset is ~3m — this is physically correct.
+    //   At 8 balls/sec throughput target, 8 balls are simultaneously in flight during a sustained burst.
+    //   No inter-ball timing is enforced in software — feed rate is determined by spindexer/singulator cycle time.
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
     // PHASE_1: turret locked forward (0 rot), hood+flywheel still auto-adjust by distance.
-    // Advance to PHASE_2+ once turret rotation is re-enabled.
+    // Advance to PHASE_2+ once turret rotation is re-confirmed on rebuilt robot.
     public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
 
     // Phase 3+: only allow firing when chassis translation is below this speed.
@@ -478,7 +483,21 @@ public final class Constants {
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint (legacy, unused)
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_RPS = 2.0;  // within 2 RPS of target
     // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
+    // Throughput target: start at 4 balls/sec, ramp to 6, then 8 as feed chain is validated.
+    // No software ceiling — rate is limited only by spindexer/singulator cycle time and ball supply.
+    // Two high-powered motors showed minimal velocity dip during a 20-shot sustained burst at WNE.
+    // Verify dip/recovery in AScope: watch Turret/FlywheelFrontRpm and Turret/FlywheelBackRpm
+    // during a full burst at each throughput target before stepping up.
     public static final double FLYWHEEL_SPINUP_MIN_RPM = 1500.0; // tune to match actual spin-up curve
+
+    // Manual flywheel RPS tuning via operator LB/RB.
+    // Each press steps front RPS by this amount. Back RPS = front * FLYWHEEL_BACK_RATIO.
+    // Ratio derived from shot table averages: back motor runs ~7% slower than front at all distances.
+    // Starting RPS is the HUBCLOSE front value — operator steps from there during calibration.
+    public static final double FLYWHEEL_MANUAL_STEP_RPS  = 2.0;
+    public static final double FLYWHEEL_BACK_RATIO       = 0.93;
+    public static final double FLYWHEEL_MANUAL_MIN_RPS   = 20.0;
+    public static final double FLYWHEEL_MANUAL_MAX_RPS   = 100.0;
     // Fallback warmup speed used when LT spins up flywheels but the aim pipeline has no target yet.
     public static final double FLYWHEEL_WARMUP_FRONT_RPS = 60.0;
     public static final double FLYWHEEL_WARMUP_BACK_RPS  = 60.0;
@@ -487,9 +506,9 @@ public final class Constants {
 
     // Consecutive loops turret must stay within tolerance before isAimed()/isReadyToShoot() pass.
     // Prevents firing during a large slew where the turret is briefly passing through the tolerance band.
-    // TODO(beam-breaks): set to 3-5 loops (60-100ms) once beam breaks are working.
-    //   Currently 0 (disabled) — without sensors a delayed start burns time from the shoot window
-    //   and we can't tell if a ball is staged anyway.
+    // For Phase 4 (8 balls/sec): keep at 0 — at 125ms/ball there is no time budget for settle confirmation.
+    // The lead comp is the accuracy mechanism, not settle gating.
+    // For Phase 2/3 (stationary or decel): set to 3-5 loops (60-100ms) to avoid feeding mid-slew.
     public static final int TURRET_ON_TARGET_SETTLE_LOOPS = 0;
 
     // Shooter geometry:
