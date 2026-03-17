@@ -461,7 +461,7 @@ public final class Constants {
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
     // PHASE_1: turret locked forward (0 rot), hood+flywheel still auto-adjust by distance.
     // Advance to PHASE_2+ once turret rotation is re-enabled.
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_4_ON_THE_MOVE;
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
 
     // Phase 3+: only allow firing when chassis translation is below this speed.
     // Wired into isReadyToShoot() for all phases — set to a large value to effectively disable.
@@ -558,7 +558,7 @@ public final class Constants {
     public static final boolean MOTOR_INVERTED = true;
 
     public static final double FEED_SPEED    =  1.00; // raised from 0.85 (2026-03-11)
-    public static final double REVERSE_SPEED = -0.40;
+    public static final double REVERSE_SPEED = -0.85;
 
     // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
     // The ball sits in a deadzone at the turret plane where the wheel barely contacts it —
@@ -662,9 +662,9 @@ public final class Constants {
     public static final double BALL_RESISTANCE_CURRENT_AMPS  = 25.0;
     public static final int    BALL_RESISTANCE_LOOP_THRESHOLD = 5; // ~100ms sustained before reacting
     // TODO: tune after observing Intake/RollerCurrentAmps in AdvantageScope with/without balls
-    public static final double ROLLER_LOAD_CURRENT_AMPS = 20.0; // placeholder — NEO under ball load
+    public static final double ROLLER_LOAD_CURRENT_AMPS = 30.0; // hard jam threshold — motor near-stalled
     // Jam recovery: brief reverse pulse duration when roller is under sustained load.
-    public static final boolean ROLLER_JAM_RECOVERY_ENABLED = false; // disabled until tuned on hardware
+    public static final boolean ROLLER_JAM_RECOVERY_ENABLED = true;  // tune ROLLER_LOAD_CURRENT_AMPS on hardware if needed
     public static final double ROLLER_JAM_REVERSE_SEC  = 0.15;
     public static final int    ROLLER_JAM_LOOP_THRESHOLD = 10;
   }

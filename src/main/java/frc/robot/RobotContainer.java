@@ -72,8 +72,6 @@ public class RobotContainer {
 
   // When REQUIRE_TURRET_FORWARD_CONFIRM=true, bindings are deferred until Back+A confirm.
   private boolean bindingsConfigured = false;
-  // Intake roller global enable — toggled by operator B. True by default so deploy auto-starts rollers.
-  private boolean intakeRollersEnabled = true;
 
   // Subsystems - order here matches initialization order in constructor
   final RobotState robotState;
@@ -128,10 +126,8 @@ public class RobotContainer {
     turretSubsystem = ENABLE_TURRET ? new TurretSubsystem(this.robotState, new TurretIOCTRE()) : null;
     intakeSubsystem = ENABLE_INTAKE ? new IntakeSubsystem(this.robotState) : null;
     if (intakeSubsystem != null) {
-      // When arm finishes extending, start rollers only if the global roller enable is on.
-      intakeSubsystem.setOnExtendComplete(() -> {
-        if (intakeRollersEnabled) intakeSubsystem.spinIn();
-      });
+      // No auto-start on extend — rollers only run while B is held.
+      intakeSubsystem.setOnExtendComplete(null);
     }
 
     // Wire pose-based tracking as the turret's default command (active in PHASE_2+).
@@ -322,13 +318,12 @@ public class RobotContainer {
     new Trigger(() -> driverController.getPOV() == 180)
         .onTrue(Commands.runOnce(this::toggleQuestNavEmergencyMode));
 
-    // D-PAD UP: Toggle turret Phase1 fallback — locks turret forward under PID, hood/flywheel
-    // still track distance. Use mid-match if turret aim is wrong but shooting is still needed.
-    new Trigger(() -> driverController.getPOV() == 0)
-        .onTrue(Commands.runOnce(() -> {
-          boolean nowActive = !robotState.isTurretPhase1Fallback();
-          robotState.setTurretPhase1Fallback(nowActive);
-        }));
+    // D-PAD UP: Disabled for competition — turret phase locked in Constants.
+    // new Trigger(() -> driverController.getPOV() == 0)
+    //     .onTrue(Commands.runOnce(() -> {
+    //       boolean nowActive = !robotState.isTurretPhase1Fallback();
+    //       robotState.setTurretPhase1Fallback(nowActive);
+    //     }));
 
     // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
 
@@ -378,9 +373,7 @@ public class RobotContainer {
     // ========== OPERATOR CONTROLLER BINDINGS ==========
 
     // --- INTAKE ---
-    // Y: toggle extend/retract.
-    // On deploy: starts rollers if intakeRollersEnabled (via onExtendComplete callback).
-    // On retract: always stops rollers regardless of flag.
+    // Y: toggle extend/retract. Rollers are not started automatically — use B to run them.
     new JoystickButton(operatorController, XboxController.Button.kY.value)
         .onTrue(Commands.runOnce(() -> {
           if (intakeSubsystem == null) return;
@@ -394,36 +387,21 @@ public class RobotContainer {
             intakeSubsystem.retract();
           } else {
             intakeSubsystem.extend();
-            // rollers start via onExtendComplete callback once arm reaches full extension
           }
         }));
-    // X (hold): reverse rollers to spit out.
+    // X (hold): reverse rollers to spit out. Rollers stop on release.
     new JoystickButton(operatorController, XboxController.Button.kX.value)
         .whileTrue(Commands.startEnd(
           () -> { if (intakeSubsystem != null) intakeSubsystem.spinOut(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    // A (press): agitate — arm retracts to mid-point then re-extends.
-    // When arm returns to EXTENDED, onExtendComplete fires and restarts rollers if flag is on.
+    // A (press): agitate — arm retracts to mid-point then re-extends. Rollers stay off.
     new JoystickButton(operatorController, XboxController.Button.kA.value)
         .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
-    // B: toggle global roller enable. Immediately applies the new state to the running rollers.
-    // When on: rollers start now if arm is out in any deployed state (not just fully EXTENDED).
-    // When off: rollers stop now and stay off until B is pressed again.
+    // B (hold): run intake rollers while pressed, stop on release.
     new JoystickButton(operatorController, XboxController.Button.kB.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (intakeSubsystem == null) return;
-          intakeRollersEnabled = !intakeRollersEnabled;
-          if (intakeRollersEnabled) {
-            RobotState.IntakePosition pos = robotState.getIntakePosition();
-            boolean armIsDeployed = true;/*pos == RobotState.IntakePosition.EXTENDED
-                || pos == RobotState.IntakePosition.EXTENDING
-                || pos == RobotState.IntakePosition.AGITATING
-                || pos == RobotState.IntakePosition.BUMP_LIFTING;*/
-            if (armIsDeployed) intakeSubsystem.spinIn();
-          } else {
-            intakeSubsystem.stopRollers();
-          }
-        }));
+        .whileTrue(Commands.startEnd(
+          () -> { if (intakeSubsystem != null) intakeSubsystem.spinIn(); },
+          () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
     // --- END INTAKE ---
 
     // --- TURRET FLYWHEELS + SHOOT ---
@@ -517,7 +495,7 @@ public class RobotContainer {
   public void onTeleopInit() {
     // Reset roller flag to OFF so first B press in teleop always turns rollers ON cleanly.
     // Avoids the case where auto left the flag true and B immediately turns it off.
-    intakeRollersEnabled = false;
+    // (no-op now — rollers are purely hold-to-run via B button)
 
     if (!Constants.Turret.REQUIRE_TURRET_FORWARD_CONFIRM) return;
     if (bindingsConfigured) return;

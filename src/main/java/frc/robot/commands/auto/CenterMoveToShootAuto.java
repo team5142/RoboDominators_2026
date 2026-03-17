@@ -73,6 +73,7 @@ public class CenterMoveToShootAuto extends SequentialCommandGroup {
         Commands.runOnce(() -> {
           turret.disableFire();
           turret.setFlywheelPercent(0.0);
+          robotState.setFlywheelOn(false);
           spindexer.stop();
           singulator.pause();
           robotState.setTurretPhase1Fallback(false);

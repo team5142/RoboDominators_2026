@@ -24,7 +24,7 @@ import frc.robot.subsystems.turret.TurretSubsystem;
 // Only run this on Red right side. On Blue use ShootInPlaceRight instead.
 public class ShootInPlaceRightBotRotateAuto extends SequentialCommandGroup {
 
-  private static final double ROTATE_LEFT_DEG       = 49.0; // recalculated after 1 foot backup
+  private static final double ROTATE_LEFT_DEG       = 51.0; // recalculated after 1 foot backup
   private static final double HEADING_TOLERANCE_DEG = 3.0;
   private static final double ROTATE_TIMEOUT_SECS   = 3.0;
   private static final double BACKUP_SPEED_MPS      = 0.5;  // robot-relative, -X = backward
@@ -101,6 +101,7 @@ public class ShootInPlaceRightBotRotateAuto extends SequentialCommandGroup {
         Commands.runOnce(() -> {
           turret.disableFire();
           turret.setFlywheelPercent(0.0);
+          robotState.setFlywheelOn(false);
           spindexer.stop();
           singulator.pause();
           robotState.setTurretPhase1Fallback(false);
