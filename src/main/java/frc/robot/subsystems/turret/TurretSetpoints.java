@@ -12,6 +12,7 @@ public class TurretSetpoints {
   public double hoodPercent = 0.0;
   public boolean useHoodPosition = false;
   public double hoodPositionMotorRotations = 0.0;
+  public boolean manualHoodOverride = false; // when true, aim solver skips hood updates
   public double turretPercent = 0.0;
 
   // When true, turretPositionMotorRotations is used instead of turretPercent

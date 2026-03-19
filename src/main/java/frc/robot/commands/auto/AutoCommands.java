@@ -25,10 +25,9 @@ public final class AutoCommands {
 
         // --- Intake ---
         if (intake != null) {
-            // Deploy: extend arm and start pulling game pieces in
+            // Deploy: extend arm only — rollers stay off until explicitly started
             NamedCommands.registerCommand("IntakeDeploy", Commands.runOnce(() -> {
-                intake.extend();
-                intake.spinIn();
+                intake.extendOnly();
             }, intake));
 
             // Only spin if arm is fully extended — avoids ejecting inside the frame
@@ -98,11 +97,9 @@ public final class AutoCommands {
         // AutoInit: enable tracking + spin up flywheels + deploy intake. Call at auto start, then wait for spin-up.
         if (turret != null && intake != null) {
             NamedCommands.registerCommand("AutoInit", Commands.runOnce(() -> {
-                turret.enableTracking();
                 turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
                 turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
-                intake.extend();
-                intake.spinIn();
+                intake.extendOnly();
             }, turret, intake));
         }
 

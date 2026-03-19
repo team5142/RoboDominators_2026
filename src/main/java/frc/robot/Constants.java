@@ -42,7 +42,7 @@ public final class Constants {
     public static final double PRECISION_SPEED_SCALE      = 0.20; // 5.21 * 0.20 = ~1.0 m/s
     public static final double PRECISION_ROTATION_SCALE   = 0.10;
     public static final double FAST_SPEED_SCALE           = 1.0;
-    public static final double JOYSTICK_DEADBAND     = 0.12; // slightly larger to reduce touchiness
+    public static final double JOYSTICK_DEADBAND     = 0.05; // slightly larger to reduce touchiness
 
     // Module positions on robot frame (meters from center)
     public static final Translation2d FRONT_LEFT_LOCATION = new Translation2d(WHEEL_BASE_METERS / 2.0, TRACK_WIDTH_METERS / 2.0);
@@ -367,7 +367,7 @@ public final class Constants {
     // public static final double TURRET_ACCELERATION_RPS2    = 30.0;  // motor rot/sec^2
 
     // Slowed for testing 2026-03-06 — raised cruise/kS to overcome energy chain drag
-    public static final double TURRET_CRUISE_VELOCITY_RPS  = 10.0; // motor rot/sec (~360 deg/sec)
+    public static final double TURRET_CRUISE_VELOCITY_RPS  = 15.0; // motor rot/sec (~540 deg/sec) raised 2026-03-18
     public static final double TURRET_ACCELERATION_RPS2    = 30.0; // motor rot/sec^2
     public static final double TURRET_JERK_RPS3            = 200.0; // S-curve ramp
 
@@ -466,7 +466,12 @@ public final class Constants {
     public enum TurretPhase { PHASE_1_STATIC, PHASE_2_TRACKING, PHASE_3_DECEL_SHOOT, PHASE_4_ON_THE_MOVE }
     // PHASE_1: turret locked forward (0 rot), hood+flywheel still auto-adjust by distance.
     // Advance to PHASE_2+ once turret rotation is re-confirmed on rebuilt robot.
-    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_1_STATIC;
+    public static final TurretPhase CURRENT_PHASE = TurretPhase.PHASE_4_ON_THE_MOVE;
+
+    // When true, RT toggles shooting mode on/off instead of hold-to-shoot.
+    // Flywheels stay on continuously. Singulator feeds one ball every 4 seconds,
+    // gated by the singulator LaserCAN (not the dead zone). For solo driving tests.
+    public static final boolean SEQUENCED_SHOOTING_TESTING_MODE = true;
 
     // Phase 3+: only allow firing when chassis translation is below this speed.
     // Wired into isReadyToShoot() for all phases — set to a large value to effectively disable.
@@ -479,7 +484,7 @@ public final class Constants {
 
     // "Ready to shoot" tolerances — all must pass for isReadyToShoot() to return true
     public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
-    public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01; // TODO: tune in rotations
+    public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01;
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint (legacy, unused)
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_RPS = 2.0;  // within 2 RPS of target
     // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
@@ -617,7 +622,7 @@ public final class Constants {
     // Hopper test mode: skips homing and arm movement entirely.
     // Assumes the arm is already physically down. Only rollers and roller-agitation work.
     // Set false for normal match operation.
-    public static final boolean HOPPER_TEST_MODE = false;
+    public static final boolean HOPPER_TEST_MODE = true; // arm fixed extended, homing skipped — re-enable when intake is operational
 
     public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // NEO 500 - roller spin
     public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X60 - arm extend/retract, 4:1 gear ratio
@@ -803,7 +808,12 @@ public final class Constants {
     // Straight-on shot seed poses — robot faces hub at 0deg, Y=4.022 (hub center Y).
     // X = hub_center_x(4.612) - robot_center_to_hub_distance. Use START button to seed these.
     // HUBCLOSE original measured pose (not straight-on, kept for reference):
-    public static final Pose2d SHOT_SEED_HUBCLOSE = new Pose2d(3.369, 4.022, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOT_SEED_HUBCLOSE   = new Pose2d(3.369, 4.022, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d SHOT_SEED_RIGHT_BUMP = new Pose2d(3.620, 2.515, Rotation2d.fromDegrees(0.0)); // ShootInPlaceRight start
+    public static final Pose2d SHOT_SEED_LEFT_BUMP  = new Pose2d(3.620, Field.FIELD_WIDTH_METERS - 2.515, Rotation2d.fromDegrees(0.0)); // ShootInPlaceLeft start
+    public static final Pose2d SHOT_SEED_OUTPOST        = new Pose2d(0.4826, 0.4191, Rotation2d.fromDegrees(0.0)); // BLUE_REBUILT_RIGHT_CORNER / outpost start
+    public static final Pose2d SHOT_SEED_BACK_WALL_RIGHT = new Pose2d(0.483, 2.500, Rotation2d.fromDegrees(0.0)); // RIGHT_CORNER measured 2026-03-17
+    public static final Pose2d SHOT_SEED_RIGHT_CORNER = new Pose2d(0.483,  2.500,  Rotation2d.fromDegrees(0.0)); // RIGHT_CORNER measured 2026-03-17
     public static final Pose2d SHOT_SEED_2M   = new Pose2d(2.612, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-2.0
     public static final Pose2d SHOT_SEED_2_5M = new Pose2d(2.112, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-2.5
     public static final Pose2d SHOT_SEED_3M   = new Pose2d(1.612, 4.022, Rotation2d.fromDegrees(0.0)); // 4.612-3.0
@@ -901,15 +911,16 @@ public final class Constants {
     public static final Pose2d BLUE_PASS_TARGET_LEFT  = new Pose2d(1.5, 5.83, Rotation2d.fromDegrees(0.0));
     public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(1.5, 2.21, Rotation2d.fromDegrees(0.0));
 
-    // Red targets mirror X across the field center but keep LEFT/RIGHT physically consistent.
-    // Rotational symmetry flips Y, so Red LEFT (high Y) must source its Y from Blue RIGHT's Y flipped.
+    // Red targets are the 180deg field rotation of blue targets.
+    // Note: rotation flips which Y is "left" — RED_PASS_TARGET_LEFT has low Y (mirrors BLUE_PASS_TARGET_RIGHT).
+    // The selector swaps left/right on red to compensate.
     public static final Pose2d RED_PASS_TARGET_LEFT = new Pose2d(
-        Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_RIGHT.getX(),
-        Field.FIELD_WIDTH_METERS  - BLUE_PASS_TARGET_RIGHT.getY(),
-        Rotation2d.fromDegrees(180.0));
-    public static final Pose2d RED_PASS_TARGET_RIGHT = new Pose2d(
         Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_LEFT.getX(),
         Field.FIELD_WIDTH_METERS  - BLUE_PASS_TARGET_LEFT.getY(),
+        Rotation2d.fromDegrees(180.0));
+    public static final Pose2d RED_PASS_TARGET_RIGHT = new Pose2d(
+        Field.FIELD_LENGTH_METERS - BLUE_PASS_TARGET_RIGHT.getX(),
+        Field.FIELD_WIDTH_METERS  - BLUE_PASS_TARGET_RIGHT.getY(),
         Rotation2d.fromDegrees(180.0));
   }
 
@@ -944,6 +955,35 @@ public final class Constants {
     public static final double OUTPOST_FRONT_RPS      = 63.05;  // -3% from 65.0 (2026-03-08 turret mods)
     public static final double OUTPOST_BACK_RPS       = 60.82;  // -3% from 62.7
     public static final double OUTPOST_TOF_SECONDS    = 0.990;  // -10% from 1.1 (2026-03-09)
+
+    // RIGHT_BUMP: pose=(3.620, 2.515, 0deg) — ShootInPlaceRight auto start position
+    // Pivot at (3.494, 2.326). Hub at (4.612, 4.022). Pivot-to-hub dist = 2.031m
+    // Measured on field 2026-03-17.
+    public static final double RIGHT_BUMP_TURRET_ROT  = 4.506; // measured
+    public static final double RIGHT_BUMP_HOOD_ROT    = 0.469; // measured (was 0.618 interpolated)
+    public static final double RIGHT_BUMP_FRONT_RPS   = 59.25; // measured (was 55.48 interpolated)
+    public static final double RIGHT_BUMP_BACK_RPS    = 55.00; // measured (was 51.62 interpolated)
+    public static final double RIGHT_BUMP_TOF_SECONDS = 1.014; // interpolated
+
+    // LEFT_BUMP: same distance as RIGHT_BUMP but hub is 56.6deg CW from forward.
+    // CW = add: 6.078 + (56.6/360)*10 = 7.650. All hood/RPS/TOF identical to RIGHT_BUMP.
+    public static final double LEFT_BUMP_TURRET_ROT   = 7.650; // tune on field
+    public static final double LEFT_BUMP_HOOD_ROT     = 0.469; // matched to RIGHT_BUMP measured
+    public static final double LEFT_BUMP_FRONT_RPS    = 59.25; // matched to RIGHT_BUMP measured
+    public static final double LEFT_BUMP_BACK_RPS     = 55.00; // matched to RIGHT_BUMP measured
+    public static final double LEFT_BUMP_TOF_SECONDS  = 1.014;
+
+    // RIGHT_CORNER: pose=(0.483, 2.500, 0deg) — measured 2026-03-17
+    // Pivot at (0.358, 2.311). Hub at (4.612, 4.022). Pivot-to-hub dist = 4.586m
+    // t = (4.586-3.38)/(5.70-3.38) = 0.520 between MIDRANGE and OUTPOST
+    // Bearing = 21.97deg CCW. Motor rot = 6.078 - (21.97/360)*10 = 5.468 (measured 5.504, close)
+    // Hood 1.407 is flatter than interpolated 1.852 — real shot, trust the measurement.
+    // Front RPS 59.25 and Back 55.00 align well with interpolated 57.46 / 54.91.
+    public static final double RIGHT_CORNER_TURRET_ROT  = 5.504;
+    public static final double RIGHT_CORNER_HOOD_ROT    = 1.407;
+    public static final double RIGHT_CORNER_FRONT_RPS   = 59.25;
+    public static final double RIGHT_CORNER_BACK_RPS    = 55.00;
+    public static final double RIGHT_CORNER_TOF_SECONDS = 1.012; // interpolated at t=0.520
 
     /*
      * STRAIGHT-SHOT DISTANCE TABLE - extrapolated from solver interpolation.

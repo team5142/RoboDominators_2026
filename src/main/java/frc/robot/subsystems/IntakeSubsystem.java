@@ -193,6 +193,18 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logConsole("Intake homing started - retracting to limit switch", "Intake");
   }
 
+  // Extend arm and automatically start rollers when arm reaches EXTENDED.
+  public void extendAndSpin() {
+    setOnExtendComplete(() -> spinIn());
+    extend();
+  }
+
+  // Extend arm only — rollers stay off when arm reaches EXTENDED.
+  public void extendOnly() {
+    setOnExtendComplete(null);
+    extend();
+  }
+
   // Extend the intake arm out over the bumper.
   // Blocked until homing completes successfully. No-op in HOPPER_TEST_MODE.
   public void extend() {

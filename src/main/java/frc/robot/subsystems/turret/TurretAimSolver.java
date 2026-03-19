@@ -31,13 +31,22 @@ public class TurretAimSolver {
 
     // Phase 1: turret locked forward (0 rot), but hood+flywheel still auto-adjust by distance.
     // QuestNav still runs for odometry — we just don't rotate the turret.
+    // Uses the same latch as Phase 2+ so QuestNav micro-drift doesn't cause hood oscillation.
     if (phase == Constants.Turret.TurretPhase.PHASE_1_STATIC) {
       if (inputs.robotPose == null || inputs.targetPose == null) {
         goal.enable = false;
         return;
       }
       double dist1 = pivotToTargetDistance(inputs);
-      TurretShotProfile shot1 = TurretShotProfile.getForDistance(dist1);
+      boolean effectivelyStopped1 = inputs.robotSpeedMetersPerSecond
+          < Constants.Turret.CHASSIS_SPEED_LATCH_THRESHOLD_MPS;
+      boolean fullyStationary1 = effectivelyStopped1
+          && inputs.robotOmegaRadPerSecond < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
+      if (!latchInitialized || !fullyStationary1) {
+        latchedDistance  = dist1;
+        latchInitialized = true;
+      }
+      TurretShotProfile shot1 = TurretShotProfile.getForDistance(latchedDistance);
       goal.turretRotations  = 0.0;
       goal.hoodRotations    = shot1.hoodRotations;
       goal.flywheelFrontRps = shot1.flywheelFrontRps;
@@ -45,10 +54,12 @@ public class TurretAimSolver {
       goal.targetReachable  = true;
       goal.chassisSpeedMps  = inputs.robotSpeedMetersPerSecond;
       goal.enable           = true;
-      SmartLogger.logReplay("Turret/AimSolver/DistanceM", dist1);
-      SmartLogger.logReplay("Turret/AimSolver/HoodRot", shot1.hoodRotations);
+      SmartLogger.logReplay("Turret/AimSolver/DistanceM",        dist1);
+      SmartLogger.logReplay("Turret/AimSolver/DistanceLatched",  latchedDistance);
+      SmartLogger.logReplay("Turret/AimSolver/HoodRot",          shot1.hoodRotations);
       SmartLogger.logReplay("Turret/AimSolver/FlywheelFrontRps", shot1.flywheelFrontRps);
       SmartLogger.logReplay("Turret/AimSolver/FlywheelBackRps",  shot1.flywheelBackRps);
+      SmartLogger.logReplay("Turret/AimSolver/FullyStationary",  fullyStationary1);
       return;
     }
 
@@ -70,16 +81,11 @@ public class TurretAimSolver {
     boolean effectivelyStopped = inputs.robotSpeedMetersPerSecond
         < Constants.Turret.CHASSIS_SPEED_LATCH_THRESHOLD_MPS;
 
-    // Compute raw heading and bearing from current pose
+    // Compute raw heading and bearing from current pose.
+    // inputs.robotPose is already shifted to the turret pivot by TurretAimInputsFromPoseEstimator.
     double rawHeadingRad = inputs.robotPose.getRotation().getRadians();
-    double cosH = Math.cos(rawHeadingRad);
-    double sinH = Math.sin(rawHeadingRad);
-    double pivotFieldX = inputs.robotPose.getX()
-        + cosH * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
-        - sinH * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
-    double pivotFieldY = inputs.robotPose.getY()
-        + sinH * Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS
-        + cosH * Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+    double pivotFieldX = inputs.robotPose.getX();
+    double pivotFieldY = inputs.robotPose.getY();
 
     double dx = inputs.targetPose.getX() - pivotFieldX;
     double dy = inputs.targetPose.getY() - pivotFieldY;
@@ -87,11 +93,17 @@ public class TurretAimSolver {
 
     // Phase 4: offset the target by robot velocity * TOF so the ball meets the hub while moving.
     // Uses a first-pass distance to pick TOF, then recomputes bearing to the lead-adjusted point.
+    // Velocity deadband: below 0.15 m/s total speed, treat as stationary so sensor noise doesn't
+    // hold a residual lead offset that prevents "aimed" from resolving when the robot stops.
     if (phase == Constants.Turret.TurretPhase.PHASE_4_ON_THE_MOVE) {
       TurretShotProfile firstPass = TurretShotProfile.getForDistance(distance);
       double tof = firstPass.timeOfFlightSeconds;
-      double leadX = inputs.robotFieldVxMetersPerSecond * tof;
-      double leadY = inputs.robotFieldVyMetersPerSecond * tof;
+      double vx = inputs.robotFieldVxMetersPerSecond;
+      double vy = inputs.robotFieldVyMetersPerSecond;
+      double speed = Math.hypot(vx, vy);
+      if (speed < 0.15) { vx = 0.0; vy = 0.0; }
+      double leadX = vx * tof;
+      double leadY = vy * tof;
       // Shift pivot toward the lead point (robot moves, so pivot will be at pivot+lead when ball arrives)
       dx = inputs.targetPose.getX() - (pivotFieldX + leadX);
       dy = inputs.targetPose.getY() - (pivotFieldY + leadY);
@@ -101,11 +113,11 @@ public class TurretAimSolver {
 
     double targetBearingRad = Math.atan2(dy, dx);
     // Normalize the turret-relative angle to [-π, π] so rawTurretRotations stays in [-0.5, +0.5].
-    // Rotation2d.fromRadians().getRadians() does NOT normalize — it returns the raw value,
-    // which exceeds ±π when robot heading is ~180° (Red alliance), producing bogus latch values.
-    double relativeRad = -(targetBearingRad - rawHeadingRad);
+    // atan2(sin,cos) normalization handles the ±π wrap at ~180° heading (Red alliance).
+    // Negate because the turret motor's positive direction is CW, opposite to CCW field-frame convention.
+    double relativeRad = targetBearingRad - rawHeadingRad;
     double turretRelativeRad = Math.atan2(Math.sin(relativeRad), Math.cos(relativeRad));
-    double rawTurretRotations = turretRelativeRad / (2.0 * Math.PI);
+    double rawTurretRotations = -(turretRelativeRad / (2.0 * Math.PI));
 
     double motorTargetRaw = rawTurretRotations * Constants.Turret.TURRET_GEAR_RATIO
         + Constants.Turret.TURRET_FORWARD_MOTOR_ROT;

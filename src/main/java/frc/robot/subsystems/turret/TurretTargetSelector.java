@@ -112,6 +112,8 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
     }
 
     Pose2d passTarget;
+    // High Y = left side in blue field coords. On red, field is rotated 180deg so
+    // high Y is physically the right side from the red driver's perspective — swap targets.
     if (lastOnLeftSide) {
       passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_RIGHT : Constants.PassTargets.BLUE_PASS_TARGET_LEFT;
     } else {

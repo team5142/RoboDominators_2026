@@ -54,11 +54,13 @@ public class CenterMoveToShootAuto extends SequentialCommandGroup {
 
         // Now safe to deploy intake
         Commands.runOnce(() -> {
-          if (intake != null) { intake.extend(); intake.spinIn(); }
+          if (intake != null) { intake.extendOnly(); }
         }),
 
-        // Settle + finish flywheel spinup
-        Commands.waitSeconds(Constants.Auto.SHOOT_IN_PLACE_SPINUP_SECONDS),
+        // Wait for flywheels to reach 95% of target speed before feeding.
+        // 4s timeout backstop so auto never hangs if flywheel fails to spin up.
+        Commands.waitUntil(() -> turret.isFlywheelSpinningFast())
+            .withTimeout(4.0),
 
         // Fire
         Commands.runOnce(() -> {
@@ -69,7 +71,7 @@ public class CenterMoveToShootAuto extends SequentialCommandGroup {
 
         Commands.waitSeconds(Constants.Auto.SHOOT_IN_PLACE_SHOOT_SECONDS),
 
-        // Stop everything and clear the fallback flag for teleop
+        // Stop everything, clear fallback flag, enable tracking so teleop handoff skips lockout
         Commands.runOnce(() -> {
           turret.disableFire();
           turret.setFlywheelPercent(0.0);
@@ -77,6 +79,7 @@ public class CenterMoveToShootAuto extends SequentialCommandGroup {
           spindexer.stop();
           singulator.pause();
           robotState.setTurretPhase1Fallback(false);
+          turret.enableTracking();
         }, spindexer, singulator)
     );
   }

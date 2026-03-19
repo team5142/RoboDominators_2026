@@ -60,7 +60,7 @@ public class ShootInPlaceLeftBotRotateAuto extends SequentialCommandGroup {
         Commands.runOnce(() -> {
           robotState.setTurretPhase1Fallback(true);
           robotState.setFlywheelOn(true);
-          if (intake != null) { intake.extend(); intake.spinIn(); }
+          if (intake != null) { intake.extendOnly(); }
         }),
 
         // Back up 1 foot robot-relative to clear the hub before rotating

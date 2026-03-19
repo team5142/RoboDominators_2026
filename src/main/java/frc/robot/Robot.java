@@ -254,10 +254,21 @@ public class Robot extends LoggedRobot {
     
     Logger.recordOutput("Robot/Mode", "AUTO");
     SmartLogger.logConsole(">>> AUTONOMOUS MODE STARTED <<<", "Auto Start", 15);
-    
-    autonomousCommand = robotContainer.getAutonomousCommand();
 
-    // Homing is triggered manually by the operator Start button — not auto on enable.
+    // Seed the turret encoder and enable tracking for every auto.
+    // Turret must be physically pointing forward before any auto runs.
+    // Also reset fire/flywheel/feed state in case a previous auto was aborted mid-run.
+    if (robotContainer.turretSubsystem != null) {
+      robotContainer.turretSubsystem.homeForward();
+      robotContainer.turretSubsystem.enableTracking();
+      robotContainer.turretSubsystem.disableFire();
+      robotContainer.turretSubsystem.setFlywheelPercent(0.0);
+    }
+    if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stop();
+    if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.pause();
+    robotState.setFlywheelOn(false);
+
+    autonomousCommand = robotContainer.getAutonomousCommand();
 
     if (autonomousCommand != null) {
       String autoName = autonomousCommand.getName();

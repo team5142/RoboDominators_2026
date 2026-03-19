@@ -50,6 +50,18 @@ public class SetStartingPoseCommand extends Command {
     addRequirements(poseEstimator);
   }
 
+  // Overload kept for call-site compatibility — isRed no longer used internally.
+  public SetStartingPoseCommand(
+      Pose2d targetPose,
+      String positionName,
+      GyroSubsystem gyro,
+      QuestNavSubsystem questNav,
+      DriveSubsystem drive,
+      PoseEstimatorSubsystem poseEstimator,
+      boolean isRed) {
+    this(targetPose, positionName, gyro, questNav, drive, poseEstimator);
+  }
+
   @Override
   public void initialize() {
     executionBlocked = false;
@@ -71,12 +83,13 @@ public class SetStartingPoseCommand extends Command {
     SmartDashboard.putString("Seed/Status", "SEEDING...");
     SmartLogger.logReplay("ManualReset/SeedRequested", true);
 
-    // Reset gyro to 0 so CTRE field-centric offset stays consistent.
-    // The pose estimator stores the heading internally via WPILib's resetPosition offset.
-    // Do NOT set gyro to targetPose.getRotation() - that would double the field-centric offset
-    // because CTRE uses (pigeon - operatorPerspective) as the effective field angle.
-    // setOperatorPerspectiveForward is called at the end of execute() with the alliance downfield direction.
-    gyro.setHeading(0.0);
+    // Set gyro to the robot's heading at the seed pose so CTRE field-centric math is correct.
+    // Operator perspective is set to the same value in end(), so effective field angle = 0.
+    // On blue (0deg pose): gyro=0, perspective=0 -> effective=0 -> forward is +X. correct.
+    // On red (180deg pose): gyro=180, perspective=180 -> effective=0 -> forward is +X. correct.
+    // Do NOT reset to 0 unconditionally — that makes red-side field orientation flip after seed.
+    Rotation2d seedHeading = targetPose.getRotation();
+    gyro.setHeading(seedHeading.getDegrees());
     Rotation2d confirmedGyroAngle = drive.getGyroRotation();
     poseEstimator.manualCompSeed(targetPose, confirmedGyroAngle);
     // Seed QuestNav directly so it stops fighting the new pose estimator position.
@@ -151,12 +164,10 @@ public class SetStartingPoseCommand extends Command {
     if (!executionBlocked && !confirmed) {
       SmartDashboard.putString("Seed/Status", "INTERRUPTED");
     }
-    // Set perspective to alliance downfield (0 Blue, 180 Red) - matches what SHOP_RESUME sets.
-    // Use alliance direction, not targetPose.getRotation(), since Pigeon was reset to 0.
+    // Set operator perspective to match the seed heading so effective field angle = 0.
+    // gyro was set to targetPose.getRotation() in initialize(), so perspective must match.
     if (!executionBlocked) {
-      boolean isRed = DriverStation.getAlliance()
-          .map(a -> a == DriverStation.Alliance.Red).orElse(false);
-      drive.setOperatorPerspectiveForward(Rotation2d.fromDegrees(isRed ? 180.0 : 0.0));
+      drive.setOperatorPerspectiveForward(targetPose.getRotation());
     }
     // Final verification log
     Pose2d actualPose = poseEstimator.getEstimatedPose();

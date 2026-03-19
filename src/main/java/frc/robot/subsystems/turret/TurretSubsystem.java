@@ -51,24 +51,34 @@ public class TurretSubsystem extends SubsystemBase {
   // Active when operator overrides the aim pipeline during calibration.
   // Starts at HUBCLOSE front RPS so first press is a known reference point.
   private double manualFlywheelFrontRps = Constants.TurretTargets.HUBCLOSE_FRONT_RPS;
+  private boolean manualFlywheelOverride = false; // when true, default command uses manualFlywheelFrontRps instead of aim goal
 
   // Hood step positions: 10% increments of travel (0%, 10%, 20%, ... 100%)
   private static final double[] HOOD_STEPS = {
     0.0,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.05,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.10,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.15,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.20,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.25,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.30,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.35,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.40,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.45,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.50,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.55,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.60,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.65,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.70,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.75,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.80,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.85,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.90,
+    Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS * 0.95,
     Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS
   };
-  // Up button ping-pongs 0→1→2→3→2→1→0... Down button toggles 0↔3
+  // D-pad up increments index, D-pad down decrements — each press = 5% of travel range
   private int hoodStepIndex = 0;
-  private boolean hoodStepDirectionUp = true;
 
   // Turret homing state — turret must home before Phase 2+ aim solve is trusted
   private boolean homed = false;
@@ -155,7 +165,12 @@ public class TurretSubsystem extends SubsystemBase {
   public void disableFire() { fireEnabled = false; }
 
   // Allows the aim pipeline to start running. Called once after the lockout confirm.
-  public void enableTracking() { trackingEnabled = true; }
+  public void enableTracking() {
+    trackingEnabled = true;
+    manualPositionOverride = false;
+    setManualHoodOverride(false);
+    manualFlywheelOverride = false;
+  }
   public void disableTracking() { trackingEnabled = false; }
   public boolean isTrackingEnabled() { return trackingEnabled; }
 
@@ -228,12 +243,19 @@ public class TurretSubsystem extends SubsystemBase {
         && backError  < Constants.Turret.FLYWHEEL_ON_TARGET_TOLERANCE_RPS;
   }
 
-  // True when both flywheels are spinning at or above the minimum useful shoot speed.
-  // Used by the RT shoot gate: if the operator spins up manually, feed as soon as this passes.
-  // Threshold is conservative — just needs to confirm the motor is spinning, not precisely on-target.
+  // True when both flywheels are within 5% of their current setpoint.
+  // Falls back to the minimum RPM gate if setpoint is zero (flywheel not commanded yet).
   public boolean isFlywheelSpinningFast() {
-    return inputs.flywheelVelocityRpm >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM
-        && inputs.flywheelBackVelocityRpm >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM;
+    double frontTarget = setpoints.flywheelFrontRps;
+    double backTarget  = setpoints.flywheelBackRps;
+    if (frontTarget <= 0 || backTarget <= 0) {
+      return inputs.flywheelVelocityRpm    >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM
+          && inputs.flywheelBackVelocityRpm >= Constants.Turret.FLYWHEEL_SPINUP_MIN_RPM;
+    }
+    double frontRps = inputs.flywheelVelocityRpm    / 60.0;
+    double backRps  = inputs.flywheelBackVelocityRpm / 60.0;
+    return frontRps >= frontTarget * 0.95
+        && backRps  >= backTarget  * 0.95;
   }
 
   private boolean isHoodOnTarget() {
@@ -328,21 +350,23 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Steps the manual front RPS up or down by FLYWHEEL_MANUAL_STEP_RPS, clamped to min/max.
   // Back RPS is set automatically as front * FLYWHEEL_BACK_RATIO.
-  // Call this during calibration to find the right speed for a new shot table entry.
+  // Sets manualFlywheelOverride so the default command uses this value instead of aim goal RPS.
   public void stepManualFlywheelRps(boolean increase) {
     double step = Constants.Turret.FLYWHEEL_MANUAL_STEP_RPS * (increase ? 1.0 : -1.0);
     manualFlywheelFrontRps = Math.max(Constants.Turret.FLYWHEEL_MANUAL_MIN_RPS,
         Math.min(Constants.Turret.FLYWHEEL_MANUAL_MAX_RPS,
             manualFlywheelFrontRps + step));
+    manualFlywheelOverride = true;
     double backRps = manualFlywheelFrontRps * Constants.Turret.FLYWHEEL_BACK_RATIO;
-    setFlywheelFrontRps(manualFlywheelFrontRps);
-    setFlywheelBackRps(backRps);
     SmartLogger.logReplay("Turret/ManualFlywheelFrontRps", manualFlywheelFrontRps);
     SmartLogger.logReplay("Turret/ManualFlywheelBackRps",  backRps);
     SmartLogger.logConsole(String.format("Flywheel RPS -> front=%.1f back=%.1f", manualFlywheelFrontRps, backRps), "Turret");
   }
 
   public double getManualFlywheelFrontRps() { return manualFlywheelFrontRps; }
+  public boolean isManualFlywheelOverride()  { return manualFlywheelOverride; }
+  // Clears flywheel override so aim solver resumes control of RPS.
+  public void clearManualFlywheelOverride()  { manualFlywheelOverride = false; }
   public void setHoodPercent(double percent)       { setpoints.hoodPercent = percent; setpoints.useHoodPosition = false; }
 
   // Commands hood to a specific position. Requires hoodHomed. Clamps to soft limits.
@@ -353,25 +377,50 @@ public class TurretSubsystem extends SubsystemBase {
     setpoints.hoodPositionMotorRotations = clamped;
   }
 
-  // Advances hood one step up (ping-pong: 0→1→2→3→2→1→0...)
-  public void hoodStepUp() {
-    if (hoodStepDirectionUp) {
-      hoodStepIndex++;
-      if (hoodStepIndex >= HOOD_STEPS.length - 1) { hoodStepIndex = HOOD_STEPS.length - 1; hoodStepDirectionUp = false; }
-    } else {
-      hoodStepIndex--;
-      if (hoodStepIndex <= 0) { hoodStepIndex = 0; hoodStepDirectionUp = true; }
-    }
-    setHoodPositionTarget(HOOD_STEPS[hoodStepIndex]);
+  // Same as setHoodPositionTarget but bypasses the hoodHomed gate — use for manual calibration.
+  public void setHoodPositionTargetForced(double motorRotations) {
+    double clamped = Math.max(0.0, Math.min(motorRotations, Constants.Turret.HOOD_SOFT_LIMIT_TOP_ROTATIONS));
+    setpoints.useHoodPosition = true;
+    setpoints.hoodPositionMotorRotations = clamped;
   }
 
-  // Toggles hood between bottom (0) and top (HOOD_SOFT_LIMIT_TOP_ROTATIONS)
+  // Increments hood one step up (5% of range per press), clamps at top.
+  public void hoodStepUp() {
+    hoodStepIndex = Math.min(hoodStepIndex + 1, HOOD_STEPS.length - 1);
+    setHoodPositionTargetForced(HOOD_STEPS[hoodStepIndex]);
+  }
+
+  // Decrements hood one step down (5% of range per press), clamps at bottom.
   public void hoodStepDown() {
-    hoodStepIndex = (hoodStepIndex == 0) ? HOOD_STEPS.length - 1 : 0;
-    hoodStepDirectionUp = (hoodStepIndex == 0);
-    setHoodPositionTarget(HOOD_STEPS[hoodStepIndex]);
+    hoodStepIndex = Math.max(hoodStepIndex - 1, 0);
+    setHoodPositionTargetForced(HOOD_STEPS[hoodStepIndex]);
   }
   public void setTurretPercent(double percent)     { setpoints.turretPercent = percent; }
+
+  // Blocks or restores the turret aim pipeline for open-loop jogging.
+  // Does NOT touch hood state — hood D-pad position persists through turret jogs.
+  public void setManualOverride(boolean active) {
+    manualPositionOverride = active;
+    if (active) {
+      setpoints.useTurretPosition = false;
+      // Do NOT clear useHoodPosition or manualHoodOverride here.
+    }
+  }
+
+  // Sets hood override independently — called by hood D-pad steps.
+  // Keeps hood at its stepped position regardless of turret jog state.
+  public void setManualHoodOverride(boolean active) {
+    setpoints.manualHoodOverride = active;
+    if (!active) setpoints.useHoodPosition = false;
+  }
+
+  // On D-pad release: switch from open-loop jog to MotionMagic hold at wherever the turret stopped.
+  public void snapTurretToCurrentPosition() {
+    setpoints.turretPositionMotorRotations = inputs.turretAbsolutePositionRotations;
+    setpoints.useTurretPosition = true;
+    manualPositionOverride = false;
+    // Keep manualHoodOverride — hood position was set by D-pad and should stay held.
+  }
 
   // Open-loop turret move that respects soft limits — use this for manual jogging after homing.
   // Stops the motor if the position would exceed either limit in the commanded direction.

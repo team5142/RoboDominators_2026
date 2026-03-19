@@ -58,10 +58,10 @@ public class DriveWithJoysticks extends Command {
     double y = MathUtil.applyDeadband(ySupplier.getAsDouble(), JOYSTICK_DEADBAND);
     double omega = MathUtil.applyDeadband(omegaSupplier.getAsDouble(), JOYSTICK_DEADBAND);
 
-    // Square inputs for finer control at low speeds (preserves sign)
-    x = Math.copySign(x * x, x);
-    y = Math.copySign(y * y, y);
-    omega = Math.copySign(omega * omega, omega);
+    // x^1.5 curve: more responsive than squaring at low speeds, less twitchy than linear
+    x = Math.copySign(Math.pow(Math.abs(x), 1.5), x);
+    y = Math.copySign(Math.pow(Math.abs(y), 1.5), y);
+    omega = Math.copySign(Math.pow(Math.abs(omega), 1.5), omega);
 
     // Direction smoothing - prevents steering micro-adjustments during slow movement
     double translationMagnitude = Math.hypot(x, y);
