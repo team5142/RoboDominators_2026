@@ -32,6 +32,7 @@ import frc.robot.commands.auto.DoNothingRightAuto;
 import frc.robot.commands.auto.ShootInPlaceLeftAuto;
 import frc.robot.commands.auto.ShootInPlaceLeftBotRotateAuto;
 import frc.robot.commands.auto.ShootInPlaceRightAuto;
+import frc.robot.commands.auto.ShootInPlaceRightAccurateAuto;
 import frc.robot.commands.auto.ShootInPlaceRightBotRotateAuto;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.commands.drive.DynamicBumpTraversalCommand;
@@ -241,6 +242,7 @@ public class RobotContainer {
     
     autoChooser = AutoBuilder.buildAutoChooser(""); // Scans deploy/pathplanner/autos/ for named autos
     autoChooser.setDefaultOption("ShootInPlaceRight", new ShootInPlaceRightAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
+    autoChooser.addOption("ShootInPlaceRightAccurate", new ShootInPlaceRightAccurateAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     autoChooser.addOption("ShootInPlaceLeft",  new ShootInPlaceLeftAuto(turretSubsystem, spindexerSubsystem, singulatorSubsystem, intakeSubsystem, poseEstimator, driveSubsystem, robotState));
     autoChooser.addOption("DoNothingCenter",   new DoNothingCenterAuto(poseEstimator, driveSubsystem));
     autoChooser.addOption("DoNothingLeft",     new DoNothingLeftAuto(poseEstimator, driveSubsystem));
@@ -254,6 +256,8 @@ public class RobotContainer {
     startAutoPreviewMonitor(); // Background thread: watches chooser and queues pose previews
 
     shotSeedChooser.setDefaultOption("HUBCLOSE (1.28m)", Constants.StartingPositions.SHOT_SEED_HUBCLOSE);
+    shotSeedChooser.addOption("HUB 1.7M (1.67m)", Constants.StartingPositions.SHOT_SEED_HUB1_7M);
+    shotSeedChooser.addOption("HUB RIGHT ACCURATE (1.07m)", Constants.StartingPositions.SHOT_SEED_HUB_RIGHT_ACCURATE);
     shotSeedChooser.addOption("RIGHT BUMP (2.03m)", Constants.StartingPositions.SHOT_SEED_RIGHT_BUMP);
     shotSeedChooser.addOption("LEFT BUMP (2.03m)",  Constants.StartingPositions.SHOT_SEED_LEFT_BUMP);
     shotSeedChooser.addOption("2M",   Constants.StartingPositions.SHOT_SEED_2M);
@@ -450,10 +454,17 @@ public class RobotContainer {
           if (!robotState.isFlywheelOn()) turretSubsystem.setFlywheelPercent(0.0);
         }));
 
-    if (Constants.Turret.SEQUENCED_SHOOTING_TESTING_MODE) {
-      // While flywheels are on: fire one ball every 4 seconds (timer-based, no LaserCAN gate).
-      new Trigger(() -> robotState.isFlywheelOn())
-          .whileTrue(Commands.repeatingSequence(
+    // Operator left stick press: toggle sequenced shooting mode on/off at runtime.
+    new JoystickButton(operatorController, XboxController.Button.kLeftStick.value)
+        .onTrue(Commands.runOnce(() -> {
+          boolean nowOn = !robotState.isSequencedShootingMode();
+          robotState.setSequencedShootingMode(nowOn);
+          SmartLogger.logConsole("Sequenced shooting mode: " + (nowOn ? "ON" : "OFF"), "Turret");
+        }));
+
+    // While flywheels AND sequenced mode are on: fire one ball every 4 seconds.
+    new Trigger(() -> robotState.isFlywheelOn() && robotState.isSequencedShootingMode())
+        .whileTrue(Commands.repeatingSequence(
               Commands.waitUntil(() -> flywheelReady.getAsBoolean()),
               Commands.runOnce(() -> {
                 // Stop first to reset state flags, then start — avoids early-return guard in spinForward
@@ -474,7 +485,6 @@ public class RobotContainer {
             if (spindexerSubsystem  != null) spindexerSubsystem.stop();
             if (singulatorSubsystem != null) singulatorSubsystem.pause();
           }));
-    }
 
     // LB / RB: step manual flywheel RPS down / up by FLYWHEEL_MANUAL_STEP_RPS.
     // Back RPS is set automatically as front * FLYWHEEL_BACK_RATIO.

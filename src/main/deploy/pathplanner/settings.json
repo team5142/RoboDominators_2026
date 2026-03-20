@@ -1,6 +1,6 @@
 {
-  "robotWidth": 0.965,
-  "robotLength": 0.8382,
+  "robotWidth": 0.921,
+  "robotLength": 0.794,
   "holonomicMode": true,
   "pathFolders": [],
   "autoFolders": [],
@@ -12,7 +12,7 @@
   "robotMass": 30.0,
   "robotMOI": 6.883,
   "robotTrackwidth": 0.4953,
-  "driveWheelRadius": 0.0508,
+  "driveWheelRadius": 0.051,
   "driveGearing": 6.122448979591837,
   "maxDriveSpeed": 5.21,
   "driveMotorType": "krakenX60",
@@ -30,6 +30,7 @@
   "bumperOffsetY": 0.0,
   "robotFeatures": [
     "{\"name\":\"Turret\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":-0.175,\"y\":-0.225},\"size\":{\"width\":0.33,\"length\":0.33},\"borderRadius\":0.05,\"strokeWidth\":0.02,\"filled\":false}}",
-    "{\"name\":\"Intake\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":0.525,\"y\":0.0},\"size\":{\"width\":0.775,\"length\":0.2},\"borderRadius\":0.0,\"strokeWidth\":0.02,\"filled\":false}}"
+    "{\"name\":\"Intake\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":0.525,\"y\":0.0},\"size\":{\"width\":0.775,\"length\":0.2},\"borderRadius\":0.0,\"strokeWidth\":0.02,\"filled\":false}}",
+    "{\"name\":\"Body\",\"type\":\"rounded_rect\",\"data\":{\"center\":{\"x\":0.0,\"y\":0.0},\"size\":{\"width\":0.921,\"length\":0.794},\"borderRadius\":0.0,\"strokeWidth\":0.02,\"filled\":false}}"
   ]
 }

@@ -33,6 +33,8 @@ public class RobotState {
   private boolean deadzoneSuppressed = false;
   // Flywheel warm-up state — readable by auto commands and the default turret command.
   private boolean flywheelOn = false;
+  // Sequenced shooting mode — fires one ball every 4s automatically while flywheels are on.
+  private boolean sequencedShootingMode = false;
   private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
   // Match phase and hub active tracking
@@ -209,6 +211,9 @@ public class RobotState {
 
   public boolean isFlywheelOn() { return flywheelOn; }
   public void setFlywheelOn(boolean on) { flywheelOn = on; }
+
+  public boolean isSequencedShootingMode() { return sequencedShootingMode; }
+  public void setSequencedShootingMode(boolean on) { sequencedShootingMode = on; }
 
   public boolean isAutoShootMode() { return autoShootMode; }
   public void setAutoShootMode(boolean active) {

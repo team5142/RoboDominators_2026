@@ -1,12 +1,10 @@
 package frc.robot.subsystems.turret;
 
+import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import frc.robot.Constants;
 
-// Shot profile interpolated from the locked-in named shot table in TurretTargets.
-// Uses turret-pivot distances (not robot-center) for the confirmed positions:
-//   HUBCLOSE: 1.45m, RIGHT_BUMP: 2.03m, MIDRANGE: 3.38m, RIGHT_CORNER: 4.59m, OUTPOST: 5.70m
-// LEFT_BUMP shares the same distance and profile as RIGHT_BUMP — not a separate entry.
-// Front and back RPS are kept independent — do not average them.
+// Shot profile interpolated from the measured shot table using WPILib InterpolatingDoubleTreeMap.
+// All entries measured 2026-03-19. Add new distance/value pairs to populate() to extend the table.
 public class TurretShotProfile {
   public final double flywheelFrontRps;
   public final double flywheelBackRps;
@@ -21,70 +19,46 @@ public class TurretShotProfile {
     this.timeOfFlightSeconds = timeOfFlightSeconds;
   }
 
-  // Pivot distances for each named shot position (meters, turret-pivot to hub)
-  private static final double[] DISTANCES = { 1.45, 2.03, 3.38, 4.59, 5.70 };
-  private static final double[] FRONT_RPS = {
-    Constants.TurretTargets.HUBCLOSE_FRONT_RPS,
-    Constants.TurretTargets.RIGHT_BUMP_FRONT_RPS,
-    Constants.TurretTargets.MIDRANGE_FRONT_RPS,
-    Constants.TurretTargets.RIGHT_CORNER_FRONT_RPS,
-    Constants.TurretTargets.OUTPOST_FRONT_RPS
-  };
-  private static final double[] BACK_RPS = {
-    Constants.TurretTargets.HUBCLOSE_BACK_RPS,
-    Constants.TurretTargets.RIGHT_BUMP_BACK_RPS,
-    Constants.TurretTargets.MIDRANGE_BACK_RPS,
-    Constants.TurretTargets.RIGHT_CORNER_BACK_RPS,
-    Constants.TurretTargets.OUTPOST_BACK_RPS
-  };
-  private static final double[] HOODS = {
-    Constants.TurretTargets.HUBCLOSE_HOOD_ROT,
-    Constants.TurretTargets.RIGHT_BUMP_HOOD_ROT,
-    Constants.TurretTargets.MIDRANGE_HOOD_ROT,
-    Constants.TurretTargets.RIGHT_CORNER_HOOD_ROT,
-    Constants.TurretTargets.OUTPOST_HOOD_ROT
-  };
-  private static final double[] TOFS = {
-    Constants.TurretTargets.HUBCLOSE_TOF_SECONDS,
-    Constants.TurretTargets.RIGHT_BUMP_TOF_SECONDS,
-    Constants.TurretTargets.MIDRANGE_TOF_SECONDS,
-    Constants.TurretTargets.RIGHT_CORNER_TOF_SECONDS,
-    Constants.TurretTargets.OUTPOST_TOF_SECONDS
-  };
+  private static final InterpolatingDoubleTreeMap FRONT_RPS_MAP = new InterpolatingDoubleTreeMap();
+  private static final InterpolatingDoubleTreeMap BACK_RPS_MAP  = new InterpolatingDoubleTreeMap();
+  private static final InterpolatingDoubleTreeMap HOOD_MAP      = new InterpolatingDoubleTreeMap();
+  private static final InterpolatingDoubleTreeMap TOF_MAP       = new InterpolatingDoubleTreeMap();
+
+  static {
+    populate(1.28, Constants.TurretTargets.HUBCLOSE_FRONT_RPS,   Constants.TurretTargets.HUBCLOSE_BACK_RPS,   Constants.TurretTargets.HUBCLOSE_HOOD_ROT,   Constants.TurretTargets.HUBCLOSE_TOF_SECONDS);
+    populate(1.67, Constants.TurretTargets.HUB1_7M_FRONT_RPS,   Constants.TurretTargets.HUB1_7M_BACK_RPS,   Constants.TurretTargets.HUB1_7M_HOOD_ROT,   Constants.TurretTargets.HUB1_7M_TOF_SECONDS);
+    populate(2.03, Constants.TurretTargets.RIGHT_BUMP_FRONT_RPS, Constants.TurretTargets.RIGHT_BUMP_BACK_RPS, Constants.TurretTargets.RIGHT_BUMP_HOOD_ROT, Constants.TurretTargets.RIGHT_BUMP_TOF_SECONDS);
+    populate(2.40, Constants.TurretTargets.CENTER_2_4M_FRONT_RPS, Constants.TurretTargets.CENTER_2_4M_BACK_RPS, Constants.TurretTargets.CENTER_2_4M_HOOD_ROT, Constants.TurretTargets.CENTER_2_4M_TOF_SECONDS);
+    populate(3.12, Constants.TurretTargets.LEFT_3_1M_FRONT_RPS,  Constants.TurretTargets.LEFT_3_1M_BACK_RPS,  Constants.TurretTargets.LEFT_3_1M_HOOD_ROT,  Constants.TurretTargets.LEFT_3_1M_TOF_SECONDS);
+    populate(3.49, Constants.TurretTargets.LEFT_3_5M_FRONT_RPS,  Constants.TurretTargets.LEFT_3_5M_BACK_RPS,  Constants.TurretTargets.LEFT_3_5M_HOOD_ROT,  Constants.TurretTargets.LEFT_3_5M_TOF_SECONDS);
+    populate(3.53, Constants.TurretTargets.RIGHT_3_5M_FRONT_RPS, Constants.TurretTargets.RIGHT_3_5M_BACK_RPS, Constants.TurretTargets.RIGHT_3_5M_HOOD_ROT, Constants.TurretTargets.RIGHT_3_5M_TOF_SECONDS);
+    populate(3.99, Constants.TurretTargets.LEFT_4_0M_FRONT_RPS,  Constants.TurretTargets.LEFT_4_0M_BACK_RPS,  Constants.TurretTargets.LEFT_4_0M_HOOD_ROT,  Constants.TurretTargets.LEFT_4_0M_TOF_SECONDS);
+    populate(4.41, Constants.TurretTargets.RIGHT_4_4M_FRONT_RPS, Constants.TurretTargets.RIGHT_4_4M_BACK_RPS, Constants.TurretTargets.RIGHT_4_4M_HOOD_ROT, Constants.TurretTargets.RIGHT_4_4M_TOF_SECONDS);
+    populate(5.48, Constants.TurretTargets.LEFT_5_5M_FRONT_RPS,  Constants.TurretTargets.LEFT_5_5M_BACK_RPS,  Constants.TurretTargets.LEFT_5_5M_HOOD_ROT,  Constants.TurretTargets.LEFT_5_5M_TOF_SECONDS);
+  }
+
+  private static void populate(double distM, double frontRps, double backRps, double hood, double tof) {
+    FRONT_RPS_MAP.put(distM, frontRps);
+    BACK_RPS_MAP.put(distM, backRps);
+    HOOD_MAP.put(distM, hood);
+    TOF_MAP.put(distM, tof);
+  }
 
   // Global RPS scale factor — reduce to shoot shorter, increase to shoot farther.
-  // Applied to both front and back RPS at interpolation time. Constants stay as measured reference.
-  private static final double RPS_SCALE = 0.93; // -7% 2026-03-18: consistently overshooting when stationary
+  // Applied to both front and back RPS at lookup time. Constants stay as measured reference.
+  private static final double RPS_SCALE = 1.0; // 1.0 = no scaling — constants are measured actual RPS
 
   // Global TOF scale factor — affects lead compensation only (stationary shots unaffected).
   // Reduce if moving shots overshoot in direction of travel; increase if they undershoot.
   private static final double TOF_SCALE = 0.75; // -25% 2026-03-18: overshooting while moving
 
   // Returns an interpolated shot profile for a given pivot-to-hub distance in meters.
-  // Clamps to nearest table edge if outside range.
+  // Clamps to nearest table edge if outside range (WPILib behavior).
   public static TurretShotProfile getForDistance(double distanceMeters) {
-    if (distanceMeters <= DISTANCES[0]) {
-      return new TurretShotProfile(FRONT_RPS[0] * RPS_SCALE, BACK_RPS[0] * RPS_SCALE, HOODS[0], TOFS[0] * TOF_SCALE);
-    }
-    int last = DISTANCES.length - 1;
-    if (distanceMeters >= DISTANCES[last]) {
-      return new TurretShotProfile(FRONT_RPS[last] * RPS_SCALE, BACK_RPS[last] * RPS_SCALE, HOODS[last], TOFS[last] * TOF_SCALE);
-    }
-    for (int i = 0; i < last; i++) {
-      if (distanceMeters <= DISTANCES[i + 1]) {
-        double t = (distanceMeters - DISTANCES[i]) / (DISTANCES[i + 1] - DISTANCES[i]);
-        return new TurretShotProfile(
-          lerp(FRONT_RPS[i], FRONT_RPS[i + 1], t) * RPS_SCALE,
-          lerp(BACK_RPS[i],  BACK_RPS[i + 1],  t) * RPS_SCALE,
-          lerp(HOODS[i],     HOODS[i + 1],      t),
-          lerp(TOFS[i],      TOFS[i + 1],       t) * TOF_SCALE);
-      }
-    }
-    return new TurretShotProfile(FRONT_RPS[last] * RPS_SCALE, BACK_RPS[last] * RPS_SCALE, HOODS[last], TOFS[last] * TOF_SCALE);
-  }
-
-  private static double lerp(double a, double b, double t) {
-    return a + (b - a) * t;
+    return new TurretShotProfile(
+        FRONT_RPS_MAP.get(distanceMeters) * RPS_SCALE,
+        BACK_RPS_MAP.get(distanceMeters)  * RPS_SCALE,
+        HOOD_MAP.get(distanceMeters),
+        TOF_MAP.get(distanceMeters)       * TOF_SCALE);
   }
 }
-
