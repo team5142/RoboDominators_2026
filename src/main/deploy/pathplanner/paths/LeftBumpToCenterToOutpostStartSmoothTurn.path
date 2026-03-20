@@ -138,28 +138,8 @@
       "rotationDegrees": -145.0
     },
     {
-      "waypointRelativePos": 2.8,
-      "rotationDegrees": -170.0
-    },
-    {
-      "waypointRelativePos": 3.0,
-      "rotationDegrees": 170.0
-    },
-    {
       "waypointRelativePos": 3.3,
       "rotationDegrees": 160.0
-    },
-    {
-      "waypointRelativePos": 3.6,
-      "rotationDegrees": 155.0
-    },
-    {
-      "waypointRelativePos": 4.0,
-      "rotationDegrees": 150.0
-    },
-    {
-      "waypointRelativePos": 4.5,
-      "rotationDegrees": 155.0
     },
     {
       "waypointRelativePos": 5.5,
@@ -167,7 +147,7 @@
     },
     {
       "waypointRelativePos": 5.9,
-      "rotationDegrees": 179.36
+      "rotationDegrees": 180.0
     }
   ],
   "constraintZones": [

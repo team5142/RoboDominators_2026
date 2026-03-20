@@ -484,9 +484,9 @@ public final class Constants {
 
     // "Ready to shoot" tolerances — all must pass for isReadyToShoot() to return true
     public static final double TURRET_ON_TARGET_TOLERANCE_ROT  = 0.02; // ~7 degrees
-    public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.01;
+    public static final double HOOD_ON_TARGET_TOLERANCE_ROT    = 0.05; // ~1% of full travel — loose enough to not block
     public static final double FLYWHEEL_ON_TARGET_TOLERANCE_PCT = 0.03; // within 3% of setpoint (legacy, unused)
-    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_RPS = 2.0;  // within 2 RPS of target
+    public static final double FLYWHEEL_ON_TARGET_TOLERANCE_RPS = 3.0;  // within 3 RPS of target
     // Minimum RPM both flywheels must reach before RT starts feeding when spun up from cold.
     // Throughput target: start at 4 balls/sec, ramp to 6, then 8 as feed chain is validated.
     // No software ceiling — rate is limited only by spindexer/singulator cycle time and ball supply.

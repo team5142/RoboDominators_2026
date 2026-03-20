@@ -41,7 +41,7 @@ public class TurretAimSolver {
       boolean effectivelyStopped1 = inputs.robotSpeedMetersPerSecond
           < Constants.Turret.CHASSIS_SPEED_LATCH_THRESHOLD_MPS;
       boolean fullyStationary1 = effectivelyStopped1
-          && inputs.robotOmegaRadPerSecond < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
+          && Math.abs(inputs.robotOmegaRadPerSecond) < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
       if (!latchInitialized || !fullyStationary1) {
         latchedDistance  = dist1;
         latchInitialized = true;
@@ -102,13 +102,30 @@ public class TurretAimSolver {
       double vy = inputs.robotFieldVyMetersPerSecond;
       double speed = Math.hypot(vx, vy);
       if (speed < 0.15) { vx = 0.0; vy = 0.0; }
+
+      // Add tangential velocity of the pivot due to chassis rotation.
+      // Pivot offset in field frame: rotate robot-relative offset by heading.
+      double heading = inputs.robotPose.getRotation().getRadians();
+      double offX = Constants.Turret.TURRET_PIVOT_OFFSET_X_METERS;
+      double offY = Constants.Turret.TURRET_PIVOT_OFFSET_Y_METERS;
+      double pivotFieldDx = offX * Math.cos(heading) - offY * Math.sin(heading);
+      double pivotFieldDy = offX * Math.sin(heading) + offY * Math.cos(heading);
+      // omega is stored as abs — recover signed omega from chassis speeds field directly via inputs
+      double signedOmega = inputs.robotOmegaRadPerSecond; // positive = CCW
+      // Tangential velocity: perpendicular to pivot offset vector, CCW positive
+      double vtx = -signedOmega * pivotFieldDy;
+      double vty =  signedOmega * pivotFieldDx;
+      vx += vtx;
+      vy += vty;
+
       double leadX = vx * tof;
       double leadY = vy * tof;
       // Shift pivot toward the lead point (robot moves, so pivot will be at pivot+lead when ball arrives)
       dx = inputs.targetPose.getX() - (pivotFieldX + leadX);
       dy = inputs.targetPose.getY() - (pivotFieldY + leadY);
       distance = Math.hypot(dx, dy);
-      SmartLogger.logReplay("Turret/AimSolver/LeadOffsetM", Math.hypot(leadX, leadY));
+      SmartLogger.logReplay("Turret/AimSolver/LeadOffsetM",         Math.hypot(leadX, leadY));
+      SmartLogger.logReplay("Turret/AimSolver/LeadRotationalOffsetM", Math.hypot(vtx * tof, vty * tof));
     }
 
     double targetBearingRad = Math.atan2(dy, dx);
@@ -130,7 +147,7 @@ public class TurretAimSolver {
     boolean justExitedDeadzone = wasInDeadzone && rawReachable;
     wasInDeadzone = !rawReachable;
     boolean fullyStationary = effectivelyStopped
-        && inputs.robotOmegaRadPerSecond < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
+        && Math.abs(inputs.robotOmegaRadPerSecond) < Constants.Turret.CHASSIS_OMEGA_LATCH_THRESHOLD_RPS;
     boolean shouldFreeze = fullyStationary && rawReachable && !justExitedDeadzone;
     if (!latchInitialized || !shouldFreeze) {
       latchedTurretRotations = rawTurretRotations;

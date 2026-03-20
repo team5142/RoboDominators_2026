@@ -96,7 +96,7 @@ public class TurretAimInputsFromPoseEstimator implements Supplier<TurretAimInput
     double vx = speeds.vxMetersPerSecond;
     double vy = speeds.vyMetersPerSecond;
     inputs.robotSpeedMetersPerSecond = Math.hypot(vx, vy);
-    inputs.robotOmegaRadPerSecond = Math.abs(speeds.omegaRadiansPerSecond);
+    inputs.robotOmegaRadPerSecond = speeds.omegaRadiansPerSecond; // signed: CCW positive
     // Rotate robot-relative velocity to field-relative for Phase 4 lead compensation.
     double headingRad = pose.getRotation().getRadians();
     inputs.robotFieldVxMetersPerSecond = vx * Math.cos(headingRad) - vy * Math.sin(headingRad);

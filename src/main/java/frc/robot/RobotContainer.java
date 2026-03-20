@@ -499,13 +499,20 @@ public class RobotContainer {
         .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.stepManualFlywheelRps(true); }));
 
     // RT (hold): shoot continuously.
-    // Flywheels spin up on press, feed starts once up to speed, stops + flywheels off on release.
+    // Flywheels spin up on press, feed starts once turret is ready to shoot, stops on release.
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.run(() -> {
           if (turretSubsystem == null) return;
           if (!robotState.isFlywheelOn()) robotState.setFlywheelOn(true);
 
           if (!flywheelReady.getAsBoolean()) return;
+
+          // Gate feed on isReadyToShoot() — blocks firing if turret is in deadzone or not on target.
+          if (!turretSubsystem.isReadyToShoot()) {
+            if (spindexerSubsystem  != null) spindexerSubsystem.stop();
+            if (singulatorSubsystem != null) singulatorSubsystem.pause();
+            return;
+          }
 
           boolean spindexerAllowed = intakeSubsystem == null
               || (robotState.getIntakePosition() != RobotState.IntakePosition.EXTENDING
