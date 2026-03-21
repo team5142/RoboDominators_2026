@@ -188,10 +188,14 @@ public class TurretSubsystem extends SubsystemBase {
 
   // Returns true only when all conditions are satisfied for a safe shot
   public boolean isReadyToShoot() {
-    if (!fireEnabled)
-      return failReady("fire not enabled");
+    /*if (!fireEnabled)
+      return failReady("fire not enabled");*/
     if (!homed && Constants.Turret.CURRENT_PHASE != Constants.Turret.TurretPhase.PHASE_1_STATIC)
       return failReady("not homed");
+    if (!aimGoal.enable)
+      return failReady("no aim goal");
+    if (!aimGoal.targetReachable)
+      return failReady("target in deadzone");
     if (aimGoal.chassisSpeedMps > Constants.Turret.CHASSIS_SPEED_FIRE_THRESHOLD_MPS)
       return failReady("chassis too fast");
     if (!isTurretOnTarget())
@@ -221,7 +225,11 @@ public class TurretSubsystem extends SubsystemBase {
   private boolean isTurretOnTarget() {
     if (!aimGoal.enable) {
       turretOnTargetLoops = 0;
-      return true; // open loop — no target to check against
+      return false; // no active goal — block shot
+    }
+    if (!aimGoal.targetReachable) {
+      turretOnTargetLoops = 0;
+      return false; // target in deadzone — turret is parked at soft limit, not aimed at hub
     }
     // Compare motor target (encoder frame) against actual motor position.
     double motorTarget = aimGoal.turretRotations * Constants.Turret.TURRET_GEAR_RATIO
@@ -613,10 +621,13 @@ public class TurretSubsystem extends SubsystemBase {
     // Chain-jam stall recovery: if the turret has been stuck (not moving, but not on target)
     // for TURRET_STALL_TIMEOUT_SECS, snap the MM target to the current position so it stops
     // fighting the jam. Clears automatically once the turret starts moving again.
+    // Skip stall detection when on target — velocity is naturally ~0 at steady state and
+    // small aim-pipeline jitter can make posErr tick above the threshold even when correctly aimed.
     if (homed && !homing && setpoints.useTurretPosition && edu.wpi.first.wpilibj.DriverStation.isEnabled()) {
       double posErr = Math.abs(setpoints.turretPositionMotorRotations - inputs.turretAbsolutePositionRotations);
       boolean isStuck = Math.abs(inputs.turretVelocityRps) < Constants.Turret.TURRET_STALL_VELOCITY_THRESHOLD_RPS
-          && posErr > Constants.Turret.TURRET_STALL_ERROR_THRESHOLD_ROT;
+          && posErr > Constants.Turret.TURRET_STALL_ERROR_THRESHOLD_ROT
+          && turretOnTargetLoops == 0; // not on target — an aimed, stationary turret should never stall
 
       if (isStuck) {
         stallTimerSecs += 0.02;

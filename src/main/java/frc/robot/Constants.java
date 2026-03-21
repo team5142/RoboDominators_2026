@@ -382,11 +382,13 @@ public final class Constants {
     // kS: static friction kick — raises output just enough to start moving. Tune first.
     // kV: voltage per rot/sec of setpoint velocity (~12V / 100 rot/s free speed = 0.12).
     // kP: voltage per rotation of position error. Must satisfy kP * min_error > kS to avoid stopping short.
-    //     At kS=0.5 and worst-case 0.05 rot error, need kP > 10. Set to 15 for adequate settling margin.
+    //     At kS=0.9 and worst-case 0.05 rot error, need kP > 18. kP=9.0 relies on kI to close the final gap.
+    // kS: static friction — raised to overcome energy chain drag with new replacement part.
     // kD: damping — opposes velocity during the move to reduce overshoot.
-    public static final double TURRET_KS = 0.5;
+    public static final double TURRET_KS = 0.9;  // raised from 0.5 — new chain/part adds static drag
     public static final double TURRET_KV = 0.12;
     public static final double TURRET_KP = 9.0;
+    public static final double TURRET_KI = 2.0; // integral to close final gap when kP*error < kS
     public static final double TURRET_KD = 0.3;
 
     // Motor inversion — confirmed on hardware
@@ -503,6 +505,10 @@ public final class Constants {
     public static final double FLYWHEEL_BACK_RATIO       = 0.93;
     public static final double FLYWHEEL_MANUAL_MIN_RPS   = 20.0;
     public static final double FLYWHEEL_MANUAL_MAX_RPS   = 100.0;
+    // Global multiplier applied to all shot table RPS values before commanding the motors.
+    // Use to compensate for mechanical changes (e.g. new belt/roller) without re-measuring the table.
+    // 1.0 = full power, 0.95 = 5% reduction.
+    public static final double FLYWHEEL_RPS_SCALE        = 0.97;  // baked into table values as of 2026-03-20
     // Fallback warmup speed used when LT spins up flywheels but the aim pipeline has no target yet.
     public static final double FLYWHEEL_WARMUP_FRONT_RPS = 60.0;
     public static final double FLYWHEEL_WARMUP_BACK_RPS  = 60.0;
@@ -912,8 +918,8 @@ public final class Constants {
   // X=1.5m puts the landing spot well inside the alliance zone, away from robots near the hub.
   // Y values place targets on either side of the hub center (Y=4.022) to avoid the net.
   public static final class PassTargets {
-    public static final Pose2d BLUE_PASS_TARGET_LEFT  = new Pose2d(1.5, 5.83, Rotation2d.fromDegrees(0.0));
-    public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(1.5, 2.21, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_PASS_TARGET_LEFT  = new Pose2d(2.5, 5.99, Rotation2d.fromDegrees(0.0));
+    public static final Pose2d BLUE_PASS_TARGET_RIGHT = new Pose2d(2.5, 2.05, Rotation2d.fromDegrees(0.0));
 
     // Red targets are the 180deg field rotation of blue targets.
     // Note: rotation flips which Y is "left" — RED_PASS_TARGET_LEFT has low Y (mirrors BLUE_PASS_TARGET_RIGHT).
@@ -930,22 +936,22 @@ public final class Constants {
 
   // Fixed target poses for turret aiming (blue alliance, red mirrored later)
   public static final class TurretTargets {
-    public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
+    //public static final Pose2d BLUE_PASS_TARGET_LEFT = new Pose2d(3.46, 5.83, Rotation2d.fromDegrees(0.0));
 
     // Named shot positions — turret rot, hood rot, front RPS, back RPS — measured 2026-03-07
     // Robot pose is blue alliance field coords (x, y, omega). Distance is to BLUE_HUB_CENTER (4.612, 4.022).
     // HUBCLOSE: pose=(3.475, 4.005, 0deg) — measured 2026-03-19
     public static final double HUBCLOSE_TURRET_ROT   = 5.90;
     public static final double HUBCLOSE_HOOD_ROT      = 0.2345; // measured 2026-03-19
-    public static final double HUBCLOSE_FRONT_RPS     = 50.0;   // measured 2026-03-19
-    public static final double HUBCLOSE_BACK_RPS      = 46.50;  // 50.0 * 0.93
+    public static final double HUBCLOSE_FRONT_RPS     = 46.00;  // 50.0 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double HUBCLOSE_BACK_RPS      = 42.78;  // 46.0 * 0.93
     public static final double HUBCLOSE_TOF_SECONDS   = 1.013;  // -10% from 1.125 (2026-03-09)
 
     // HUB1_7M: pose=(2.94, 4.01, 0deg), ~1.67m from hub center — measured 2026-03-19
     public static final double HUB1_7M_TURRET_ROT    = 6.006; // measured
     public static final double HUB1_7M_HOOD_ROT      = 0.469; // measured
-    public static final double HUB1_7M_FRONT_RPS     = 48.0;  // measured
-    public static final double HUB1_7M_BACK_RPS      = 44.64; // 48.0 * 0.93
+    public static final double HUB1_7M_FRONT_RPS     = 44.16;  // 48.0 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double HUB1_7M_BACK_RPS      = 41.07;  // 44.16 * 0.93
     public static final double HUB1_7M_TOF_SECONDS   = 1.013; // estimated
 
     // MIDRANGE: pose=(2.091, 5.912, -90.36deg) — locked in 2026-03-08
@@ -972,16 +978,16 @@ public final class Constants {
     // Measured on field 2026-03-17.
     public static final double RIGHT_BUMP_TURRET_ROT  = 4.506; // measured
     public static final double RIGHT_BUMP_HOOD_ROT    = 0.469; // measured (was 0.618 interpolated)
-    public static final double RIGHT_BUMP_FRONT_RPS   = 58.00; // measured 2026-03-19
-    public static final double RIGHT_BUMP_BACK_RPS    = 53.94; // 58.0 * 0.93
+    public static final double RIGHT_BUMP_FRONT_RPS   = 46.96; // 53.36 * 0.88 (2026-03-21)
+    public static final double RIGHT_BUMP_BACK_RPS    = 43.67; // 46.96 * 0.93
     public static final double RIGHT_BUMP_TOF_SECONDS = 1.014; // interpolated
 /*
     // LEFT_BUMP: same distance as RIGHT_BUMP but hub is 56.6deg CW from forward.
     // CW = add: 6.078 + (56.6/360)*10 = 7.650. All hood/RPS/TOF identical to RIGHT_BUMP.
     public static final double LEFT_BUMP_TURRET_ROT   = 7.650; // tune on field
     public static final double LEFT_BUMP_HOOD_ROT     = 0.469; // matched to RIGHT_BUMP measured
-    public static final double LEFT_BUMP_FRONT_RPS    = 59.25; // matched to RIGHT_BUMP measured
-    public static final double LEFT_BUMP_BACK_RPS     = 55.00; // matched to RIGHT_BUMP measured
+    public static final double LEFT_BUMP_FRONT_RPS    = 54.51; // 59.25 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double LEFT_BUMP_BACK_RPS     = 50.70; // 55.0 * 0.92
     public static final double LEFT_BUMP_TOF_SECONDS  = 1.014;
 
     // RIGHT_CORNER: pose=(0.483, 2.500, 0deg) — measured 2026-03-17
@@ -992,36 +998,36 @@ public final class Constants {
     // Front RPS 59.25 and Back 55.00 align well with interpolated 57.46 / 54.91.
     public static final double RIGHT_CORNER_TURRET_ROT  = 5.504;
     public static final double RIGHT_CORNER_HOOD_ROT    = 1.407;
-    public static final double RIGHT_CORNER_FRONT_RPS   = 59.25;
-    public static final double RIGHT_CORNER_BACK_RPS    = 55.00;
+    public static final double RIGHT_CORNER_FRONT_RPS   = 54.51; // 59.25 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double RIGHT_CORNER_BACK_RPS    = 50.70; // 55.0 * 0.92
     public static final double RIGHT_CORNER_TOF_SECONDS = 1.012; // interpolated at t=0.520
  */
     // CENTER_2_4M: pose=(2.209, 4.057, 0deg), ~2.40m from hub — measured 2026-03-19
     public static final double CENTER_2_4M_TURRET_ROT  = 6.07;
     public static final double CENTER_2_4M_HOOD_ROT    = 0.7035;
-    public static final double CENTER_2_4M_FRONT_RPS   = 51.5;
-    public static final double CENTER_2_4M_BACK_RPS    = 47.90; // 51.5 * 0.93
+    public static final double CENTER_2_4M_FRONT_RPS   = 47.38; // 51.5 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double CENTER_2_4M_BACK_RPS    = 44.06; // 47.38 * 0.93
     public static final double CENTER_2_4M_TOF_SECONDS = 1.015; // interpolated
 
     // LEFT_3_1M: pose=(1.595, 4.795, 0deg), ~3.12m from hub, slight left — measured 2026-03-19
     public static final double LEFT_3_1M_TURRET_ROT    = 6.3647;
     public static final double LEFT_3_1M_HOOD_ROT      = 0.938;
-    public static final double LEFT_3_1M_FRONT_RPS     = 51.5;
-    public static final double LEFT_3_1M_BACK_RPS      = 47.90; // 51.5 * 0.93
+    public static final double LEFT_3_1M_FRONT_RPS     = 47.38; // 51.5 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double LEFT_3_1M_BACK_RPS      = 44.06; // 47.38 * 0.93
     public static final double LEFT_3_1M_TOF_SECONDS   = 1.017; // interpolated
 
     // LEFT_4_0M: pose=(1.132, 5.966, 0deg), ~3.99m from hub, left — measured 2026-03-19
     public static final double LEFT_4_0M_TURRET_ROT    = 6.86;
     public static final double LEFT_4_0M_HOOD_ROT      = 1.407;
-    public static final double LEFT_4_0M_FRONT_RPS     = 55.0;
-    public static final double LEFT_4_0M_BACK_RPS      = 51.15; // 55.0 * 0.93
+    public static final double LEFT_4_0M_FRONT_RPS     = 50.60; // 55.0 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double LEFT_4_0M_BACK_RPS      = 47.06; // 50.60 * 0.93
     public static final double LEFT_4_0M_TOF_SECONDS   = 1.010; // interpolated
 
     // LEFT_3_5M: pose=(3.625, 7.375, 0deg), ~3.49m from hub, far left — measured 2026-03-19
     public static final double LEFT_3_5M_TURRET_ROT    = 8.0;
     public static final double LEFT_3_5M_HOOD_ROT      = 1.175;
-    public static final double LEFT_3_5M_FRONT_RPS     = 53.3;
-    public static final double LEFT_3_5M_BACK_RPS      = 49.57; // 53.3 * 0.93
+    public static final double LEFT_3_5M_FRONT_RPS     = 49.04; // 53.3 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double LEFT_3_5M_BACK_RPS      = 45.61; // 49.04 * 0.93
     public static final double LEFT_3_5M_TOF_SECONDS   = 1.017; // interpolated
 
     // LEFT_5_5M: pose=(0.493, 7.621, 0deg), ~5.48m from hub, far left — measured 2026-03-19
@@ -1035,15 +1041,15 @@ public final class Constants {
     // Turret rot measured; hood/RPS/TOF interpolated from LEFT_3_5M–LEFT_4_0M at t=0.08
     public static final double RIGHT_3_5M_TURRET_ROT   = 5.07;
     public static final double RIGHT_3_5M_HOOD_ROT     = 1.194;
-    public static final double RIGHT_3_5M_FRONT_RPS    = 53.44;
-    public static final double RIGHT_3_5M_BACK_RPS     = 49.70; // 53.44 * 0.93
+    public static final double RIGHT_3_5M_FRONT_RPS    = 49.16; // 53.44 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double RIGHT_3_5M_BACK_RPS     = 45.72; // 49.16 * 0.93
     public static final double RIGHT_3_5M_TOF_SECONDS  = 1.016; // interpolated
 
     // RIGHT_4_4M: pose=(0.471, 2.495, 0deg), ~4.41m from hub, right — measured 2026-03-19
     public static final double RIGHT_4_4M_TURRET_ROT   = 5.486;
     public static final double RIGHT_4_4M_HOOD_ROT     = 1.407;
-    public static final double RIGHT_4_4M_FRONT_RPS    = 60.0;
-    public static final double RIGHT_4_4M_BACK_RPS     = 55.80; // 60.0 * 0.93
+    public static final double RIGHT_4_4M_FRONT_RPS    = 55.20; // 60.0 * 0.92 (2026-03-20 mechanical adjustment)
+    public static final double RIGHT_4_4M_BACK_RPS     = 51.34; // 55.20 * 0.93
     public static final double RIGHT_4_4M_TOF_SECONDS  = 1.006; // interpolated
 
   }

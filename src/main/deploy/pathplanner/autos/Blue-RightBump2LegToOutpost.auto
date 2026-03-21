@@ -13,7 +13,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Blue-LeftBumpToCenterToOutpostStart"
+            "pathName": "Blue-RightBumpToCenterToOutpostStart"
           }
         },
         {
@@ -44,7 +44,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Blue-LeftBumpToCenterToOutpostEnd"
+            "pathName": "Blue-RightBumpToCenterEnd"
           }
         },
         {

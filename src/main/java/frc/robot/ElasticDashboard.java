@@ -67,6 +67,15 @@ public class ElasticDashboard {
   private final NetworkTableEntry selectedTab;
   private String lastSelectedTab = "";
 
+  // Ball counters
+  private final NetworkTable scoringTable;
+  private final NetworkTableEntry scoringAuto;
+  private final NetworkTableEntry scoringTeleop;
+  private final NetworkTableEntry scoringEndgame;
+  private final NetworkTableEntry scoringPassed;
+  private final NetworkTableEntry scoringTotal;
+  private final NetworkTableEntry scoringResetButton; // Elastic boolean toggle — reset when true
+
   // Tracks how long the robot has been enabled (used when no FMS match time)
   private final Timer enabledTimer = new Timer();
   private boolean wasEnabled = false;
@@ -137,6 +146,15 @@ public class ElasticDashboard {
     phaseCountdownText = phaseTable.getEntry("CountdownText");
     phaseShiftNumber = phaseTable.getEntry("ShiftNumber");
 
+    scoringTable = elasticTable.getSubTable("Scoring");
+    scoringAuto        = scoringTable.getEntry("Auto");
+    scoringTeleop      = scoringTable.getEntry("Teleop");
+    scoringEndgame     = scoringTable.getEntry("Endgame");
+    scoringPassed      = scoringTable.getEntry("Passed");
+    scoringTotal       = scoringTable.getEntry("Total");
+    scoringResetButton = scoringTable.getEntry("Reset");
+    scoringResetButton.setBoolean(false); // ensure it starts as false
+
     selectedTab = NetworkTableInstance.getDefault().getTable("Elastic").getEntry("SelectedTab");
   }
   
@@ -172,6 +190,17 @@ public class ElasticDashboard {
       visionTotalCameras.setInteger(tagVision.getCameraCount());
       visionHasPose.setBoolean(tagVision.hasRecentTagPose());
       poseInitialized.setBoolean(poseEstimator.isInitialized());
+
+      // Ball counters — check reset button first, then publish current values
+      if (scoringResetButton.getBoolean(false)) {
+        robotState.resetBallCounters();
+        scoringResetButton.setBoolean(false);
+      }
+      scoringAuto.setInteger(robotState.getBallsShotAuto());
+      scoringTeleop.setInteger(robotState.getBallsShotTeleop());
+      scoringEndgame.setInteger(robotState.getBallsShotEndgame());
+      scoringPassed.setInteger(robotState.getBallsPassed());
+      scoringTotal.setInteger(robotState.getBallsShotTotal());
     }
 
     // Pose, QuestNav position, and drive velocity change every loop - publish at full rate

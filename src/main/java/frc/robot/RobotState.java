@@ -119,6 +119,12 @@ public class RobotState {
   private boolean singulatorBeamBreak = false;
   private boolean deadZoneBeamBreak = false;
   private int ballsFedCount = 0;
+
+  // Segmented ball counters — reset on autonomousInit or via resetBallCounters()
+  private int ballsShotAuto     = 0;
+  private int ballsShotTeleop   = 0;
+  private int ballsShotEndgame  = 0;
+  private int ballsPassed       = 0;
   private boolean intakeLimitSwitch = false;
 
   private boolean turretHoodBeamBreakRaw = false;
@@ -324,15 +330,56 @@ public class RobotState {
   public boolean getDeadZoneBeamBreak() { return deadZoneBeamBreak; }
 
   // Incremented when a ball exits toward the flywheels; decremented when one is pulled back.
+  // Routes to the correct segment based on current zone and phase.
   public void incrementBallsFed() {
     ballsFedCount++;
     SmartLogger.logReplay("RobotState/BallsFedCount", ballsFedCount);
+    if (shootingZone == ShootingZone.NEUTRAL) {
+      ballsPassed++;
+    } else {
+      MatchPhaseTracker.GamePhase phase = getGamePhase();
+      if (phase == MatchPhaseTracker.GamePhase.AUTO) {
+        ballsShotAuto++;
+      } else if (phase == MatchPhaseTracker.GamePhase.END_GAME) {
+        ballsShotEndgame++;
+      } else {
+        ballsShotTeleop++;
+      }
+    }
   }
+
   public void decrementBallsFed() {
     if (ballsFedCount > 0) ballsFedCount--;
     SmartLogger.logReplay("RobotState/BallsFedCount", ballsFedCount);
+    if (shootingZone == ShootingZone.NEUTRAL) {
+      if (ballsPassed > 0) ballsPassed--;
+    } else {
+      MatchPhaseTracker.GamePhase phase = getGamePhase();
+      if (phase == MatchPhaseTracker.GamePhase.AUTO) {
+        if (ballsShotAuto > 0) ballsShotAuto--;
+      } else if (phase == MatchPhaseTracker.GamePhase.END_GAME) {
+        if (ballsShotEndgame > 0) ballsShotEndgame--;
+      } else {
+        if (ballsShotTeleop > 0) ballsShotTeleop--;
+      }
+    }
   }
-  public int getBallsFedCount() { return ballsFedCount; }
+
+  public int getBallsFedCount()    { return ballsFedCount; }
+  public int getBallsShotAuto()    { return ballsShotAuto; }
+  public int getBallsShotTeleop()  { return ballsShotTeleop; }
+  public int getBallsShotEndgame() { return ballsShotEndgame; }
+  public int getBallsPassed()      { return ballsPassed; }
+  public int getBallsShotTotal()   { return ballsShotAuto + ballsShotTeleop + ballsShotEndgame; }
+
+  public void resetBallCounters() {
+    ballsFedCount    = 0;
+    ballsShotAuto    = 0;
+    ballsShotTeleop  = 0;
+    ballsShotEndgame = 0;
+    ballsPassed      = 0;
+    SmartLogger.logConsole("Ball counters reset", "BallCount");
+  }
 
   public void setClimberState(ClimberState climberState) {
     if (this.climberState == climberState) {

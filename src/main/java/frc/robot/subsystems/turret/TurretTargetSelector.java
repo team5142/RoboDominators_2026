@@ -96,19 +96,20 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
         : RobotState.ShootingZone.NEUTRAL;
     robotState.setShootingZone(zone);
 
+    // Update Y-side every cycle (not just in neutral) so the value is always current on zone entry.
+    double fieldMidY = Constants.Field.FIELD_WIDTH_METERS / 2.0;
+    if (lastOnLeftSide) {
+      lastOnLeftSide = robotPose.getY() > fieldMidY - ZONE_HYSTERESIS_METERS;
+    } else {
+      lastOnLeftSide = robotPose.getY() > fieldMidY + ZONE_HYSTERESIS_METERS;
+    }
+
     if (lastInAllianceZone) {
       Pose2d target = isRed ? Constants.HubCenters.RED_HUB_CENTER : Constants.HubCenters.BLUE_HUB_CENTER;
       SmartLogger.logReplay("NeutralZonePassing/Zone", zone.toString());
       SmartLogger.logReplay("NeutralZonePassing/SelectedTarget", target);
       SmartLogger.logReplay("NeutralZonePassing/IsLeftSide", lastOnLeftSide);
       return target;
-    }
-
-    double fieldMidY = Constants.Field.FIELD_WIDTH_METERS / 2.0;
-    if (lastOnLeftSide) {
-      lastOnLeftSide = robotPose.getY() > fieldMidY - ZONE_HYSTERESIS_METERS;
-    } else {
-      lastOnLeftSide = robotPose.getY() > fieldMidY + ZONE_HYSTERESIS_METERS;
     }
 
     Pose2d passTarget;

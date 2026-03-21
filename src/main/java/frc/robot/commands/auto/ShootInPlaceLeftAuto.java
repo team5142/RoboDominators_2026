@@ -39,8 +39,8 @@ public class ShootInPlaceLeftAuto extends SequentialCommandGroup {
         Commands.runOnce(() -> {
           robotState.setFlywheelOn(true);
           if (intake != null) {
-            intake.extendOnly();
-            intake.spinIn();
+            //intake.extendOnly();
+            //intake.spinIn();
           }
         }),
 

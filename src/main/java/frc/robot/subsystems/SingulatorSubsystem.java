@@ -76,10 +76,10 @@ public class SingulatorSubsystem extends SubsystemBase {
       // 33ms budget: updates ~every 2 robot loops, fast enough to catch any ball passing through.
       // 4x4 ROI centered at 8,8: narrows the beam to ~18mm at 150mm — sees ball, ignores channel walls.
       laserCan.setRangingMode(LaserCan.RangingMode.SHORT);
-      laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
-      laserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 4, 4));
+      laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_20MS);
+      laserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 8, 8)); // wider ROI — catches fast balls
       deadZoneLaserCan.setRangingMode(LaserCan.RangingMode.SHORT);
-      deadZoneLaserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_33MS);
+      deadZoneLaserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_20MS);
       deadZoneLaserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 4, 4));
     } catch (au.grapplerobotics.ConfigurationFailedException e) {
       SmartLogger.logConsole("LaserCAN config failed: " + e.getMessage(), "Singulator");

@@ -23,7 +23,9 @@ public class SmartLogger {
   public static void logConsole(String message) {
     if (s_consoleEnabled) System.out.println(message);
   }
-  
+  public static void logConsole(Boolean message) {
+    if (s_consoleEnabled) System.out.println(message);
+  }
   public static void logConsole(String message, String sectionHeader) {
     logConsole(message, sectionHeader, 10);
   }

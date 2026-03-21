@@ -3,13 +3,13 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 3.6,
-        "y": 2.552
+        "x": 3.62,
+        "y": 2.515
       },
       "prevControl": null,
       "nextControl": {
-        "x": 4.6,
-        "y": 2.552
+        "x": 4.62,
+        "y": 2.515
       },
       "isLocked": true,
       "linkedName": null
@@ -17,15 +17,15 @@
     {
       "anchor": {
         "x": 5.5,
-        "y": 2.552
+        "y": 2.543
       },
       "prevControl": {
         "x": 5.046846106481676,
-        "y": 2.340690869129651
+        "y": 2.331690869129651
       },
       "nextControl": {
         "x": 6.2861179829001195,
-        "y": 2.918572835639686
+        "y": 2.909572835639686
       },
       "isLocked": true,
       "linkedName": null
@@ -33,15 +33,15 @@
     {
       "anchor": {
         "x": 8.523355555555556,
-        "y": 3.529777777777778
+        "y": 3.520777777777778
       },
       "prevControl": {
         "x": 7.928944444444447,
-        "y": 2.857411111111113
+        "y": 2.848411111111113
       },
       "nextControl": {
         "x": 8.818909663545437,
-        "y": 3.864093080258135
+        "y": 3.855093080258135
       },
       "isLocked": true,
       "linkedName": null
@@ -49,15 +49,15 @@
     {
       "anchor": {
         "x": 8.523355555555556,
-        "y": 4.075466666666667
+        "y": 4.066466666666667
       },
       "prevControl": {
         "x": 9.000833333333286,
-        "y": 3.539522222217632
+        "y": 3.530522222217632
       },
       "nextControl": {
         "x": 8.118706554932217,
-        "y": 4.529664524513125
+        "y": 4.520664524513125
       },
       "isLocked": true,
       "linkedName": null
@@ -65,15 +65,15 @@
     {
       "anchor": {
         "x": 7.188366666666667,
-        "y": 4.075466666666667
+        "y": 4.066466666666667
       },
       "prevControl": {
         "x": 7.597633333333334,
-        "y": 4.377544444444445
+        "y": 4.368544444444445
       },
       "nextControl": {
         "x": 6.64129652996261,
-        "y": 3.671676803861291
+        "y": 3.66267680386129
       },
       "isLocked": false,
       "linkedName": null
@@ -81,15 +81,15 @@
     {
       "anchor": {
         "x": 5.824144444444445,
-        "y": 2.711244444444445
+        "y": 2.702244444444445
       },
       "prevControl": {
         "x": 6.613444444444446,
-        "y": 3.461566666666667
+        "y": 3.452566666666667
       },
       "nextControl": {
         "x": 5.531422473533133,
-        "y": 2.432977879504062
+        "y": 2.423977879504062
       },
       "isLocked": false,
       "linkedName": null
@@ -97,11 +97,11 @@
     {
       "anchor": {
         "x": 2.5,
-        "y": 2.552
+        "y": 2.515
       },
       "prevControl": {
         "x": 3.3275198505131334,
-        "y": 2.552
+        "y": 2.515
       },
       "nextControl": null,
       "isLocked": false,
@@ -128,6 +128,10 @@
     {
       "waypointRelativePos": 5.0,
       "rotationDegrees": -140.203
+    },
+    {
+      "waypointRelativePos": 5.690465223399313,
+      "rotationDegrees": 180.0
     }
   ],
   "constraintZones": [
@@ -147,12 +151,25 @@
     {
       "name": "Constraints Zone",
       "minWaypointRelativePos": 5.0,
-      "maxWaypointRelativePos": 6.0,
+      "maxWaypointRelativePos": 5.603368421052627,
       "constraints": {
         "maxVelocity": 3.0,
         "maxAcceleration": 3.0,
         "maxAngularVelocity": 720.0,
         "maxAngularAcceleration": 720.0,
+        "nominalVoltage": 12.0,
+        "unlimited": false
+      }
+    },
+    {
+      "name": "Constraints Zone",
+      "minWaypointRelativePos": 5.603368421052638,
+      "maxWaypointRelativePos": 6.0,
+      "constraints": {
+        "maxVelocity": 1.0,
+        "maxAcceleration": 1.0,
+        "maxAngularVelocity": 500.0,
+        "maxAngularAcceleration": 500.0,
         "nominalVoltage": 12.0,
         "unlimited": false
       }
@@ -170,7 +187,7 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -179.35761433771276
+    "rotation": 45.0
   },
   "reversed": false,
   "folder": null,

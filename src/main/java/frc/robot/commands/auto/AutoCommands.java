@@ -3,6 +3,7 @@ package frc.robot.commands.auto;
 import com.pathplanner.lib.auto.NamedCommands;
 import edu.wpi.first.wpilibj2.command.Commands;
 import frc.robot.Constants;
+import frc.robot.RobotState;
 import frc.robot.subsystems.ClimberSubsystem;
 import frc.robot.subsystems.IntakeSubsystem;
 import frc.robot.subsystems.SingulatorSubsystem;
@@ -21,7 +22,8 @@ public final class AutoCommands {
             TurretSubsystem turret,
             SpindexerSubsystem spindexer,
             SingulatorSubsystem singulator,
-            ClimberSubsystem climber) {
+            ClimberSubsystem climber,
+            RobotState robotState) {
 
         // --- Intake ---
         if (intake != null) {
@@ -59,22 +61,20 @@ public final class AutoCommands {
                 intake::agitate, intake));
         }
 
-        // --- Shoot ---
-        // ShootStart enables the fire interlock and starts the feed chain.
-        // ShootStop disables the interlock and drains the feed chain.
-        // Flywheel / hood / turret aim run continuously in TurretSubsystem — no command needed.
+        // ShootStart/ShootStop do not require turret — enableFire/disableFire are state flags only
+        // and must not interrupt the tracking default command.
         if (turret != null && spindexer != null && singulator != null) {
             NamedCommands.registerCommand("ShootStart", Commands.runOnce(() -> {
                 turret.enableFire();
                 spindexer.spinForward();
                 singulator.primeAndFeed();
-            }, turret, spindexer, singulator));
+            }, spindexer, singulator));
 
             NamedCommands.registerCommand("ShootStop", Commands.runOnce(() -> {
                 turret.disableFire();
                 spindexer.stop();
                 singulator.pause();
-            }, turret, spindexer, singulator));
+            }, spindexer, singulator));
         }
 
         // Flywheel spin-up / spin-down — call FlywheelsOn before ShootStart, FlywheelsOff after ShootStop.
@@ -94,23 +94,28 @@ public final class AutoCommands {
         }
 
         // --- Meta commands (combinations for simple autos) ---
-        // AutoInit: enable tracking + spin up flywheels + deploy intake. Call at auto start, then wait for spin-up.
+        // AutoInit: set flywheelOn flag (default command picks it up next loop) + extend intake.
+        // Does not require turret — avoids interrupting the tracking default command.
         if (turret != null && intake != null) {
             NamedCommands.registerCommand("AutoInit", Commands.runOnce(() -> {
-                turret.setFlywheelFrontRps(Constants.TurretTargets.HUBCLOSE_FRONT_RPS);
-                turret.setFlywheelBackRps(Constants.TurretTargets.HUBCLOSE_BACK_RPS);
+                robotState.setFlywheelOn(true);
                 intake.extendOnly();
-            }, turret, intake));
+            }, intake));
+        } else if (turret != null) {
+            NamedCommands.registerCommand("AutoInit", Commands.runOnce(() -> {
+                robotState.setFlywheelOn(true);
+            }));
         }
 
         // AutoShootEnd: stop fire interlock, feed chain, and flywheels in one call.
+        // Does not require turret — avoids interrupting the tracking default command.
         if (turret != null && spindexer != null && singulator != null) {
             NamedCommands.registerCommand("AutoShootEnd", Commands.runOnce(() -> {
                 turret.disableFire();
-                turret.setFlywheelPercent(0.0);
+                robotState.setFlywheelOn(false);
                 spindexer.stop();
                 singulator.pause();
-            }, turret, spindexer, singulator));
+            }, spindexer, singulator));
         }
 
         // --- Climber ---

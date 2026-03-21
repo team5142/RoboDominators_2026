@@ -109,6 +109,7 @@ public class TurretIOCTRE implements TurretIO {
     slot0.kS = Constants.Turret.TURRET_KS;
     slot0.kV = Constants.Turret.TURRET_KV;
     slot0.kP = Constants.Turret.TURRET_KP;
+    slot0.kI = Constants.Turret.TURRET_KI;
     slot0.kD = Constants.Turret.TURRET_KD;
     turretConfig.Slot0 = slot0;
 

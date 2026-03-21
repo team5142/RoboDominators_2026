@@ -56,7 +56,7 @@ import frc.robot.util.TouchscreenInterface;
 // To grab latest 10 logs and delete them: run .\scripts\storelogs.bat
 public class RobotContainer {
   // === CONFIGURATION ===
-  public static final boolean COMPETITION_MODE = true; // Disable logs/streams for matches
+  public static final boolean COMPETITION_MODE = false; // Disable logs/streams for matches
   private static final boolean ENABLE_CONSOLE_LOGGING = !COMPETITION_MODE;
   private static final boolean USE_TOUCHSCREEN_OPERATOR = false;
   private static final boolean SYSID_MODE = false; // Phoenix Tuner X characterization mode
@@ -174,6 +174,8 @@ public class RobotContainer {
                 backRps  = turretSubsystem.getAimGoalBackRps();
                 if (frontRps <= 0.0) frontRps = Constants.Turret.FLYWHEEL_WARMUP_FRONT_RPS;
                 if (backRps  <= 0.0) backRps  = Constants.Turret.FLYWHEEL_WARMUP_BACK_RPS;
+                frontRps *= Constants.Turret.FLYWHEEL_RPS_SCALE;
+                backRps  *= Constants.Turret.FLYWHEEL_RPS_SCALE;
               }
               turretSubsystem.setFlywheelFrontRps(frontRps);
               turretSubsystem.setFlywheelBackRps(backRps);
@@ -215,7 +217,7 @@ public class RobotContainer {
     SmartDriveToPosition.configure(poseEstimator, robotState, driveSubsystem, questNav); // Static config for SmartDrive commands
 
     configurePathPlanner();
-    AutoCommands.register(intakeSubsystem, turretSubsystem, spindexerSubsystem, singulatorSubsystem, climberSubsystem);
+    AutoCommands.register(intakeSubsystem, turretSubsystem, spindexerSubsystem, singulatorSubsystem, climberSubsystem, robotState);
     configureDefaultCommands();
     configureAlwaysActiveBindings(); // D-pad, RPS step — never gated by lockout
     if (Constants.Turret.REQUIRE_TURRET_FORWARD_CONFIRM) {
@@ -226,8 +228,11 @@ public class RobotContainer {
             Commands.waitSeconds(0.1),
             Commands.runOnce(() -> {
               if (bindingsConfigured) return;
-              if (turretSubsystem != null) turretSubsystem.homeForward();
-              if (turretSubsystem != null) turretSubsystem.enableTracking();
+              if (turretSubsystem != null) {
+                turretSubsystem.homeForward();
+                turretSubsystem.enableTracking();
+                //turretSubsystem.enableFire();
+              }
               configureButtonBindings();
               SmartLogger.logConsole("Turret confirmed forward — all controls now active", "Homing");
             })));
@@ -354,12 +359,14 @@ public class RobotContainer {
     new Trigger(() -> driverController.getPOV() == 180)
         .onTrue(Commands.runOnce(this::toggleQuestNavEmergencyMode));
 
-    // D-PAD UP: Disabled for competition — turret phase locked in Constants.
-    // new Trigger(() -> driverController.getPOV() == 0)
-    //     .onTrue(Commands.runOnce(() -> {
-    //       boolean nowActive = !robotState.isTurretPhase1Fallback();
-    //       robotState.setTurretPhase1Fallback(nowActive);
-    //     }));
+    // D-PAD UP: Toggle Phase1Fallback — turret holds forward under PID, drive commands still active.
+    // Use when turret tracking is broken but QuestNav/drive are fine.
+    new Trigger(() -> driverController.getPOV() == 0)
+        .onTrue(Commands.runOnce(() -> {
+          boolean nowActive = !robotState.isTurretPhase1Fallback();
+          robotState.setTurretPhase1Fallback(nowActive);
+          SmartLogger.logConsole("Phase1Fallback: " + (nowActive ? "ON" : "OFF"), "Turret");
+        }));
 
     // ========== NORMAL OPERATION BUTTONS (COMMENT OUT FOR SYSID) ==========
 
@@ -499,21 +506,12 @@ public class RobotContainer {
         .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.stepManualFlywheelRps(true); }));
 
     // RT (hold): shoot continuously.
-    // Flywheels spin up on press, feed starts once turret is ready to shoot, stops on release.
+    // Flywheels spin up on press, feed starts once up to speed, stops + flywheels off on release.
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.run(() -> {
           if (turretSubsystem == null) return;
           if (!robotState.isFlywheelOn()) robotState.setFlywheelOn(true);
-
-          if (!flywheelReady.getAsBoolean()) return;
-
-          // Gate feed on isReadyToShoot() — blocks firing if turret is in deadzone or not on target.
-          if (!turretSubsystem.isReadyToShoot()) {
-            if (spindexerSubsystem  != null) spindexerSubsystem.stop();
-            if (singulatorSubsystem != null) singulatorSubsystem.pause();
-            return;
-          }
-
+          if (!turretSubsystem.isReadyToShoot()) return;
           boolean spindexerAllowed = intakeSubsystem == null
               || (robotState.getIntakePosition() != RobotState.IntakePosition.EXTENDING
               &&  robotState.getIntakePosition() != RobotState.IntakePosition.RETRACTING);

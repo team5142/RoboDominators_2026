@@ -14,6 +14,10 @@ import org.littletonrobotics.junction.LoggedRobot;
 import org.littletonrobotics.junction.Logger;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
+
+import com.revrobotics.jni.REVLibJNI;
+import com.revrobotics.util.StatusLogger;
+
 import frc.robot.util.SmartLogger;
 import edu.wpi.first.cameraserver.CameraServer;
 import edu.wpi.first.cscore.HttpCamera;
@@ -44,7 +48,8 @@ public class Robot extends LoggedRobot {
   @Override
   public void robotInit() {
     CanBridge.runTCP(); // allows GrappleHook to connect for LaserCAN tuning
-    com.ctre.phoenix6.SignalLogger.stop(); // .hoot files not needed — AKit .wpilog is our log format
+    com.ctre.phoenix6.SignalLogger.enableAutoLogging(false); // .hoot files not needed — AKit .wpilog is our log format
+    StatusLogger.disableAutoLogging();
     String projectName = "RoboDominators_2026";
     String teamNumber = "5142";
     String robotName = "Osprey";
@@ -151,8 +156,7 @@ public class Robot extends LoggedRobot {
     // Update match phase tracker every loop so tab switching works in all modes
     if (robotState != null) {
       robotState.updateMatchPhase();
-    }
-    
+    }    
     // Read battery once per loop
     cachedBatteryVoltage = RobotController.getBatteryVoltage();
     
@@ -224,15 +228,17 @@ public class Robot extends LoggedRobot {
   @Override
   public void disabledInit() {
     matchActive = false;
-    robotState.setEnabled(false);
-    robotState.setMode(RobotState.Mode.DISABLED);
+    if (robotState != null) {
+      robotState.setEnabled(false);
+      robotState.setMode(RobotState.Mode.DISABLED);
+    }
 
-    // Explicitly stop all mechanism motors on disable (WPILib stops outputs automatically
-    // but this ensures our state tracking stays consistent with actual motor state).
-    if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
-    if (robotContainer.climberSubsystem    != null) robotContainer.climberSubsystem.stopAll();
-    if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
-    if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
+    if (robotContainer != null) {
+      if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
+      if (robotContainer.climberSubsystem    != null) robotContainer.climberSubsystem.stopAll();
+      if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
+      if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
+    }
 
     Logger.recordOutput("Robot/Mode", "DISABLED");
     SmartLogger.logConsole("Robot DISABLED");
@@ -246,11 +252,16 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void autonomousInit() {
+    if (robotState == null || robotContainer == null) {
+      SmartLogger.logConsoleError("autonomousInit skipped — robot failed to initialize");
+      return;
+    }
     autoStart = Timer.getTimestamp();
     autoMessagePrinted = false;
     matchActive = true;
     robotState.setEnabled(true);
     robotState.setMode(RobotState.Mode.ENABLED_AUTO);
+    robotState.resetBallCounters();
     
     Logger.recordOutput("Robot/Mode", "AUTO");
     SmartLogger.logConsole(">>> AUTONOMOUS MODE STARTED <<<", "Auto Start", 15);
@@ -296,6 +307,10 @@ public class Robot extends LoggedRobot {
 
   @Override
   public void teleopInit() {
+    if (robotState == null || robotContainer == null) {
+      SmartLogger.logConsoleError("teleopInit skipped — robot failed to initialize");
+      return;
+    }
     matchActive = true;
     
     if (autonomousCommand != null) {
