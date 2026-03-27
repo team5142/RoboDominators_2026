@@ -437,15 +437,27 @@ public class RobotContainer {
         .whileTrue(Commands.startEnd(
           () -> { if (intakeSubsystem != null) intakeSubsystem.spinOut(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
-    // A (press): agitate — arm retracts to mid-point then re-extends. Rollers stay off.
-    new JoystickButton(operatorController, XboxController.Button.kA.value)
-        .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
+    // A (press): agitate — disabled for now
+    // new JoystickButton(operatorController, XboxController.Button.kA.value)
+    //     .onTrue(Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.agitate(); }));
     // B (hold): run intake rollers while pressed, stop on release.
     new JoystickButton(operatorController, XboxController.Button.kB.value)
         .whileTrue(Commands.startEnd(
           () -> { if (intakeSubsystem != null) intakeSubsystem.spinIn(); },
           () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
     // --- END INTAKE ---
+
+    // Right stick pulled down (Y > 0.9): reverse singulator and spindexer to clear a jam. Stops on release.
+    new Trigger(() -> operatorController.getRightY() > 0.9)
+        .whileTrue(Commands.startEnd(
+          () -> {
+            if (singulatorSubsystem != null) singulatorSubsystem.spinReverse();
+            if (spindexerSubsystem  != null) spindexerSubsystem.spinReverse();
+          },
+          () -> {
+            if (singulatorSubsystem != null) singulatorSubsystem.pause();
+            if (spindexerSubsystem  != null) spindexerSubsystem.stop();
+          }));
 
     // --- TURRET FLYWHEELS + SHOOT ---
     Trigger flywheelReady = new Trigger(() ->
@@ -505,11 +517,11 @@ public class RobotContainer {
         .and(() -> !operatorController.getLeftBumperButton())
         .onTrue(Commands.runOnce(() -> { if (turretSubsystem != null) turretSubsystem.stepManualFlywheelRps(true); }));
 
-    // RT (hold): shoot continuously.
-    // Flywheels spin up on press, feed starts once up to speed, stops + flywheels off on release.
+    // RT (hold): shoot continuously. Skips feeding if right stick is pulled down (jam reverse active).
     new Trigger(() -> operatorController.getRightTriggerAxis() > 0.5)
         .whileTrue(Commands.run(() -> {
           if (turretSubsystem == null) return;
+          if (operatorController.getRightY() > 0.9) return; // jam reverse takes priority
           if (!robotState.isFlywheelOn()) robotState.setFlywheelOn(true);
           if (!turretSubsystem.isReadyToShoot()) return;
           boolean spindexerAllowed = intakeSubsystem == null

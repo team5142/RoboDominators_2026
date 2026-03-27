@@ -37,10 +37,9 @@ public final class AutoCommands {
                 if (intake.isExtended()) intake.spinOut();
             }, intake));
 
-            // Only spin if arm is fully extended — avoids intaking while retracting
-            NamedCommands.registerCommand("IntakeForward", Commands.runOnce(() -> {
-                if (intake.isExtended()) intake.spinIn();
-            }, intake));
+            // Spin rollers in — no arm position guard, path timing is responsible for sequencing
+            NamedCommands.registerCommand("IntakeForward", Commands.runOnce(
+                intake::spinIn, intake));
 
             // Retract: stop rollers first, then bring arm back inside frame
             NamedCommands.registerCommand("IntakeRetract", Commands.runOnce(() -> {
@@ -59,6 +58,14 @@ public final class AutoCommands {
             // Agitate: brief reverse pulse to free a stuck ball — arm position unchanged
             NamedCommands.registerCommand("IntakeAgitate", Commands.runOnce(
                 intake::agitate, intake));
+
+            // Tiny retract to clear the bump slope — follow with IntakeDeploy to return to full extension
+            NamedCommands.registerCommand("IntakeBumpUp", Commands.runOnce(
+                intake::bumpLift, intake));
+
+            // Deploy and immediately start rollers once arm reaches full extension
+            NamedCommands.registerCommand("IntakeDeployAndSpin", Commands.runOnce(
+                intake::extendAndSpin, intake));
         }
 
         // ShootStart/ShootStop do not require turret — enableFire/disableFire are state flags only

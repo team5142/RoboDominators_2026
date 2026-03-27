@@ -608,8 +608,8 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FORWARD_SPEED = 0.55; // increased from 0.40 — needs more torque under ball load
-    public static final double REVERSE_SPEED = -0.30; // unjam pulse speed
+    public static final double FORWARD_SPEED = 0.85;
+    public static final double REVERSE_SPEED = -0.50;
 
     // Agitator auto-reverse: if velocity stays below this for AGITATE_LOOP_THRESHOLD loops,
     // fire a short reverse pulse to jostle stuck balls
@@ -628,42 +628,41 @@ public final class Constants {
     // Hopper test mode: skips homing and arm movement entirely.
     // Assumes the arm is already physically down. Only rollers and roller-agitation work.
     // Set false for normal match operation.
-    public static final boolean HOPPER_TEST_MODE = true; // arm fixed extended, homing skipped — re-enable when intake is operational
+    public static final boolean HOPPER_TEST_MODE = false; // normal operation — homing runs on first enable
 
-    public static final int INTAKE_ROLLER_MOTOR_ID    = 40; // NEO 500 - roller spin
-    public static final int INTAKE_EXTENSION_MOTOR_ID = 41; // Kraken X60 - arm extend/retract, 4:1 gear ratio
+    public static final int INTAKE_ROLLER_MOTOR_ID         = 40; // NEO 500 - roller spin (SparkMax)
+    public static final int INTAKE_EXTENSION_MOTOR_ID_LEFT  = 41; // Kraken X44 - left extension motor
+    public static final int INTAKE_EXTENSION_MOTOR_ID_RIGHT = 42; // Kraken X44 - right extension motor (runs opposite to left)
 
+    // Left motor: forward = extend. Right motor: forward = retract (set inverted in code via negation).
     public static final boolean EXTENSION_MOTOR_INVERTED = false;
-    public static final boolean ROLLER_MOTOR_INVERTED    = false;
+    public static final boolean ROLLER_MOTOR_INVERTED    = true;
 
     // RoboRIO DIO port for retract limit switch (single switch — confirmed DIO 1)
     public static final int RETRACT_LIMIT_SWITCH_DIO = 1;
 
-    // Extension arm soft limits — measured encoder positions, no hard stop or limit switches yet.
-    // EXTENSION_HOME_ROTATIONS: current physical rest position without hard stop ().
-    //   TODO: once hard stop + limit switch installed, change to -0.475 and re-zero encoder there.
-    // EXTENSION_TARGET_ROTATIONS: full out position (measured with arm manually extended).
-    // AGITATE_RETRACT_ROTATIONS: mid-point the arm pulls back to during agitation before re-extending.
-    // BUMP_LIFT_ROTATIONS: tiny retract during bump traversal (~1/6 of agitate) to clear the slope.
-    public static final double EXTENSION_HOME_ROTATIONS   = 0.158;
-    public static final double EXTENSION_TARGET_ROTATIONS = 13.250;
-    public static final double AGITATE_RETRACT_ROTATIONS  =  3.5;
+    // Extension arm positions — measured via Phoenix Tuner with both motors wired.
+    // Left motor (ID 41) is used as primary encoder for all position logic.
+    // Right motor (ID 42) mirrors but its encoder is only used for diagnostics.
+    // IN  = arm fully retracted: left=0.292, right=0.369
+    // OUT = arm fully extended:  left=8.362, right=8.691
+    public static final double EXTENSION_HOME_ROTATIONS          = 0.292; // left motor at full retract
+    public static final double EXTENSION_HOME_ROTATIONS_RIGHT    = 0.369; // right motor at full retract (diagnostics only)
+    public static final double EXTENSION_TARGET_ROTATIONS        = 8.362; // left motor at full extend
+    public static final double EXTENSION_TARGET_ROTATIONS_RIGHT  = 8.691; // right motor at full extend (diagnostics only)
+    public static final double AGITATE_RETRACT_ROTATIONS  = 2.0;  // scaled down from 3.5 to match new travel range
     public static final double BUMP_LIFT_ROTATIONS        = EXTENSION_TARGET_ROTATIONS - (AGITATE_RETRACT_ROTATIONS / 6.0);
 
-    // Duty cycle output limits for extension movement (no position control until gear ratio known)
-    public static final double EXTEND_SPEED  =  0.18; // positive = extending out
-    public static final double RETRACT_SPEED = -0.25; // negative = retracting in
+    // Duty cycle outputs — reduced for initial testing with new dual-motor setup.
+    // Raise EXTEND_SPEED / RETRACT_SPEED gradually once direction and limits are confirmed.
+    public static final double EXTEND_SPEED  =  0.25;
+    public static final double RETRACT_SPEED = -0.25;
 
     // Two-speed approach: slow down when within this many rotations of the target.
-    // Prevents the arm from slamming into the hard stop at full speed.
-    // EXTEND: arm slows from EXTEND_SPEED to EXTEND_SLOW_SPEED for the last 2 rotations.
-    // RETRACT: arm slows from RETRACT_SPEED to RETRACT_SLOW_SPEED for the last 2 rotations.
-    // Tune SLOW_SPEED first (lower = softer landing), then adjust SLOW_ZONE if the
-    // slow zone starts too early (arm crawls too long) or too late (still hits hard).
-    public static final double EXTEND_SLOW_SPEED           =  0.08; // slow crawl near full extension
-    public static final double EXTEND_SLOW_ZONE_ROTATIONS  =  2.0;  // start slowing this many rot before target
-    public static final double RETRACT_SLOW_SPEED          = -0.08; // slow crawl near home
-    public static final double RETRACT_SLOW_ZONE_ROTATIONS =  2.0;  // start slowing this many rot before home
+    public static final double EXTEND_SLOW_SPEED           =  0.05;
+    public static final double EXTEND_SLOW_ZONE_ROTATIONS  =  1.0;
+    public static final double RETRACT_SLOW_SPEED          = -0.05;
+    public static final double RETRACT_SLOW_ZONE_ROTATIONS =  1.0;
 
     // Limit switch sanity window — only trust the switch if the encoder is within this many
     // rotations of home. Ignores a stuck-ON switch when the arm is clearly still extended.
@@ -745,7 +744,7 @@ public final class Constants {
 
     // ShootInPlace auto timing — tune these to match flywheel spin-up and ball count
     public static final double SHOOT_IN_PLACE_SPINUP_SECONDS = 2.0; // time to reach target RPS
-    public static final double SHOOT_IN_PLACE_SHOOT_SECONDS  = 5.0; // feed window for ~8 balls
+    public static final double SHOOT_IN_PLACE_SHOOT_SECONDS  = 8.0; // feed window for ~8 balls
   }
 
 // Bump traversal staging poses (blue alliance frame, red mirrored automatically)

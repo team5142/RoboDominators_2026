@@ -10,7 +10,6 @@ import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.controls.VoltageOut;
-import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
@@ -32,9 +31,10 @@ import frc.robot.RobotState.IntakePosition;
 import frc.robot.RobotState.IntakeRollerState;
 import frc.robot.util.SmartLogger;
 
-// Over-bumper intake - one motor extends/retracts the arm, one motor spins the rollers.
-// On first enable, the arm homes upward until both limit switches trip, then zeroes the encoder.
-// No limit switch at full extension - stops at a fixed rotation target.
+// Over-bumper intake - two motors extend/retract the arm (left=ID41, right=ID42), one motor spins the rollers.
+// Left motor runs forward to extend; right motor runs in reverse to extend (opposite mounting).
+// Left motor encoder is the primary for all position logic; right encoder is diagnostic only.
+// On first enable, the arm homes inward until the limit switch trips, then zeroes both encoders.
 //
 // HOMING: call startHoming() via the operator Start button. Arm creeps upward; both switches must
 // trip together to confirm fully retracted. If stall is detected before both switches fire,
@@ -44,24 +44,20 @@ import frc.robot.util.SmartLogger;
 // STALL_LOOP_THRESHOLD consecutive loops (~200ms), the motor stops and extensionStalled=true.
 //
 // COMMISSIONING CHECKLIST:
-// [x] 1. Confirm CAN IDs: INTAKE_ROLLER_MOTOR_ID (40, SparkMax), INTAKE_EXTENSION_MOTOR_ID (41, Kraken/Canivore)
+// [x] 1. Confirm CAN IDs: INTAKE_ROLLER_MOTOR_ID (40, SparkMax), INTAKE_EXTENSION_MOTOR_ID_LEFT (41), INTAKE_EXTENSION_MOTOR_ID_RIGHT (42)
 // [x] 2. Confirm DIO port: RETRACT_LIMIT_SWITCH_DIO (confirmed DIO 1).
-//        In Test mode, manually trip the switch and verify Intake/LimitSwitch reads true in AdvantageScope.
-// [x] 3. Extension motor direction confirmed (EXTENSION_MOTOR_INVERTED = false).
-//        Re-verify before SysId: positive voltage must = arm extending (away from home). If reversed, forward test hits home limit immediately.
+// [x] 3. Extension direction: left (41) forward = extend, right (42) forward = retract (negated in setExtensionOutput).
 // [x] 4. Roller motor direction confirmed (ROLLER_MOTOR_INVERTED = false)
-// [x] 5. Position readings: HOME: 0.158  OUT: 12.95
+// [x] 5. Position readings: LEFT HOME=0.292 OUT=8.362 | RIGHT HOME=0.369 OUT=8.691
 // [x] 6. Confirm limit switch trips cleanly at full retract — watch Intake/LimitSwitch in AdvantageScope
-// [ ] 7. Run a full home + extend + retract cycle. Confirm encoder zeroes on home.
-// [ ] 8. Confirm stall detection fires when arm is manually blocked mid-travel (must be done in normal teleop mode, not SysId mode — stall is bypassed during SysId).
-// [ ] 9. Tune EXTEND_SPEED and RETRACT_SPEED for smooth travel without belt slip or slamming.
-// [ ] 10. Measure actual gear ratio from mechanical team — changed from original, needed for SensorToMechanismRatio in MotionMagic.
-// [ ] 11. Run SysId before enabling MotionMagic (call configureSysIdBindings in RobotContainer, run all 4 tests).
-//         Results go into EXTENSION_kS, kV, kA in Constants. See sysIdQuasistatic/sysIdDynamic methods below.
+// [ ] 7. Run a full home + extend + retract cycle at low speed. Confirm encoders zero on home.
+// [ ] 8. Raise EXTEND_SPEED / RETRACT_SPEED once direction is confirmed safe.
+// [ ] 9. Confirm stall detection fires when arm is manually blocked mid-travel.
 public class IntakeSubsystem extends SubsystemBase {
   private final RobotState robotState;
 
-  private final TalonFX extensionMotor;
+  private final TalonFX extensionMotorLeft;  // ID 41 — forward = extend, primary encoder
+  private final TalonFX extensionMotorRight; // ID 42 — forward = retract (negated in setExtensionOutput)
   private final SparkMax rollerMotor; // REV NEO on SparkMax
 
   private final DigitalInput limitSwitch; // single switch at full retract (DIO 1)
@@ -69,10 +65,12 @@ public class IntakeSubsystem extends SubsystemBase {
   private final DutyCycleOut extensionOut = new DutyCycleOut(0.0);
   private final VoltageOut voltageOut = new VoltageOut(0.0); // Used only during SysId
 
-  // Pre-subscribed signals — avoids blocking CAN reads in periodic()
+  // Pre-subscribed signals for left motor (primary encoder) — avoids blocking CAN reads in periodic()
   private final StatusSignal<Angle> positionSignal;
   private final StatusSignal<Current> currentSignal;
   private final StatusSignal<AngularVelocity> velocitySignal;
+  // Right motor current for diagnostics
+  private final StatusSignal<Current> currentSignalRight;
 
   // SysId routine — characterizes kS, kV, kA for the extension motor.
   // Run before switching to MotionMagic. Results feed into Constants.Intake EXTENSION_kS/kV/kA.
@@ -109,9 +107,10 @@ public class IntakeSubsystem extends SubsystemBase {
   public IntakeSubsystem(RobotState robotState) {
     this.robotState = robotState;
 
-    extensionMotor = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID, new CANBus(Constants.Swerve.CAN_BUS_NAME));
+    extensionMotorLeft  = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID_LEFT);  // RIO CAN bus
+    extensionMotorRight = new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID_RIGHT); // RIO CAN bus
 
-    // Extension: Kraken X60 with 4:1 gear ratio, CTRE stator + supply limits
+    // Both motors use the same current limits. Direction is handled in setExtensionOutput().
     TalonFXConfiguration extensionConfig = new TalonFXConfiguration();
     CurrentLimitsConfigs extLimits = extensionConfig.CurrentLimits;
     extLimits.StatorCurrentLimit       = Constants.Intake.EXTENSION_STATOR_LIMIT_AMPS;
@@ -119,29 +118,37 @@ public class IntakeSubsystem extends SubsystemBase {
     extLimits.SupplyCurrentLimit       = Constants.Intake.EXTENSION_SUPPLY_LIMIT_AMPS;
     extLimits.SupplyCurrentLimitEnable = true;
     MotorOutputConfigs extOutput = extensionConfig.MotorOutput;
-    extOutput.Inverted = Constants.Intake.EXTENSION_MOTOR_INVERTED
-        ? InvertedValue.Clockwise_Positive
-        : InvertedValue.CounterClockwise_Positive;
+    extOutput.Inverted    = InvertedValue.CounterClockwise_Positive; // left: forward = extend
     extOutput.NeutralMode = NeutralModeValue.Brake;
-    extensionMotor.getConfigurator().apply(extensionConfig);
+    extensionMotorLeft.getConfigurator().apply(extensionConfig);
+
+    // Right motor runs opposite to left: setExtensionOutput() negates the command for it.
+    // Both motors use CounterClockwise_Positive so the negation in setExtensionOutput is the only inversion.
+    TalonFXConfiguration extensionConfigRight = new TalonFXConfiguration();
+    extensionConfigRight.CurrentLimits = extLimits; // same limits
+    extensionConfigRight.MotorOutput.Inverted    = InvertedValue.CounterClockwise_Positive;
+    extensionConfigRight.MotorOutput.NeutralMode = NeutralModeValue.Brake;
+    extensionMotorRight.getConfigurator().apply(extensionConfigRight);
 
     // Pre-subscribe signals at 50Hz so periodic() reads cached values without blocking CAN
-    positionSignal = extensionMotor.getPosition();
-    currentSignal  = extensionMotor.getStatorCurrent();
-    velocitySignal = extensionMotor.getVelocity();
-    BaseStatusSignal.setUpdateFrequencyForAll(50, positionSignal, currentSignal, velocitySignal);
-    extensionMotor.optimizeBusUtilization();
+    positionSignal  = extensionMotorLeft.getPosition();
+    currentSignal   = extensionMotorLeft.getStatorCurrent();
+    velocitySignal  = extensionMotorLeft.getVelocity();
+    currentSignalRight = extensionMotorRight.getStatorCurrent();
+    BaseStatusSignal.setUpdateFrequencyForAll(50, positionSignal, currentSignal, velocitySignal, currentSignalRight);
+    extensionMotorLeft.optimizeBusUtilization();
+    extensionMotorRight.optimizeBusUtilization();
 
     // SysId: ramps 0→4V over 2s, logs state to CTRE SignalLogger (same format as drivetrain)
     sysIdRoutine = new SysIdRoutine(
         new SysIdRoutine.Config(
-            Volts.of(2).per(Second),  // 2 V/s ramp — slow enough for a short-travel arm
-            Volts.of(4),              // 4V max to stay well below stall
-            null,                     // Default 10s timeout
+            Volts.of(2).per(Second),
+            Volts.of(4),
+            null,
             state -> SignalLogger.writeString("SysIdIntakeExtension_State", state.toString())
         ),
         new SysIdRoutine.Mechanism(
-            volts -> extensionMotor.setControl(voltageOut.withOutput(volts.in(Volts))),
+            volts -> setExtensionVoltage(volts.in(Volts)),
             null,
             this
         )
@@ -156,11 +163,9 @@ public class IntakeSubsystem extends SubsystemBase {
 
     limitSwitch = new DigitalInput(Constants.Intake.RETRACT_LIMIT_SWITCH_DIO);
 
-    // Start in a known safe state then immediately home — same pattern as hood homing.
     stopAll();
     if (Constants.Intake.HOPPER_TEST_MODE) {
-      // Hopper test: assume arm is already down, skip homing, lock out all extension movement.
-      extensionMotor.setPosition(Constants.Intake.EXTENSION_TARGET_ROTATIONS);
+      setExtensionPosition(Constants.Intake.EXTENSION_TARGET_ROTATIONS);
       robotState.setIntakePosition(IntakePosition.EXTENDED);
       SmartLogger.logConsole("Intake HOPPER_TEST_MODE — arm locked at extended, rollers only", "Intake");
     } else {
@@ -179,16 +184,14 @@ public class IntakeSubsystem extends SubsystemBase {
     boolean atHome = switchRaw
         && (rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS);
     if (atHome) {
-      // Switch pressed (true = pressed) - arm is at home, zero and mark retracted
-      extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
+      setExtensionPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
       robotState.setIntakePosition(IntakePosition.RETRACTED);
       SmartLogger.logConsole("Intake already at home on enable - zeroed", "Intake");
       return;
     }
-    // Switch not pressed - arm is out (or unknown), retract until switch trips
     extensionStalled = false;
     stallLoopCount = 0;
-    extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
+    setExtensionOutput(Constants.Intake.RETRACT_SPEED);
     robotState.setIntakePosition(IntakePosition.HOMING);
     SmartLogger.logConsole("Intake homing started - retracting to limit switch", "Intake");
   }
@@ -213,7 +216,7 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.EXTENDED) return;
     extensionStalled = false;
-    extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
+    setExtensionOutput(Constants.Intake.EXTEND_SPEED);
     robotState.setIntakePosition(IntakePosition.EXTENDING);
   }
 
@@ -225,14 +228,31 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.RETRACTED) return;
     extensionStalled = false;
-    stopRollers(); // auto-off when arm comes in
-    extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
+    stopRollers();
+    setExtensionOutput(Constants.Intake.RETRACT_SPEED);
     robotState.setIntakePosition(IntakePosition.RETRACTING);
   }
 
   public void stopExtension() {
-    extensionMotor.setControl(extensionOut.withOutput(0.0));
-    // Keep position state as-is so callers know where we stopped
+    setExtensionOutput(0.0);
+  }
+
+  // Drives both extension motors. Left runs at output, right is negated (opposite mounting).
+  private void setExtensionOutput(double output) {
+    extensionMotorLeft.setControl(extensionOut.withOutput(output));
+    extensionMotorRight.setControl(extensionOut.withOutput(-output));
+  }
+
+  // Zeros both encoders to the same reference position (left = left home, right = right home).
+  private void setExtensionPosition(double leftPosition) {
+    extensionMotorLeft.setPosition(leftPosition);
+    extensionMotorRight.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS_RIGHT);
+  }
+
+  // Drives both motors at the given voltage (SysId only — bypasses duty cycle output).
+  private void setExtensionVoltage(double volts) {
+    extensionMotorLeft.setControl(voltageOut.withOutput(volts));
+    extensionMotorRight.setControl(voltageOut.withOutput(-volts));
   }
 
   // Spin rollers to intake game pieces
@@ -286,7 +306,7 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.HOMING || pos == IntakePosition.HOMING_FAILED) return;
     if (pos == IntakePosition.RETRACTED || pos == IntakePosition.RETRACTING) return;
     extensionStalled = false;
-    extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
+    setExtensionOutput(Constants.Intake.RETRACT_SPEED);
     robotState.setIntakePosition(IntakePosition.AGITATING);
   }
 
@@ -328,10 +348,11 @@ public class IntakeSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    BaseStatusSignal.refreshAll(positionSignal, currentSignal, velocitySignal);
-    double rotations   = positionSignal.getValueAsDouble();
-    double currentAmps = currentSignal.getValueAsDouble();
-    double velocityRps = velocitySignal.getValueAsDouble();
+    BaseStatusSignal.refreshAll(positionSignal, currentSignal, velocitySignal, currentSignalRight);
+    double rotations        = positionSignal.getValueAsDouble();
+    double currentAmps      = currentSignal.getValueAsDouble();
+    double velocityRps      = velocitySignal.getValueAsDouble();
+    double currentAmpsRight = currentSignalRight.getValueAsDouble();
 
     boolean switchRaw = limitSwitch.get();
     // Only trust the switch if the encoder agrees the arm is near home — guards against stuck-ON failure.
@@ -350,12 +371,12 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.HOMING) {
       if (switchRaw) {
         stopExtension();
-        extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
+        setExtensionPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
         robotState.setIntakePosition(IntakePosition.RETRACTED);
         SmartLogger.logConsole("Intake homing complete - encoder zeroed", "Intake");
       } else {
         // Re-issue retract every loop — CTRE clears motor output on disable so we must reapply on enable.
-        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SPEED));
+        setExtensionOutput(Constants.Intake.RETRACT_SPEED);
       }
     }
 
@@ -364,14 +385,12 @@ public class IntakeSubsystem extends SubsystemBase {
       double distToHome = rotations - Constants.Intake.EXTENSION_HOME_ROTATIONS;
       if (atHome || rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS) {
         stopExtension();
-        extensionMotor.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
+        setExtensionPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
         robotState.setIntakePosition(IntakePosition.RETRACTED);
       } else if (distToHome <= Constants.Intake.RETRACT_SLOW_ZONE_ROTATIONS) {
-        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.RETRACT_SLOW_SPEED));
+        setExtensionOutput(Constants.Intake.RETRACT_SLOW_SPEED);
       }
     }
-
-    // Extend: moved outside HOPPER_TEST_MODE block — see below.
 
     } // end !HOPPER_TEST_MODE
 
@@ -383,7 +402,7 @@ public class IntakeSubsystem extends SubsystemBase {
         robotState.setIntakePosition(IntakePosition.EXTENDED);
         if (onExtendComplete != null) onExtendComplete.run();
       } else if (distToTarget <= Constants.Intake.EXTEND_SLOW_ZONE_ROTATIONS) {
-        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SLOW_SPEED));
+        setExtensionOutput(Constants.Intake.EXTEND_SLOW_SPEED);
       }
     }
 
@@ -391,7 +410,7 @@ public class IntakeSubsystem extends SubsystemBase {
     if (pos == IntakePosition.AGITATING) {
       if (rotations <= Constants.Intake.AGITATE_RETRACT_ROTATIONS) {
         extensionStalled = false;
-        extensionMotor.setControl(extensionOut.withOutput(Constants.Intake.EXTEND_SPEED));
+        setExtensionOutput(Constants.Intake.EXTEND_SPEED);
         robotState.setIntakePosition(IntakePosition.EXTENDING);
       }
     }
@@ -451,7 +470,8 @@ public class IntakeSubsystem extends SubsystemBase {
     SmartLogger.logReplay("Intake/PositionRotations", rotations);
     SmartLogger.logReplay("Intake/TargetRotations", target);
     SmartLogger.logReplay("Intake/VelocityRps", velocityRps);
-    SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
+    SmartLogger.logReplay("Intake/CurrentAmpsLeft", currentAmps);
+    SmartLogger.logReplay("Intake/CurrentAmpsRight", currentAmpsRight);
     SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/LimitSwitchRaw", switchRaw); // raw pin state before encoder validation
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
