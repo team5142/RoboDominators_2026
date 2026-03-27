@@ -75,7 +75,7 @@
         "x": 6.64129652996261,
         "y": 3.66267680386129
       },
-      "isLocked": false,
+      "isLocked": true,
       "linkedName": null
     },
     {
@@ -91,6 +91,22 @@
         "x": 5.531422473533133,
         "y": 2.423977879504062
       },
+      "isLocked": true,
+      "linkedName": null
+    },
+    {
+      "anchor": {
+        "x": 3.5,
+        "y": 2.515
+      },
+      "prevControl": {
+        "x": 4.085777917346903,
+        "y": 2.515
+      },
+      "nextControl": {
+        "x": 2.914222082653097,
+        "y": 2.515
+      },
       "isLocked": false,
       "linkedName": null
     },
@@ -100,11 +116,11 @@
         "y": 2.515
       },
       "prevControl": {
-        "x": 3.3275198505131334,
+        "x": 3.2240334172516705,
         "y": 2.515
       },
       "nextControl": null,
-      "isLocked": false,
+      "isLocked": true,
       "linkedName": null
     }
   ],
@@ -127,21 +143,21 @@
     },
     {
       "waypointRelativePos": 5.0,
-      "rotationDegrees": -140.203
+      "rotationDegrees": -135.0
     },
     {
-      "waypointRelativePos": 5.690465223399313,
-      "rotationDegrees": 180.0
+      "waypointRelativePos": 6.0,
+      "rotationDegrees": -135.0
     }
   ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
       "minWaypointRelativePos": 0,
-      "maxWaypointRelativePos": 2.0,
+      "maxWaypointRelativePos": 1.5101351351351564,
       "constraints": {
-        "maxVelocity": 3.0,
-        "maxAcceleration": 3.0,
+        "maxVelocity": 3.5,
+        "maxAcceleration": 3.5,
         "maxAngularVelocity": 720.0,
         "maxAngularAcceleration": 720.0,
         "nominalVoltage": 12.0,
@@ -150,11 +166,11 @@
     },
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 5.0,
-      "maxWaypointRelativePos": 5.603368421052627,
+      "minWaypointRelativePos": 3.66,
+      "maxWaypointRelativePos": 6.2,
       "constraints": {
-        "maxVelocity": 3.0,
-        "maxAcceleration": 3.0,
+        "maxVelocity": 3.5,
+        "maxAcceleration": 3.5,
         "maxAngularVelocity": 720.0,
         "maxAngularAcceleration": 720.0,
         "nominalVoltage": 12.0,
@@ -163,8 +179,8 @@
     },
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 5.603368421052638,
-      "maxWaypointRelativePos": 6.0,
+      "minWaypointRelativePos": 6.2,
+      "maxWaypointRelativePos": 7.0,
       "constraints": {
         "maxVelocity": 1.0,
         "maxAcceleration": 1.0,
@@ -173,10 +189,57 @@
         "nominalVoltage": 12.0,
         "unlimited": false
       }
+    },
+    {
+      "name": "Constraints Zone",
+      "minWaypointRelativePos": 1.5506756756756825,
+      "maxWaypointRelativePos": 3.66,
+      "constraints": {
+        "maxVelocity": 1.75,
+        "maxAcceleration": 1.75,
+        "maxAngularVelocity": 500.0,
+        "maxAngularAcceleration": 500.0,
+        "nominalVoltage": 12.0,
+        "unlimited": false
+      }
     }
   ],
   "pointTowardsZones": [],
-  "eventMarkers": [],
+  "eventMarkers": [
+    {
+      "name": "IntakeRollersOn",
+      "waypointRelativePos": 1.023648648648625,
+      "endWaypointRelativePos": null,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "IntakeRollersOn"
+        }
+      }
+    },
+    {
+      "name": "IntakeBumpUp",
+      "waypointRelativePos": 5.05,
+      "endWaypointRelativePos": null,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "IntakeBumpUp"
+        }
+      }
+    },
+    {
+      "name": "IntakeDeploy",
+      "waypointRelativePos": 6.35,
+      "endWaypointRelativePos": null,
+      "command": {
+        "type": "named",
+        "data": {
+          "name": "IntakeDeploy"
+        }
+      }
+    }
+  ],
   "globalConstraints": {
     "maxVelocity": 2.5,
     "maxAcceleration": 3.5,
@@ -187,13 +250,13 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": 45.0
+    "rotation": -45.0
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 0.0
+    "rotation": 0.742791624950473
   },
   "useDefaultConstraints": false
 }

@@ -1,6 +1,7 @@
 package frc.robot.subsystems.turret;
 
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.util.Units;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.Constants;
@@ -18,6 +19,12 @@ import java.util.function.Supplier;
 public class TurretTargetSelector implements Supplier<Pose2d> {
   private final PoseEstimatorSubsystem poseEstimator;
   private final RobotState robotState;
+
+  // Set true to aim straight forward in the neutral zone instead of using pass target poses.
+  // Flip to false to restore the original left/right pass target behavior.
+  private static final boolean NEUTRAL_AIM_FORWARD = true;
+  // Distance ahead of the robot used to construct the forward aim target pose.
+  private static final double NEUTRAL_FORWARD_AIM_DISTANCE_M = 5.0;
 
   private static final double ZONE_HYSTERESIS_METERS = 0.3;
   // Bump zone: 73in x 47in centered on hub
@@ -113,12 +120,22 @@ public class TurretTargetSelector implements Supplier<Pose2d> {
     }
 
     Pose2d passTarget;
-    // High Y = left side in blue field coords. On red, field is rotated 180deg so
-    // high Y is physically the right side from the red driver's perspective — swap targets.
-    if (lastOnLeftSide) {
-      passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_RIGHT : Constants.PassTargets.BLUE_PASS_TARGET_LEFT;
+    if (NEUTRAL_AIM_FORWARD) {
+      // Aim straight forward: project a point ahead of the robot along its current heading.
+      // The solver will compute a bearing of 0 (no turret rotation) regardless of field position.
+      double headingRad = robotPose.getRotation().getRadians();
+      double fwdX = robotPose.getX() + NEUTRAL_FORWARD_AIM_DISTANCE_M * Math.cos(headingRad);
+      double fwdY = robotPose.getY() + NEUTRAL_FORWARD_AIM_DISTANCE_M * Math.sin(headingRad);
+      passTarget = new Pose2d(new Translation2d(fwdX, fwdY), robotPose.getRotation());
     } else {
-      passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_LEFT : Constants.PassTargets.BLUE_PASS_TARGET_RIGHT;
+      // Original behavior: pick a fixed field pose based on which Y-side the robot is on.
+      // High Y = left side in blue field coords. On red, field is rotated 180deg so
+      // high Y is physically the right side from the red driver's perspective — swap targets.
+      if (lastOnLeftSide) {
+        passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_RIGHT : Constants.PassTargets.BLUE_PASS_TARGET_LEFT;
+      } else {
+        passTarget = isRed ? Constants.PassTargets.RED_PASS_TARGET_LEFT : Constants.PassTargets.BLUE_PASS_TARGET_RIGHT;
+      }
     }
 
     SmartLogger.logReplay("NeutralZonePassing/Zone", zone.toString());

@@ -29,10 +29,22 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 7.0
+                  "waitTime": 8.0
                 }
               }
             ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "ShootStop"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Blue-RightBumpToCenterEnd"
           }
         },
         {

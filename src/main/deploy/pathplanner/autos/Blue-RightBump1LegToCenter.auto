@@ -1,99 +1,50 @@
-{{
-
-  "version": "2025.0",  "version": "2025.0",
-
-  "command": {  "command": {
-
-    "type": "sequential",    "type": "sequential",
-
-    "data": {    "data": {
-
-      "commands": [      "commands": [
-
-        {        {
-
-          "type": "named",          "type": "named",
-
-          "data": {          "data": {
-
-            "name": "AutoInit"            "name": "AutoInit"
-
-          }          }
-
-        },        },
-
-        {        {
-
-          "type": "path",          "type": "path",
-
-          "data": {          "data": {
-
-            "pathName": "Blue-RightBumpToCenterToOutpostStart"            "pathName": "Blue-RightBumpToCenterToOutpostStart"
-
-          }          }
-
-        },        },
-
-        {        {
-
-          "type": "parallel",          "type": "parallel",
-
-          "data": {          "data": {
-
-            "commands": [            "commands": [
-
-              {              {
-
-                "type": "named",                "type": "named",
-
-                "data": {                "data": {
-
-                  "name": "ShootStart"                  "name": "ShootStart"
-
-                }                }
-
-              },              },
-
-              {              {
-
-                "type": "wait",                "type": "wait",
-
-                "data": {                "data": {
-
-                  "waitTime": 10.0                  "waitTime": 10.0
-
-                }                }
-
-              }              }
-
-            ]            ]
-
-          }          }
-
-        },        },
-
-        {        {
-
-          "type": "named",          "type": "named",
-
-          "data": {          "data": {
-
-            "name": "AutoShootEnd"            "name": "AutoShootEnd"
-
-          }          }
-
-        }        }
-
-      ]      ]
-
-    }    }
-
-  },  },
-
-  "resetOdom": true,  "resetOdom": true,
-
-  "folder": null,  "folder": null,
-
-  "choreoAuto": false  "choreoAuto": false
-
-}}
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "named",
+          "data": {
+            "name": "AutoInit"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Blue-RightBumpToCenterToOutpostStart"
+          }
+        },
+        {
+          "type": "parallel",
+          "data": {
+            "commands": [
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShootStart"
+                }
+              },
+              {
+                "type": "wait",
+                "data": {
+                  "waitTime": 10.0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "AutoShootEnd"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}
