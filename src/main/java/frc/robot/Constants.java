@@ -575,6 +575,9 @@ public final class Constants {
     public static final double AUTO_SHOT_GAP_SECS = 0.35; // TODO: tune on hardware
     // How long to reverse the singulator when attempting dead zone recovery.
     public static final double DEAD_ZONE_REVERSE_SECS = 0.40; // TODO: tune on hardware
+    // How long before dead zone detection triggers recovery — shortened from 1.0s to react faster.
+    // Previous value was 1.0s; 0.3s catches the jam before the next ball piles up behind it.
+    public static final double DEAD_ZONE_DETECT_SECS = 0.30;
     // How long to push forward before giving up on dead zone clearance.
     public static final double DEAD_ZONE_PUSH_TIMEOUT_SECS = 1.0;
 
@@ -609,18 +612,24 @@ public final class Constants {
     public static final boolean MOTOR_INVERTED = true;
 
     public static final double FORWARD_SPEED = 0.85;
-    public static final double REVERSE_SPEED = -0.50;
+    // Full reverse on agitate — maximum force to break jam in minimum time.
+    // Previous value was -0.50 (conservative placeholder).
+    public static final double REVERSE_SPEED = -1.0;
 
-    // Agitator auto-reverse: if velocity stays below this for AGITATE_LOOP_THRESHOLD loops,
-    // fire a short reverse pulse to jostle stuck balls
-    public static final double STALL_VELOCITY_RPS     = 0.5;
-    public static final int    AGITATE_LOOP_THRESHOLD = 15;   // reduced from 25 — agitate sooner before full stall
-    public static final int    AGITATE_PULSE_LOOPS    = 10;   // ~200ms reverse pulse
+    // Agitator auto-reverse: current-based detection (replaces velocity-based).
+    // Current spikes immediately when balls pile on; velocity was too slow to react.
+    // If current exceeds LOAD_CURRENT_AMPS for AGITATE_LOOP_THRESHOLD consecutive loops,
+    // fire a short full-reverse pulse, then resume forward.
+    // Previous: velocity < STALL_VELOCITY_RPS for 15 loops (~300ms detection, 200ms pulse).
+    // Now: current > LOAD_CURRENT_AMPS for 5 loops (~100ms detection, 100ms pulse).
+    public static final int    AGITATE_LOOP_THRESHOLD = 5;    // ~100ms sustained overload before agitating
+    public static final int    AGITATE_PULSE_LOOPS    = 5;    // ~100ms full-reverse pulse
 
     // SparkMax smart current limit (stall protection)
     public static final int CURRENT_LIMIT_AMPS = 45; // raised from 30 — gives NEO more torque headroom under load
-    // TODO: tune after observing Spindexer/CurrentAmps in AdvantageScope with/without balls
-    public static final double LOAD_CURRENT_AMPS = 15.0; // placeholder — NEO under ball weight
+    // Jam detection threshold — tune up if agitating during normal ball load, down if jams go undetected.
+    // Watch Spindexer/CurrentAmps in AdvantageScope: normal load ~10-20A, jam should spike well above.
+    public static final double LOAD_CURRENT_AMPS = 28.0; // tune on hardware — previous placeholder was 15.0
   }
 
   // Intake mechanism hardware IDs and tuning constants
@@ -669,7 +678,7 @@ public final class Constants {
     public static final double LIMIT_SWITCH_VALID_WINDOW_ROTATIONS = 1.5;
 
     // Roller duty cycle outputs
-    public static final double ROLLER_INTAKE_SPEED  =  0.90; // intaking
+    public static final double ROLLER_INTAKE_SPEED  =  1.00; // intaking
     public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
 
     // Current limits
@@ -692,11 +701,12 @@ public final class Constants {
     public static final double BALL_RESISTANCE_CURRENT_AMPS  = 25.0;
     public static final int    BALL_RESISTANCE_LOOP_THRESHOLD = 5; // ~100ms sustained before reacting
     // TODO: tune after observing Intake/RollerCurrentAmps in AdvantageScope with/without balls
-    public static final double ROLLER_LOAD_CURRENT_AMPS = 30.0; // hard jam threshold — motor near-stalled
+    public static final double ROLLER_LOAD_CURRENT_AMPS = 35.0; // log shows normal full-hopper load at 20-29A; true jam is 35A+
     // Jam recovery: brief reverse pulse duration when roller is under sustained load.
-    public static final boolean ROLLER_JAM_RECOVERY_ENABLED = true;  // tune ROLLER_LOAD_CURRENT_AMPS on hardware if needed
-    public static final double ROLLER_JAM_REVERSE_SEC  = 0.15;
-    public static final int    ROLLER_JAM_LOOP_THRESHOLD = 10;
+    // Log shows 0.15s was too short — ball re-jams immediately after pulse ends.
+    public static final boolean ROLLER_JAM_RECOVERY_ENABLED = true;
+    public static final double ROLLER_JAM_REVERSE_SEC  = 0.15; // short pulse — just enough to nudge a stuck ball loose
+    public static final int    ROLLER_JAM_LOOP_THRESHOLD = 5;  // ~100ms to detect, down from 200ms
   }
 
   // Climber mechanism hardware IDs and tuning

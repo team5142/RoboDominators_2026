@@ -171,7 +171,7 @@ public class SingulatorSubsystem extends SubsystemBase {
         if (!deadZoneTimerRunning) {
           deadZoneTimer.restart();
           deadZoneTimerRunning = true;
-        } else if (deadZoneTimer.hasElapsed(1.0)) {
+        } else if (deadZoneTimer.hasElapsed(Constants.Singulator.DEAD_ZONE_DETECT_SECS)) {
           // Ball stuck for 1+ seconds — fire one reverse pulse
           deadZoneRecoveryActive = true;
           deadZoneRecoveryAttempted = true;

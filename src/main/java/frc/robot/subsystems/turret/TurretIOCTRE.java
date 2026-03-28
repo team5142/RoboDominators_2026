@@ -55,6 +55,8 @@ public class TurretIOCTRE implements TurretIO {
     flywheelConfig.MotorOutput.NeutralMode = NeutralModeValue.Coast;
     flywheelConfig.CurrentLimits.StatorCurrentLimit       = 40.0;
     flywheelConfig.CurrentLimits.StatorCurrentLimitEnable = true;
+    flywheelConfig.CurrentLimits.SupplyCurrentLimit       = 30.0;
+    flywheelConfig.CurrentLimits.SupplyCurrentLimitEnable = true;
     // Slot 0: velocity feedforward + P gain from SysId 2026-03-07
     flywheelConfig.Slot0.kS = Constants.Turret.FLYWHEEL_FRONT_KS;
     flywheelConfig.Slot0.kV = Constants.Turret.FLYWHEEL_FRONT_KV;
