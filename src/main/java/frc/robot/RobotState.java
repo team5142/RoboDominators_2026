@@ -55,9 +55,6 @@ public class RobotState {
     REVERSING  // clearing a jam
   }
 
-  // Climber
-  public enum ClimberState { IDLE, ACTIVE }
-
   // --- Mechanism state fields ---
   // Default RETRACTED so extend/retract work even if homing is skipped
   private IntakePosition intakePosition = IntakePosition.RETRACTED;
@@ -68,10 +65,6 @@ public class RobotState {
 
   private SingulatorState singulatorState = SingulatorState.PAUSED;
   private boolean singulatorBeamBreak = false;
-
-  private ClimberState climberState = ClimberState.IDLE;
-  private double climberPullPercent     = 0.0;
-  private double climberRotationPercent = 0.0;
 
   // ---- Mode ----
 
@@ -159,27 +152,4 @@ public class RobotState {
     SmartLogger.logReplay("RobotState/SingulatorBeamBreak", value);
   }
   public boolean getSingulatorBeamBreak() { return singulatorBeamBreak; }
-
-  // ---- Climber ----
-
-  public void setClimberState(ClimberState state) {
-    if (this.climberState == state) return;
-    this.climberState = state;
-    SmartLogger.logReplay("RobotState/ClimberState", state.toString());
-  }
-  public ClimberState getClimberState() { return climberState; }
-
-  public void setClimberPullPercent(double percent) {
-    if (Math.abs(climberPullPercent - percent) < 0.001) return;
-    climberPullPercent = percent;
-    SmartLogger.logReplay("RobotState/Climber/PullPercent", percent);
-  }
-  public double getClimberPullPercent() { return climberPullPercent; }
-
-  public void setClimberRotationPercent(double percent) {
-    if (Math.abs(climberRotationPercent - percent) < 0.001) return;
-    climberRotationPercent = percent;
-    SmartLogger.logReplay("RobotState/Climber/RotationPercent", percent);
-  }
-  public double getClimberRotationPercent() { return climberRotationPercent; }
 }
