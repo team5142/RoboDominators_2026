@@ -81,7 +81,6 @@ public class DynamicBumpTraversalCommand extends Command {
 
   private final PoseEstimatorSubsystem poseEstimator;
   private final DriveSubsystem driveSubsystem;
-  private final IntakeSubsystem intakeSubsystem; // may be null if intake is disabled
   private final Side side;
   private final boolean modifierRequested;
   private final BumpConfig config;
@@ -103,7 +102,6 @@ public class DynamicBumpTraversalCommand extends Command {
     this.side = side;
     this.modifierRequested = modifierRequested;
     this.config = config;
-    this.intakeSubsystem = intakeSubsystem;
   }
 
   @Override
@@ -130,8 +128,8 @@ public class DynamicBumpTraversalCommand extends Command {
     Command toExit = AutoBuilder.pathfindToPose(plan.exitPose, config.downhillConstraints);
 
     // Lift intake slightly at uphill start and again at downhill start to clear the 15 deg slope.
-    Command liftUphill  = Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.bumpLift(); });
-    Command liftDownhill = Commands.runOnce(() -> { if (intakeSubsystem != null) intakeSubsystem.bumpLift(); });
+    Command liftUphill  = Commands.none();
+    Command liftDownhill = Commands.none();
 
     activeCommand = new SequentialCommandGroup(
         toStaging,

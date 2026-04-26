@@ -1,24 +1,3 @@
-// Spindexer subsystem - cone-shaped spinner that agitates balls and feeds them into the singulator.
-// The wheel at the bottom directs balls into the singulator groove when spinning forward.
-// The cone top acts as an agitator to prevent balls from clumping or sticking.
-//
-// AGITATOR LOGIC: while spinning forward, if current exceeds LOAD_CURRENT_AMPS for
-// AGITATE_LOOP_THRESHOLD loops (~100ms), a short full-reverse pulse fires automatically to
-// relieve ball pressure, then resumes forward. No command input needed.
-// Current-based detection reacts immediately when balls pile on — faster than velocity drop.
-//
-// TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [x] 1. Confirm CAN ID: MOTOR_ID (27) appears in REV Hardware Client and responds.
-// [ ] 2. Check motor direction: run spinForward() at low speed, confirm balls move toward
-//        the singulator groove. If backwards, set MOTOR_INVERTED = true in Constants.
-// [ ] 3. Tune FORWARD_SPEED so balls feed consistently without jamming the singulator.
-// [ ] 4. Tune STALL_VELOCITY_RPS to a value that only fires when the cone is truly stuck
-//        (not during normal load variation). Watch Spindexer/VelocityRpm in AdvantageScope.
-// [ ] 5. Tune AGITATE_LOOP_THRESHOLD and AGITATE_PULSE_LOOPS so the reverse pulse is
-//        long enough to free a stuck ball but short enough to not dump balls backward.
-// [ ] 6. Verify current limit is not tripping during normal operation — raise
-//        CURRENT_LIMIT_AMPS in Constants if the motor cuts out under full ball load.
-
 package frc.robot.subsystems;
 
 import com.revrobotics.PersistMode;
@@ -31,13 +10,14 @@ import frc.robot.Constants;
 import frc.robot.RobotState;
 import frc.robot.util.SmartLogger;
 
+// Cone-shaped spinner that agitates balls and feeds them toward the singulator.
+// While spinning forward, if current stays high for too long (ball jam), a short
+// reverse pulse fires automatically to relieve pressure, then resumes forward.
 public class SpindexerSubsystem extends SubsystemBase {
   private final RobotState robotState;
   private final SparkMax motor;
 
-  // Agitator state: counts loops where current is too high while FORWARD
   private int stallLoopCount = 0;
-  // Counts down how many loops remain in the active agitator reverse pulse
   private int agitateLoopsRemaining = 0;
 
   public SpindexerSubsystem(RobotState robotState) {
@@ -53,7 +33,6 @@ public class SpindexerSubsystem extends SubsystemBase {
     SmartLogger.logConsole("Spindexer ready (CAN " + Constants.Spindexer.MOTOR_ID + ")", "Spindexer");
   }
 
-  // Start spinning forward to feed balls into the singulator groove
   public void spinForward() {
     if (robotState.getSpindexerState() == RobotState.SpindexerState.FORWARD) return;
     stallLoopCount = 0;
@@ -62,7 +41,6 @@ public class SpindexerSubsystem extends SubsystemBase {
     robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
   }
 
-  // Reverse the spindexer briefly to unjam a stuck ball manually
   public void spinReverse() {
     agitateLoopsRemaining = 0;
     motor.set(Constants.Spindexer.REVERSE_SPEED);
@@ -78,22 +56,13 @@ public class SpindexerSubsystem extends SubsystemBase {
 
   public void stopAll() { stop(); }
 
-  // True when current draw while FORWARD suggests balls are sitting on the cone.
-  // Threshold must be tuned on hardware — watch Spindexer/CurrentAmps in AdvantageScope.
-  public boolean isSpindexerUnderLoad() {
-    return robotState.getSpindexerState() == RobotState.SpindexerState.FORWARD
-        && motor.getOutputCurrent() > Constants.Spindexer.LOAD_CURRENT_AMPS;
-  }
-
   @Override
   public void periodic() {
-    double velocityRpm = motor.getEncoder().getVelocity(); // NEO encoder reports RPM
     double currentAmps = motor.getOutputCurrent();
-    RobotState.SpindexerState currentState = robotState.getSpindexerState();
+    RobotState.SpindexerState state = robotState.getSpindexerState();
 
-    // Agitator auto-reverse: while FORWARD, watch for sustained high current (ball pressure jam).
-    // Current spikes immediately when balls pile on — faster to detect than velocity drop.
-    if (currentState == RobotState.SpindexerState.FORWARD) {
+    // While spinning forward, watch for sustained high current (ball jam).
+    if (state == RobotState.SpindexerState.FORWARD) {
       if (currentAmps > Constants.Spindexer.LOAD_CURRENT_AMPS) {
         stallLoopCount++;
       } else {
@@ -105,12 +74,11 @@ public class SpindexerSubsystem extends SubsystemBase {
         agitateLoopsRemaining = Constants.Spindexer.AGITATE_PULSE_LOOPS;
         motor.set(Constants.Spindexer.REVERSE_SPEED);
         robotState.setSpindexerState(RobotState.SpindexerState.REVERSE);
-        SmartLogger.logConsole("Spindexer jam detected — agitate pulse", "Spindexer");
       }
     }
 
     // After the reverse pulse expires, go back to forward
-    if (currentState == RobotState.SpindexerState.REVERSE && agitateLoopsRemaining > 0) {
+    if (state == RobotState.SpindexerState.REVERSE && agitateLoopsRemaining > 0) {
       agitateLoopsRemaining--;
       if (agitateLoopsRemaining == 0) {
         motor.set(Constants.Spindexer.FORWARD_SPEED);
@@ -118,8 +86,7 @@ public class SpindexerSubsystem extends SubsystemBase {
       }
     }
 
-    SmartLogger.logReplay("Spindexer/VelocityRpm", velocityRpm);
-    SmartLogger.logReplay("Spindexer/CurrentAmps", motor.getOutputCurrent());
-    SmartLogger.logReplay("Spindexer/StallLoopCount", stallLoopCount);
+    SmartLogger.logReplay("Spindexer/VelocityRpm", motor.getEncoder().getVelocity());
+    SmartLogger.logReplay("Spindexer/CurrentAmps", currentAmps);
   }
 }
