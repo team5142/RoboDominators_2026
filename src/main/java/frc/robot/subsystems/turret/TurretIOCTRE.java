@@ -237,7 +237,7 @@ public class TurretIOCTRE implements TurretIO {
   public void zeroTurretEncoder() {
     // Set to the hall sensor offset so the encoder reads 0 at the CCW hard stop.
     // When mechanical relocates the sensor to the CCW stop, set TURRET_HALL_OFFSET_MOTOR_ROT = 0.
-    turretMotor.setPosition(Constants.Turret.TURRET_HALL_OFFSET_MOTOR_ROT);
+    turretMotor.setPosition(0.0);
   }
 
   @Override
