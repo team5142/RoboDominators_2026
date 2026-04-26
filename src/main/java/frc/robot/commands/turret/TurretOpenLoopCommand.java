@@ -11,10 +11,11 @@ public class TurretOpenLoopCommand extends StartEndCommand {
       double hoodPercent,
       double turretPercent) {
     super(
-        () -> turretSubsystem.setOpenLoopPercents(
-            flywheelPercent,
-            hoodPercent,
-            turretPercent),
+        () -> {
+          turretSubsystem.setFlywheelPercent(flywheelPercent);
+          turretSubsystem.setHoodPercent(hoodPercent);
+          turretSubsystem.setTurretPercent(turretPercent);
+        },
         turretSubsystem::stopAll,
         turretSubsystem);
   }
