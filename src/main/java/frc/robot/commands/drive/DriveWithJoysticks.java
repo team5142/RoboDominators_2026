@@ -3,9 +3,7 @@ package frc.robot.commands.drive;
 import static frc.robot.Constants.Swerve.*;
 
 import edu.wpi.first.math.MathUtil;
-import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.wpilibj2.command.Command;
-import frc.robot.RobotState;
 import frc.robot.subsystems.DriveSubsystem;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
@@ -14,29 +12,26 @@ import java.util.function.DoubleSupplier;
 // Applies deadbands, squaring, direction smoothing to prevent wheel twitching
 public class DriveWithJoysticks extends Command {
   private final DriveSubsystem driveSubsystem;
-  private final RobotState robotState;
-  private final DoubleSupplier xSupplier; // Forward/back joystick axis
-  private final DoubleSupplier ySupplier; // Left/right joystick axis
-  private final DoubleSupplier omegaSupplier; // Rotation joystick axis
-  private final BooleanSupplier fieldRelativeSupplier; // Field-relative vs robot-relative toggle
-  private final BooleanSupplier precisionModeSupplier; // Slow mode toggle
+  private final DoubleSupplier xSupplier;
+  private final DoubleSupplier ySupplier;
+  private final DoubleSupplier omegaSupplier;
+  private final BooleanSupplier fieldRelativeSupplier;
+  private final BooleanSupplier precisionModeSupplier;
 
   // Direction smoothing - prevents wheels from micro-steering on tiny stick movements
   private double lastTranslationX = 0.0;
   private double lastTranslationY = 0.0;
-  private static final double TRANSLATION_DEADBAND = 0.05; // Ignore direction changes <5%
-  private static final double SLOW_SPEED_THRESHOLD = 0.4; // Apply smoothing below 40% speed
+  private static final double TRANSLATION_DEADBAND = 0.05;
+  private static final double SLOW_SPEED_THRESHOLD = 0.4;
 
   public DriveWithJoysticks(
       DriveSubsystem driveSubsystem,
-      RobotState robotState,
       DoubleSupplier xSupplier,
       DoubleSupplier ySupplier,
       DoubleSupplier omegaSupplier,
       BooleanSupplier fieldRelativeSupplier,
       BooleanSupplier precisionModeSupplier) {
     this.driveSubsystem = driveSubsystem;
-    this.robotState = robotState;
     this.xSupplier = xSupplier;
     this.ySupplier = ySupplier;
     this.omegaSupplier = omegaSupplier;
@@ -48,11 +43,6 @@ public class DriveWithJoysticks extends Command {
 
   @Override
   public void execute() {
-    if (robotState.isOperatorDriveLockout()) {
-      driveSubsystem.drive(0.0, 0.0, 0.0, true);
-      return;
-    }
-
     // Apply deadband to ignore stick drift
     double x = MathUtil.applyDeadband(xSupplier.getAsDouble(), JOYSTICK_DEADBAND);
     double y = MathUtil.applyDeadband(ySupplier.getAsDouble(), JOYSTICK_DEADBAND);

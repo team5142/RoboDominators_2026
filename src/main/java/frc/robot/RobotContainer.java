@@ -108,7 +108,7 @@ public class RobotContainer {
   private void configureDefaultCommands() {
     driveSubsystem.setDefaultCommand(
         new DriveWithJoysticks(
-            driveSubsystem, robotState,
+            driveSubsystem,
             () -> -driverController.getLeftY(),
             () -> -driverController.getLeftX(),
             () -> -driverController.getRightX(),

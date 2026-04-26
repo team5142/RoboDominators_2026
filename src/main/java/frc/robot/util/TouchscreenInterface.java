@@ -207,10 +207,8 @@ public class TouchscreenInterface {
   private void scheduleOperatorSmartDrive(String key, SmartDriveTarget target) {
     cancelActiveOperatorDrive();
 
-    robotState.setOperatorDriveLockout(true);
-
     Command cmd = SmartDriveToPosition.create(target.staging, target.precise)
-        .finallyDo(interrupted -> robotState.setOperatorDriveLockout(false));
+        .finallyDo(interrupted -> {});
 
     activeOperatorDrive = cmd;
     CommandScheduler.getInstance().schedule(cmd);
@@ -222,9 +220,7 @@ public class TouchscreenInterface {
     if (activeOperatorDrive != null) {
       activeOperatorDrive.cancel();
       activeOperatorDrive = null;
-      robotState.setOperatorDriveLockout(false);
       SmartLogger.logConsole("[Touchscreen] Driver override - canceled operator SmartDrive");
     }
-    robotState.setOperatorDriveLockout(false);
   }
 }

@@ -265,11 +265,6 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    if (robotState.isSysIdMode()) {
-      Logger.recordOutput("PoseEstimator/SysIdMode", true);
-      return;
-    }
-    
     logCounter++;
     poseEstimator.update(driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
     
