@@ -506,8 +506,23 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
     }
   }
   
+  // SmartDrive Phase 2: force-accept the latest Quest frame to snap the estimator before precision nav.
+  // Bypasses all gates — only call when Quest is confirmed tracking and fresh (age < 0.2s).
   public boolean forceAcceptQuestNavPose() {
-    return questNavFusion.forceAcceptMeasurement();
+    if (!questNavSubsystem.isTracking()) return false;
+    var meas = questNavSubsystem.peekLatestMeasurement();
+    if (!meas.isPresent()) return false;
+    Pose2d pose = meas.get().pose;
+    double timestamp = meas.get().measurementTimestamp;
+    long frameCount = meas.get().frameCount;
+    double age = Timer.getFPGATimestamp() - timestamp;
+    if (age < 0 || age > 0.25) return false;
+    if (!questNavSubsystem.acknowledgeMeasurement(frameCount)) return false;
+    poseEstimator.addVisionMeasurement(pose, timestamp,
+        edu.wpi.first.math.VecBuilder.fill(0.01, 0.01, Math.toRadians(1.0)));
+    questNavFusion.notifyEstimatorReset();
+    notifyQuestNavFusionOccurred(timestamp);
+    return true;
   }
 
   // Returns the downfield direction from the driver's perspective.
