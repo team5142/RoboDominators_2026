@@ -124,11 +124,14 @@ public final class Constants {
       config.Slot0.kA = DriveGains.kA;
       config.ClosedLoopGeneral.ContinuousWrap = false;
       // Stator limit caps torque/heat inside the motor.
-      // Supply limit caps battery draw — 4 motors x 40A = 160A max drive draw.
+      // Supply limit caps battery draw — 4 motors x 35A = 140A max drive draw (reduced from 160A to help brownouts).
       config.CurrentLimits.StatorCurrentLimit = 60.0;
       config.CurrentLimits.StatorCurrentLimitEnable = true;
-      config.CurrentLimits.SupplyCurrentLimit = 40.0;
+      config.CurrentLimits.SupplyCurrentLimit = 35.0; // reduced from 40 — 140A combined vs 160A
       config.CurrentLimits.SupplyCurrentLimitEnable = true;
+      // Open-loop ramp: 100ms to full speed — staggers current rise across all 4 motors on hard acceleration.
+      // Barely perceptible to driver but significantly reduces simultaneous current spike.
+      config.OpenLoopRamps.DutyCycleOpenLoopRampPeriod = 0.1;
       return config;
     }
 
@@ -611,10 +614,10 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FORWARD_SPEED = 0.85;
+    public static final double FORWARD_SPEED = 1.0;
     // Full reverse on agitate — maximum force to break jam in minimum time.
     // Previous value was -0.50 (conservative placeholder).
-    public static final double REVERSE_SPEED = -1.0;
+    public static final double REVERSE_SPEED = -0.6;
 
     // Agitator auto-reverse: current-based detection (replaces velocity-based).
     // Current spikes immediately when balls pile on; velocity was too slow to react.
@@ -682,10 +685,13 @@ public final class Constants {
     public static final double ROLLER_REVERSE_SPEED = -0.50; // ejecting
 
     // Current limits
-    // Extension (Kraken): stator caps torque current; supply caps battery draw.
+    // Extension (Kraken x2): stator caps torque current; supply caps battery draw.
+    // Two motors x 15A supply = 30A max combined — arm is fast enough well below this.
+    // Previous supply limit was 30A per motor (60A combined) which contributed to brownouts
+    // when both motors spiked simultaneously during hard drivetrain acceleration.
     // Roller (NEO SparkMax): uses smart current limit only.
     public static final double EXTENSION_STATOR_LIMIT_AMPS = 40.0;
-    public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 30.0;
+    public static final double EXTENSION_SUPPLY_LIMIT_AMPS = 15.0; // reduced from 30 — arm is still very fast
     public static final int    ROLLER_CURRENT_LIMIT_AMPS   = 40;
 
     // Stall detection via sustained current spike — distinguishes a true hard stop from
@@ -731,8 +737,8 @@ public final class Constants {
 
   // Autonomous path following (PathPlanner PID tuning)
   public static final class Auto {
-    // Translation PID (trust your SysId drive gains!)
-    public static final double TRANSLATION_KP = 1.5;  
+    // Translation PID — raised from 1.5 to fight ball resistance and contact at competition
+    public static final double TRANSLATION_KP = 2.5;  
     public static final double TRANSLATION_KI = 0.0;
     public static final double TRANSLATION_KD = 0.0;
     

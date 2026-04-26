@@ -11,6 +11,12 @@
           }
         },
         {
+          "type": "path",
+          "data": {
+            "pathName": "Blue-RightBumpStraightToCenterStart"
+          }
+        },
+        {
           "type": "parallel",
           "data": {
             "commands": [
@@ -23,7 +29,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 3.0
+                  "waitTime": 8.0
                 }
               }
             ]
@@ -38,26 +44,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Blue-RightBumpToCenterStartSafe"
-          }
-        },
-        {
-          "type": "parallel",
-          "data": {
-            "commands": [
-              {
-                "type": "named",
-                "data": {
-                  "name": "ShootStart"
-                }
-              },
-              {
-                "type": "wait",
-                "data": {
-                  "waitTime": 10.0
-                }
-              }
-            ]
+            "pathName": "Blue-RightBumpToCenterEnd"
           }
         },
         {

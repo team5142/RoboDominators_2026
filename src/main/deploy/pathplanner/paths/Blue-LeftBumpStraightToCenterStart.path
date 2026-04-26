@@ -4,108 +4,76 @@
     {
       "anchor": {
         "x": 3.62,
-        "y": 2.515
+        "y": 5.528
       },
       "prevControl": null,
       "nextControl": {
         "x": 4.62,
-        "y": 2.515
+        "y": 5.528
       },
       "isLocked": true,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 6.070427960057061,
-        "y": 2.281811697574893
+        "x": 5.824144444444445,
+        "y": 5.775249643366619
       },
       "prevControl": {
-        "x": 6.0577202019181655,
-        "y": 2.7816501843714607
+        "x": 5.3709905509261215,
+        "y": 5.986558774236968
       },
       "nextControl": {
-        "x": 6.109243937232525,
-        "y": 0.7550499286733237
+        "x": 6.610262427344565,
+        "y": 5.408676807726933
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 8.050042796005705,
-        "y": 1.0008844507845935
+        "x": 8.696975748930099,
+        "y": 5.2059486447931524
       },
       "prevControl": {
-        "x": 8.02416760874101,
-        "y": 0.7162337577920583
+        "x": 9.174452270228137,
+        "y": 5.741894208648724
       },
       "nextControl": {
-        "x": 8.127260778697224,
-        "y": 1.8503527873719046
+        "x": 8.292327813137993,
+        "y": 4.751749838281106
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 7.739514978601996,
-        "y": 3.82151212553495
+        "x": 7.188366666666667,
+        "y": 4.5
       },
       "prevControl": {
-        "x": 8.219850753447476,
-        "y": 3.1106151787636382
+        "x": 7.597633333333334,
+        "y": 4.197922222222221
       },
       "nextControl": {
-        "x": 7.416048502139798,
-        "y": 4.300242510699002
+        "x": 6.64129652996261,
+        "y": 4.903789862805376
       },
       "isLocked": false,
       "linkedName": null
     },
     {
       "anchor": {
-        "x": 7.0,
-        "y": 4.080285306704707
+        "x": 6.4,
+        "y": 5.5
       },
       "prevControl": {
-        "x": 7.556362339514979,
-        "y": 4.300242510699002
+        "x": 7.189300000000001,
+        "y": 4.749677777777778
       },
       "nextControl": {
-        "x": 6.367673218385452,
-        "y": 3.8302956488570934
-      },
-      "isLocked": false,
-      "linkedName": null
-    },
-    {
-      "anchor": {
-        "x": 6.6,
-        "y": 2.702244444444445
-      },
-      "prevControl": {
-        "x": 7.3893,
-        "y": 3.452566666666667
-      },
-      "nextControl": {
-        "x": 6.307278029088687,
-        "y": 2.423977879504062
-      },
-      "isLocked": true,
-      "linkedName": null
-    },
-    {
-      "anchor": {
-        "x": 3.5,
-        "y": 2.515
-      },
-      "prevControl": {
-        "x": 4.085777917346903,
-        "y": 2.515
-      },
-      "nextControl": {
-        "x": 2.914222082653097,
-        "y": 2.515
+        "x": 6.107278029088688,
+        "y": 5.778266564940383
       },
       "isLocked": false,
       "linkedName": null
@@ -113,48 +81,44 @@
     {
       "anchor": {
         "x": 2.5,
-        "y": 2.515
+        "y": 5.528
       },
       "prevControl": {
-        "x": 3.2240334172516705,
-        "y": 2.515
+        "x": 3.3275198505131334,
+        "y": 5.528
       },
       "nextControl": null,
-      "isLocked": true,
+      "isLocked": false,
       "linkedName": null
     }
   ],
   "rotationTargets": [
     {
       "waypointRelativePos": 1,
-      "rotationDegrees": 37.0
+      "rotationDegrees": -37.0
+    },
+    {
+      "waypointRelativePos": 1.5,
+      "rotationDegrees": -37.0
     },
     {
       "waypointRelativePos": 2.0,
-      "rotationDegrees": 90.0
+      "rotationDegrees": -119.29136217098403
     },
     {
-      "waypointRelativePos": 3,
-      "rotationDegrees": 119.29136217098403
+      "waypointRelativePos": 3.0,
+      "rotationDegrees": 145.0
     },
     {
       "waypointRelativePos": 4.0,
-      "rotationDegrees": -145.0
-    },
-    {
-      "waypointRelativePos": 5.0,
-      "rotationDegrees": -135.0
-    },
-    {
-      "waypointRelativePos": 6.0,
-      "rotationDegrees": -135.0
+      "rotationDegrees": 140.203
     }
   ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
       "minWaypointRelativePos": 0,
-      "maxWaypointRelativePos": 1.5101351351351564,
+      "maxWaypointRelativePos": 1.25,
       "constraints": {
         "maxVelocity": 3.5,
         "maxAcceleration": 3.5,
@@ -166,8 +130,8 @@
     },
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 3.66,
-      "maxWaypointRelativePos": 6.2,
+      "minWaypointRelativePos": 2.66,
+      "maxWaypointRelativePos": 4.603368421052627,
       "constraints": {
         "maxVelocity": 3.5,
         "maxAcceleration": 3.5,
@@ -179,8 +143,8 @@
     },
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 6.2,
-      "maxWaypointRelativePos": 7.0,
+      "minWaypointRelativePos": 4.603368421052638,
+      "maxWaypointRelativePos": 5.0,
       "constraints": {
         "maxVelocity": 1.0,
         "maxAcceleration": 1.0,
@@ -192,8 +156,8 @@
     },
     {
       "name": "Constraints Zone",
-      "minWaypointRelativePos": 1.5506756756756825,
-      "maxWaypointRelativePos": 3.66,
+      "minWaypointRelativePos": 1.3,
+      "maxWaypointRelativePos": 2.66,
       "constraints": {
         "maxVelocity": 2.25,
         "maxAcceleration": 2.25,
@@ -219,7 +183,7 @@
     },
     {
       "name": "IntakeBumpUp",
-      "waypointRelativePos": 5.05,
+      "waypointRelativePos": 4.0236486486486,
       "endWaypointRelativePos": null,
       "command": {
         "type": "named",
@@ -230,7 +194,7 @@
     },
     {
       "name": "IntakeDeploy",
-      "waypointRelativePos": 6.35,
+      "waypointRelativePos": 4.67229729729724,
       "endWaypointRelativePos": null,
       "command": {
         "type": "named",
@@ -250,7 +214,7 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -45.0
+    "rotation": 180.0
   },
   "reversed": false,
   "folder": null,

@@ -7,7 +7,19 @@
         {
           "type": "named",
           "data": {
-            "name": "AutoInit"
+            "name": "AutoInitNoIntake"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "BackAndShootCenter"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "IntakeDeploy"
           }
         },
         {
@@ -23,7 +35,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 3.0
+                  "waitTime": 4.0
                 }
               }
             ]
@@ -32,13 +44,13 @@
         {
           "type": "named",
           "data": {
-            "name": "ShootStop"
+            "name": "IntakeRollersOn"
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "Blue-RightBumpToCenterStartSafe"
+            "pathName": "CenterToOutpostEnd"
           }
         },
         {
@@ -54,7 +66,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 10.0
+                  "waitTime": 8.0
                 }
               }
             ]

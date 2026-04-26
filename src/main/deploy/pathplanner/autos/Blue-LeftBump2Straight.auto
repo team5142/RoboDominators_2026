@@ -11,6 +11,12 @@
           }
         },
         {
+          "type": "path",
+          "data": {
+            "pathName": "Blue-LeftBumpStraightToCenterStart"
+          }
+        },
+        {
           "type": "parallel",
           "data": {
             "commands": [
@@ -23,7 +29,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 3.0
+                  "waitTime": 5.5
                 }
               }
             ]
@@ -36,15 +42,27 @@
           }
         },
         {
+          "type": "named",
+          "data": {
+            "name": "IntakeRollersOn"
+          }
+        },
+        {
           "type": "path",
           "data": {
-            "pathName": "Blue-RightBumpToCenterStartSafe"
+            "pathName": "Blue-LeftBumpToCenterToOutpostEnd"
           }
         },
         {
           "type": "parallel",
           "data": {
             "commands": [
+              {
+                "type": "named",
+                "data": {
+                  "name": "IntakeRollersOff"
+                }
+              },
               {
                 "type": "named",
                 "data": {

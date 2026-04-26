@@ -8,21 +8,7 @@
 // Decrements on the rising edge only while REVERSING (ball pulled back past sensor).
 // This keeps the count accurate even when reverse-feeding to clear a jam.
 // Count is visible in AdvantageScope at RobotState/BallsFedCount.
-//
-// TODO - COMMISSIONING CHECKLIST (complete in order before enabling in RobotContainer):
-// [x] 1. Confirm CAN ID: MOTOR_ID (24) appears in REV Hardware Client and responds.
-// [ ] 2. Confirm LaserCAN (CAN 28) appears on CAN bus and reports valid measurements.
-//        In Test mode, block the sensor with your hand and verify Singulator/BallPresent
-//        toggles true in AdvantageScope. Threshold is LASERCAN_THRESHOLD_MM in Constants.
-// [ ] 3. Confirm dead zone LaserCAN (CAN 29) appears on CAN bus and reports valid measurements.
-//        Block with hand and verify Singulator/DeadZoneBallPresent toggles true.
-// [x] 4. Check motor direction: run spinFeed() at low speed, confirm balls move toward
-//        the flywheels. If backwards, set MOTOR_INVERTED = true in Constants.
-// [ ] 5. Tune FEED_SPEED to match the flywheel acceptance rate — too fast risks double-
-//        feeding; too slow starves the shooter.
-// [ ] 6. Run several balls through end-to-end and verify the counter increments once per
-//        ball. Watch RobotState/BallsFedCount in AdvantageScope.
-// [x] 7. Test spinReverse() with a stuck ball to confirm it clears cleanly.
+// DEAD ZONE RECOVERY: if a ball is detected in the dead zone for 1+ seconds while feeding, automatically fire a reverse pulse to try to kick it loose.
 
 package frc.robot.subsystems;
 
@@ -162,11 +148,11 @@ public class SingulatorSubsystem extends SubsystemBase {
     boolean ballBlocked = isBallPresent();
     RobotState.SingulatorState singState = robotState.getSingulatorState();
 
-    // Dead zone recovery: only while actively feeding, one attempt per continuous blockage.
-    // If the ball is still stuck after the reverse pulse completes, give up and resume feeding.
-    // Operator must release and re-press RT to trigger another attempt.
+    // Dead zone recovery: only in manual teleop (not when AutoShootCommand is managing state).
+    // AutoShootCommand has its own dead zone handling with shot-timing awareness.
+    // One attempt per continuous blockage — operator re-presses RT to allow another.
     boolean deadZoneBlocked = isDeadZoneBallPresent();
-    if (singState == RobotState.SingulatorState.FEEDING && !deadZoneRecoveryActive) {
+    if (!robotState.isAutoShootMode() && singState == RobotState.SingulatorState.FEEDING && !deadZoneRecoveryActive) {
       if (deadZoneBlocked && !deadZoneRecoveryAttempted) {
         if (!deadZoneTimerRunning) {
           deadZoneTimer.restart();

@@ -4,15 +4,15 @@
     {
       "anchor": {
         "x": 2.5,
-        "y": 5.528
+        "y": 4.045
       },
       "prevControl": null,
       "nextControl": {
-        "x": 1.8388601719674855,
-        "y": 5.528
+        "x": 1.975088888888889,
+        "y": 5.0484222222222215
       },
       "isLocked": false,
-      "linkedName": null
+      "linkedName": "CenterBackEnd"
     },
     {
       "anchor": {
@@ -32,15 +32,15 @@
     },
     {
       "anchor": {
-        "x": 0.3,
+        "x": 0.45,
         "y": 5.95
       },
       "prevControl": {
-        "x": 0.55,
+        "x": 0.7000000000000001,
         "y": 5.95
       },
       "nextControl": {
-        "x": 0.04999999999999999,
+        "x": 0.2,
         "y": 5.95
       },
       "isLocked": false,
@@ -52,15 +52,24 @@
         "y": 5.95
       },
       "prevControl": {
-        "x": 2.4518917229073107,
-        "y": 5.95
+        "x": 1.1955333333333331,
+        "y": 5.954655555555555
       },
       "nextControl": null,
       "isLocked": false,
       "linkedName": null
     }
   ],
-  "rotationTargets": [],
+  "rotationTargets": [
+    {
+      "waypointRelativePos": 0.0,
+      "rotationDegrees": 0.0
+    },
+    {
+      "waypointRelativePos": 1.0,
+      "rotationDegrees": 180.0
+    }
+  ],
   "constraintZones": [
     {
       "name": "Constraints Zone",
@@ -119,8 +128,8 @@
   "reversed": false,
   "folder": null,
   "idealStartingState": {
-    "velocity": 0,
-    "rotation": 180.0
+    "velocity": 0.0,
+    "rotation": 0.0
   },
   "useDefaultConstraints": false
 }

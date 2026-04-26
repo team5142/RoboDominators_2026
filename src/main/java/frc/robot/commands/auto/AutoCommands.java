@@ -113,6 +113,12 @@ public final class AutoCommands {
                 robotState.setFlywheelOn(true);
             }));
         }
+        // AutoInitNoIntake: spin up flywheels without extending intake — lets the auto move first.
+        if (turret != null) {
+            NamedCommands.registerCommand("AutoInitNoIntake", Commands.runOnce(() -> {
+                robotState.setFlywheelOn(true);
+            }));
+        }
 
         // AutoShootEnd: stop fire interlock, feed chain, and flywheels in one call.
         // Does not require turret — avoids interrupting the tracking default command.
