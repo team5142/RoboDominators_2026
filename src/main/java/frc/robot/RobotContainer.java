@@ -21,11 +21,10 @@ import frc.robot.subsystems.*;
 import frc.robot.util.SmartLogger;
 import java.util.Optional;
 
-// Wires up robot hardware, controllers, and commands.
-// Call register() once before AutoBuilder.buildAutoChooser().
+// Wires up all subsystems, controllers, and commands.
+// This is the central file where hardware meets code - every button binding lives here.
 public class RobotContainer {
 
-  // === CONFIGURATION FLAGS ===
   public static final boolean COMPETITION_MODE = false;
   private static final boolean ENABLE_INTAKE     = true;
   private static final boolean ENABLE_SPINDEXER  = true;
@@ -33,19 +32,18 @@ public class RobotContainer {
 
   private static Alliance cachedAlliance = Alliance.Blue;
 
-  // Controllers
+  // Controllers - do not modify
   private final XboxController driverController   = new XboxController(DRIVER_CONTROLLER_PORT);
   private final XboxController operatorController = new XboxController(Constants.OPERATOR_CONTROLLER_PORT);
 
-  // === SUBSYSTEMS ===
-  // These are kept as reference for students  the complex ones are present but not wired to buttons.
+  // Complex subsystems - pre-built, do not modify
   final RobotState robotState;
   final GyroSubsystem gyro;
   final QuestNavSubsystem questNav;
   final DriveSubsystem driveSubsystem;
   final PoseEstimatorSubsystem poseEstimator;
 
-  // Student subsystems  these are the ones students will implement
+  // Student-built subsystems
   IntakeSubsystem intakeSubsystem;
   SpindexerSubsystem spindexerSubsystem;
   SingulatorSubsystem singulatorSubsystem;
@@ -57,15 +55,16 @@ public class RobotContainer {
 
     SmartLogger.configure(!COMPETITION_MODE);
 
-    // Initialize subsystems
     gyro           = new GyroSubsystem();
     questNav       = new QuestNavSubsystem();
     driveSubsystem = new DriveSubsystem(robotState, gyro);
     poseEstimator  = new PoseEstimatorSubsystem(driveSubsystem, robotState, questNav);
 
-    intakeSubsystem     = ENABLE_INTAKE     ? new IntakeSubsystem(robotState)     : null;
-    spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem(robotState)  : null;
-    singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem(robotState) : null;
+    // Task 9: update SpindexerSubsystem() to pass robotState once you add it to the constructor
+    // Task 15: update SingulatorSubsystem() similarly
+    intakeSubsystem     = ENABLE_INTAKE     ? new IntakeSubsystem(robotState) : null;
+    spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem()        : null;
+    singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem()       : null;
 
     updateAllianceFromDriverStation();
     robotState.setAlliance(cachedAlliance);
@@ -75,7 +74,6 @@ public class RobotContainer {
     configureDefaultCommands();
     configureButtonBindings();
 
-    // Auto chooser  add more options here as autos are built
     autoChooser = AutoBuilder.buildAutoChooser("");
     SmartDashboard.putData("Auto Chooser", autoChooser);
     poseEstimator.setAutoChooser(autoChooser);
@@ -83,7 +81,7 @@ public class RobotContainer {
     SmartLogger.logConsole("RobotContainer initialized", "Init");
   }
 
-  // Connects PathPlanner to the drivetrain for path following
+  // PathPlanner configuration - pre-built, do not modify
   private void configurePathPlanner() {
     try {
       RobotConfig config = RobotConfig.fromGUISettings();
@@ -104,7 +102,8 @@ public class RobotContainer {
     }
   }
 
-  // Default commands run when no other command requires a subsystem
+  // Default commands run whenever no other command requires a subsystem.
+  // The drivetrain default is DriveWithJoysticks - pre-built, do not modify.
   private void configureDefaultCommands() {
     driveSubsystem.setDefaultCommand(
         new DriveWithJoysticks(
@@ -116,59 +115,247 @@ public class RobotContainer {
             () -> false));
   }
 
-  // Button bindings  map controller buttons to commands
   private void configureButtonBindings() {
-    // DRIVER: Back button resets field orientation
+
+    // DRIVER: Back button resets field orientation - pre-built, do not modify
     new JoystickButton(driverController, XboxController.Button.kBack.value)
         .onTrue(driveSubsystem.createOrientToFieldCommand(robotState));
 
-    // OPERATOR: Y  toggle intake arm extend/retract
-    new JoystickButton(operatorController, XboxController.Button.kY.value)
-        .onTrue(Commands.runOnce(() -> {
-          if (intakeSubsystem == null) return;
-          if (intakeSubsystem.isExtended()) {
-            intakeSubsystem.stopRollers();
-            intakeSubsystem.retract();
-          } else {
-            intakeSubsystem.extend();
-          }
-        }));
+    /*
+     * TASK 4 - Wire the Right Bumper to spinForward() and stop()
+     * -----------------------------------------------------------------------
+     * whileTrue() with Commands.startEnd() is how you run something while a
+     * button is held and clean up when it is released.
+     *
+     * The startEnd pattern takes two lambdas:
+     *   - First lambda runs when the button is pressed
+     *   - Second lambda runs when the button is released
+     * Followed by the subsystems it requires (for safety scheduling).
+     *
+     * Pattern to use:
+     *   new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
+     *       .whileTrue(Commands.startEnd(
+     *           () -> { /* pressed - call spinForward here *&#47; },
+     *           () -> { /* released - call stop here *&#47; },
+     *           spindexerSubsystem));
+     *
+     * Always null-check before calling: if (spindexerSubsystem != null) ...
+     *
+     * When done: compile and deploy.
+     * [ROBOT OPTIONAL] Hold Right Bumper - the spindexer should spin.
+     * Come back here for Task 6.
+     * -----------------------------------------------------------------------
+     */
 
-    // OPERATOR: B (hold)  run intake rollers in, stop on release
-    new JoystickButton(operatorController, XboxController.Button.kB.value)
-        .whileTrue(Commands.startEnd(
-            () -> { if (intakeSubsystem != null) intakeSubsystem.spinIn(); },
-            () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
+    /*
+     * TASK 6 - Wire the Left Bumper to spinReverse() and stop()
+     * -----------------------------------------------------------------------
+     * Same pattern as Task 4 - whileTrue + startEnd.
+     * Left Bumper: XboxController.Button.kLeftBumper
+     *
+     * When done: compile and come back here for Task 17.
+     * -----------------------------------------------------------------------
+     */
 
-    // OPERATOR: X (hold)  reverse intake rollers, stop on release
-    new JoystickButton(operatorController, XboxController.Button.kX.value)
-        .whileTrue(Commands.startEnd(
-            () -> { if (intakeSubsystem != null) intakeSubsystem.spinOut(); },
-            () -> { if (intakeSubsystem != null) intakeSubsystem.stopRollers(); }));
+    /*
+     * TASK 17 - Combine Spindexer and Singulator on Right Bumper
+     * -----------------------------------------------------------------------
+     * Now that both subsystems exist, update the Right Bumper binding to call
+     * both at the same time. One lambda can call multiple methods.
+     *
+     * Think about: when the button is pressed, what should both mechanisms do?
+     * When it is released, what should both do?
+     *
+     * Singulator method to call when feeding: spinFeed()
+     * Singulator method to call on release:   pause()
+     *
+     * Make sure to include both subsystems in the requirements list at the end
+     * of startEnd() so WPILib knows both are being used.
+     *
+     * When done: compile and move to Task 19.
+     * -----------------------------------------------------------------------
+     */
 
-    // OPERATOR: Right trigger (hold)  run spindexer + singulator to feed/shoot
-    new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
-        .whileTrue(Commands.startEnd(
-            () -> {
-              if (spindexerSubsystem  != null) spindexerSubsystem.spinForward();
-              if (singulatorSubsystem != null) singulatorSubsystem.primeAndFeed();
-            },
-            () -> {
-              if (spindexerSubsystem  != null) spindexerSubsystem.stop();
-              if (singulatorSubsystem != null) singulatorSubsystem.pause();
-            }));
+    /*
+     * TASK 19 - Add a Release-to-Trigger Binding (onFalse)
+     * -----------------------------------------------------------------------
+     * Sometimes you want an action to happen when a button is RELEASED rather
+     * than pressed. onFalse() fires once when the button goes from held to released.
+     *
+     * Add a binding on the A button that calls singulatorSubsystem.spinFeed()
+     * when pressed (onTrue), and singulatorSubsystem.pause() when released (onFalse).
+     * This gives you manual single-shot control.
+     *
+     * Pattern hint:
+     *   new JoystickButton(...)
+     *       .onTrue(Commands.runOnce(() -> { ... }))
+     *       .onFalse(Commands.runOnce(() -> { ... }));
+     *
+     * When done: move to Task 25.
+     * -----------------------------------------------------------------------
+     */
 
-    // OPERATOR: Right stick down (> 0.9)  reverse spindexer + singulator to clear a jam
-    new JoystickButton(operatorController, XboxController.Button.kLeftBumper.value)
-        .whileTrue(Commands.startEnd(
-            () -> {
-              if (spindexerSubsystem  != null) spindexerSubsystem.spinReverse();
-              if (singulatorSubsystem != null) singulatorSubsystem.spinReverse();
-            },
-            () -> {
-              if (spindexerSubsystem  != null) spindexerSubsystem.stop();
-              if (singulatorSubsystem != null) singulatorSubsystem.pause();
-            }));
+    /*
+     * TASK 25 - Wire the Y Button: Intake Arm Toggle (Conditional Logic)
+     * -----------------------------------------------------------------------
+     * The Y button should extend the arm if it is retracted, and retract it
+     * if it is extended. This requires a conditional check inside the lambda.
+     *
+     * onTrue() with runOnce() fires once on press - no cleanup needed.
+     *
+     * Inside the lambda, check intakeSubsystem.isExtended() to decide which
+     * method to call. Also call stopRollers() before retracting.
+     *
+     * Pattern hint (generic, not the actual code):
+     *   Commands.runOnce(() -> {
+     *     if (someCondition) {
+     *       doThingA();
+     *     } else {
+     *       doThingB();
+     *     }
+     *   }, theSubsystem)
+     *
+     * When done: move to Task 26.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 26 - Wire B and X: Roller Control While Held
+     * -----------------------------------------------------------------------
+     * B button (hold): run intake rollers in (spinIn), stop on release
+     * X button (hold): run intake rollers out (spinOut), stop on release
+     *
+     * You have done this pattern twice already (Tasks 4 and 6).
+     * Write these two bindings without looking back at your previous work.
+     *
+     * When done: compile and move to Task 27 in DriveWithJoysticks.java.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 29 - Add a Precision Mode Button (Live Supplier)
+     * -----------------------------------------------------------------------
+     * DriveWithJoysticks already accepts a precisionModeSupplier - a lambda
+     * that is called every loop to check if precision mode is active.
+     * Right now it is hardcoded to () -> false in configureDefaultCommands().
+     *
+     * Update configureDefaultCommands() to pass a live supplier instead:
+     *   () -> driverController.getLeftBumper()
+     *
+     * This is a supplier - the lambda is evaluated every 20ms, not just once.
+     * That is different from a button binding, which fires on an edge.
+     *
+     * When done: deploy and hold Left Bumper while driving.
+     * [ROBOT OPTIONAL] The robot should feel noticeably slower and more precise.
+     * Then move to Task 30.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 30 - Rewrite One Binding as a Method Reference
+     * -----------------------------------------------------------------------
+     * A method reference is a shorthand for a lambda that only calls one method.
+     *
+     * Lambda:           () -> spindexerSubsystem.stop()
+     * Method reference: spindexerSubsystem::stop
+     *
+     * Both do exactly the same thing - the second is just more concise.
+     *
+     * Find one of your existing bindings that only calls a single method and
+     * rewrite it using the :: syntax. Compile and verify it still works.
+     *
+     * When done: move to Task 31 in SnapToHeadingFixed.java.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 33 - Wire D-Pad to Snap-to-Heading (Passing a Value to a Command)
+     * -----------------------------------------------------------------------
+     * SnapToHeadingFixed is a Command class - you create it with new, passing
+     * arguments in the constructor. This is different from Commands.runOnce()
+     * which runs an inline lambda.
+     *
+     * The D-pad on an XboxController uses POVButton instead of JoystickButton.
+     * The angle argument is the D-pad direction in degrees (0 = up, 90 = right, etc).
+     *   new POVButton(driverController, 0)  // up
+     *   new POVButton(driverController, 90) // right
+     *
+     * You will need to import: edu.wpi.first.wpilibj2.command.button.POVButton
+     *
+     * For each of the four D-pad directions, create a whileTrue binding that
+     * starts a new SnapToHeadingFixed pointed at that cardinal angle.
+     * Pass the left stick suppliers for translation, and a fixed heading value
+     * as a supplier: () -> 0.0 for north, () -> 90.0 for east, etc.
+     *
+     * When done: move to Task 34.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 34 - Add a Toggle Mode for the Spindexer
+     * -----------------------------------------------------------------------
+     * toggleOnTrue() is like onTrue(), but pressing again stops the command.
+     * Good for "set it and forget it" spinning without holding the button.
+     *
+     * Add a binding on the operatorController Start button using toggleOnTrue()
+     * that runs the spindexer forward continuously until the button is pressed again.
+     *
+     * You will need Commands.startEnd() or Commands.run() - think about which
+     * one makes more sense for a toggle vs a hold.
+     *
+     * When done: move to Task 35 (vision).
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 35 - Gate a Binding on Vision Detection (.and() trigger chaining)
+     * -----------------------------------------------------------------------
+     * Trigger conditions can be combined with .and() so a binding only fires
+     * when multiple conditions are true at the same time.
+     *
+     * Add a binding that runs spinIn() on the intake only while the B button
+     * is held AND the object detection camera currently sees a target.
+     *
+     * You will need a reference to the object vision subsystem - check
+     * RobotContainer fields to see if it is already available.
+     *
+     * Pattern hint (generic):
+     *   new JoystickButton(controller, button)
+     *       .and(() -> someConditionIsTrue())
+     *       .whileTrue(Commands.runOnce(() -> { ... }));
+     *
+     * When done: move to Task 37.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 37 - Display Vision Status on the Dashboard
+     * -----------------------------------------------------------------------
+     * SmartDashboard.putBoolean(key, value) sends a boolean to the driver
+     * dashboard and to AdvantageScope. Call it in the periodic() method below.
+     *
+     * Add a line that posts whether the limelight currently sees any target.
+     * You will need to find the right method on the vision subsystem to call.
+     *
+     * When done: move to Task 38.
+     * -----------------------------------------------------------------------
+     */
+
+    /*
+     * TASK 38 - Aim at a Detected Object with SnapToHeadingDynamic
+     * -----------------------------------------------------------------------
+     * SnapToHeadingDynamic takes a supplier for the target heading instead of
+     * a fixed value - the heading is recalculated every loop.
+     *
+     * Wire the Right Stick button (kRightStick) to a whileTrue binding that
+     * starts a SnapToHeadingDynamic aimed at the object detection camera target.
+     *
+     * You will need to figure out what supplier to pass - look at what the
+     * object vision subsystem exposes and how heading relates to yaw offset.
+     *
+     * This is an advanced task - there is no exact answer. Experiment.
+     * -----------------------------------------------------------------------
+     */
   }
 
   public Command getAutonomousCommand() {

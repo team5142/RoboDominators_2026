@@ -96,9 +96,14 @@ public class Robot extends LoggedRobot {
     }
     // Stop all mechanism motors when the robot is disabled
     if (robotContainer != null) {
-      if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
-      if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
-      if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
+      /* TASK 7 - Add stopAll() Safety Calls
+       * When the robot disables, all motors should stop immediately.
+       * Uncomment each line below once you have added stopAll() to that subsystem.
+       * This is a safety requirement - motors must not run while the robot is disabled.
+       */
+      // if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
+      // if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
+      // if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
     }
     Logger.recordOutput("Robot/Mode", "DISABLED");
     SmartLogger.logConsole("Robot DISABLED");

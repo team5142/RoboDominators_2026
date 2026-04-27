@@ -435,6 +435,40 @@ public final class Constants {
     public static final int CURRENT_LIMIT_AMPS = 30;
   }
 
+  /*
+   * TASK 12 - Read the Spindexer Constants
+   * -----------------------------------------------------------------------
+   * Look through the Spindexer class below and understand what each constant
+   * controls. Notice the pattern: hardware IDs at the top, booleans for config,
+   * then speeds, then loop-based timing values.
+   *
+   * Constants exist so you can tune the robot from one place instead of
+   * hunting through subsystem code. If you want the spindexer faster,
+   * you change FORWARD_SPEED here - not in the subsystem.
+   *
+   * Nothing to write here. When done: move to Task 13.
+   * -----------------------------------------------------------------------
+   */
+
+  /*
+   * TASK 13 - Add Speed Constants for the Singulator
+   * -----------------------------------------------------------------------
+   * The Singulator class below has MOTOR_ID, LASERCAN_ID, MOTOR_INVERTED,
+   * and CURRENT_LIMIT_AMPS already defined.
+   *
+   * It is missing the speed constants that SingulatorSubsystem.spinFeed()
+   * and spinReverse() will need. Add them to the Singulator class:
+   *
+   *   FEED_SPEED    - a positive value between 0.0 and 1.0 (try 0.8 to start)
+   *   REVERSE_SPEED - a negative value (try -0.5 to start)
+   *
+   * Look at how Spindexer defines FORWARD_SPEED and REVERSE_SPEED for the format.
+   * Write the constants yourself - do not copy from Spindexer.
+   *
+   * When done: compile and move to Task 14.
+   * -----------------------------------------------------------------------
+   */
+
   // Spindexer hardware IDs and tuning constants (cone spinner that feeds balls into singulator)
   public static final class Spindexer {
     public static final int MOTOR_ID = 27; // REV NEO on SparkMax

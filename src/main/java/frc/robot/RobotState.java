@@ -4,69 +4,106 @@ import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.util.SmartLogger;
 
-// Global robot state - single source of truth for mechanism states and robot mode.
-// Subsystems write their state here each loop so other subsystems can read it without
-// creating direct dependencies between each other.
+// Global robot state - single source of truth for what every mechanism is doing.
+// Subsystems write their state here each loop so other subsystems can read it
+// without needing a direct reference to each other.
 public class RobotState {
 
-  // FMS-driven mode
+  // FMS-driven mode - do not modify
   public enum Mode { DISABLED, ENABLED_TELEOP, ENABLED_AUTO, TEST }
   private Mode mode = Mode.DISABLED;
   private boolean enabled = false;
 
   private DriverStation.Alliance alliance = DriverStation.Alliance.Blue;
 
-  // Navigation phase - written by SmartDriveToPosition, read by PoseEstimatorSubsystem
+  // Navigation phase - do not modify
   public enum NavigationPhase {
-    NONE,           // not navigating
-    FAST_APPROACH,  // PathPlanner pathfinding
-    PRECISION_PATH, // AutoPilot precision
-    LOCKED          // navigation complete, wheels locked
+    NONE,
+    FAST_APPROACH,
+    PRECISION_PATH,
+    LOCKED
   }
   private NavigationPhase navigationPhase = NavigationPhase.NONE;
 
   // Field position - written by PoseEstimatorSubsystem
   private Pose2d robotPose = new Pose2d();
 
-  // Intake arm position
-  public enum IntakePosition {
-    HOMING,        // moving to find limit switch on first enable
-    HOMING_FAILED, // stalled before finding limit switch
-    RETRACTED,     // fully in, limit switch triggered, encoder zeroed
-    EXTENDING,     // moving outward
-    EXTENDED,      // at full extension
-    RETRACTING     // moving inward
-  }
-
-  // Intake roller direction
-  public enum IntakeRollerState { STOPPED, INTAKING, REVERSING }
-
-  // Spindexer spin direction
+  // Spindexer spin direction - provided as a reference for how enums work in RobotState.
+  // Notice: enum declared, field declared with a default value, getter and setter below.
   public enum SpindexerState {
     STOPPED,
-    FORWARD,  // feeding toward singulator
-    REVERSE   // unjam pulse
+    FORWARD,
+    REVERSE
   }
-
-  // Singulator feed state
-  public enum SingulatorState {
-    PAUSED,    // motor stopped
-    FEEDING,   // running toward flywheels
-    REVERSING  // clearing a jam
-  }
-
-  // --- Mechanism state fields ---
-  // Default RETRACTED so extend/retract work even if homing is skipped
-  private IntakePosition intakePosition = IntakePosition.RETRACTED;
-  private IntakeRollerState intakeRollerState = IntakeRollerState.STOPPED;
-  private boolean intakeLimitSwitch = false;
-
   private SpindexerState spindexerState = SpindexerState.STOPPED;
 
-  private SingulatorState singulatorState = SingulatorState.PAUSED;
-  private boolean singulatorBeamBreak = false;
+  /*
+   * TASK 20 - Add IntakePosition Enum and State
+   * -----------------------------------------------------------------------
+   * The intake arm has several positions it can be in. We track this so
+   * other subsystems (like auto commands) can read the arm state without
+   * directly calling IntakeSubsystem.
+   *
+   * An enum is a fixed set of named values. Example of a simple enum:
+   *   public enum Color { RED, GREEN, BLUE }
+   *
+   * The intake arm needs these positions:
+   *   HOMING        - moving inward to find the limit switch on first enable
+   *   HOMING_FAILED - stalled before reaching the limit switch
+   *   RETRACTED     - fully in, limit switch triggered, encoder zeroed
+   *   EXTENDING     - currently moving outward
+   *   EXTENDED      - reached full extension
+   *   RETRACTING    - currently moving inward
+   *
+   * Steps:
+   *   1. Declare the IntakePosition enum with those six values.
+   *   2. Declare a private IntakePosition field with a default of RETRACTED.
+   *   3. Write a setter: check if the value changed, update the field,
+   *      call SmartLogger.logReplay("RobotState/Intake/Position", pos.toString())
+   *   4. Write a getter that returns the current IntakePosition.
+   *
+   * Look at the SpindexerState block above - the pattern is identical.
+   * Write it out from scratch rather than copying.
+   *
+   * When done: compile and move to Task 21.
+   * -----------------------------------------------------------------------
+   */
 
-  // ---- Mode ----
+  /*
+   * TASK 21 - Add IntakeRollerState Enum and State
+   * -----------------------------------------------------------------------
+   * The intake rollers (separate from the arm) can spin in, spin out, or stop.
+   *
+   * Values needed: STOPPED, INTAKING, REVERSING
+   *
+   * Same pattern as Task 20 - enum, field, setter with log, getter.
+   * Log key: "RobotState/Intake/RollerState"
+   *
+   * When done: compile and move to Task 22.
+   * -----------------------------------------------------------------------
+   */
+
+  /*
+   * TASK 22 - Add SingulatorState Enum and State
+   * -----------------------------------------------------------------------
+   * The Singulator feeds balls one at a time. It can be paused, feeding, or reversing.
+   *
+   * Values needed: PAUSED, FEEDING, REVERSING
+   *
+   * Same pattern again. You should be able to write this one without looking
+   * at the previous tasks.
+   * Log key: "RobotState/SingulatorState"
+   *
+   * Also add a boolean field for the beam break sensor:
+   *   - private boolean singulatorBeamBreak = false;
+   *   - setter: setSingulatorBeamBreak(boolean value) - logs to "RobotState/SingulatorBeamBreak"
+   *   - getter: getSingulatorBeamBreak() returns boolean
+   *
+   * When done: compile, then move to Task 23 in IntakeSubsystem.java.
+   * -----------------------------------------------------------------------
+   */
+
+  // ---- Mode ---- (do not modify)
 
   public void setMode(Mode mode) {
     if (this.mode == mode) return;
@@ -81,7 +118,7 @@ public class RobotState {
   }
   public boolean isEnabled() { return enabled; }
 
-  // ---- Alliance ----
+  // ---- Alliance ---- (do not modify)
 
   public void setAlliance(DriverStation.Alliance alliance) {
     if (this.alliance == alliance) return;
@@ -90,7 +127,7 @@ public class RobotState {
   }
   public DriverStation.Alliance getAlliance() { return alliance; }
 
-  // ---- Navigation ----
+  // ---- Navigation ---- (do not modify)
 
   public void setNavigationPhase(NavigationPhase phase) {
     if (this.navigationPhase == phase) return;
@@ -99,35 +136,12 @@ public class RobotState {
   }
   public NavigationPhase getNavigationPhase() { return navigationPhase; }
 
-  // ---- Pose ----
+  // ---- Pose ---- (do not modify)
 
   public void setRobotPose(Pose2d pose) { this.robotPose = pose; }
   public Pose2d getRobotPose() { return robotPose; }
 
-  // ---- Intake ----
-
-  public void setIntakePosition(IntakePosition pos) {
-    if (intakePosition == pos) return;
-    intakePosition = pos;
-    SmartLogger.logReplay("RobotState/Intake/Position", pos.toString());
-  }
-  public IntakePosition getIntakePosition() { return intakePosition; }
-
-  public void setIntakeRollerState(IntakeRollerState state) {
-    if (intakeRollerState == state) return;
-    intakeRollerState = state;
-    SmartLogger.logReplay("RobotState/Intake/RollerState", state.toString());
-  }
-  public IntakeRollerState getIntakeRollerState() { return intakeRollerState; }
-
-  public void setIntakeLimitSwitch(boolean pressed) {
-    if (intakeLimitSwitch == pressed) return;
-    intakeLimitSwitch = pressed;
-    SmartLogger.logReplay("RobotState/Intake/LimitSwitch", pressed);
-  }
-  public boolean isIntakeFullyRetracted() { return intakeLimitSwitch; }
-
-  // ---- Spindexer ----
+  // ---- Spindexer ---- (provided as reference)
 
   public void setSpindexerState(SpindexerState state) {
     if (this.spindexerState == state) return;
@@ -135,21 +149,4 @@ public class RobotState {
     SmartLogger.logReplay("RobotState/SpindexerState", state.toString());
   }
   public SpindexerState getSpindexerState() { return spindexerState; }
-
-  // ---- Singulator ----
-
-  public void setSingulatorState(SingulatorState state) {
-    if (this.singulatorState == state) return;
-    this.singulatorState = state;
-    SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
-  }
-  public SingulatorState getSingulatorState() { return singulatorState; }
-
-  // True when a ball is present at the singulator beam break sensor
-  public void setSingulatorBeamBreak(boolean value) {
-    if (this.singulatorBeamBreak == value) return;
-    this.singulatorBeamBreak = value;
-    SmartLogger.logReplay("RobotState/SingulatorBeamBreak", value);
-  }
-  public boolean getSingulatorBeamBreak() { return singulatorBeamBreak; }
 }

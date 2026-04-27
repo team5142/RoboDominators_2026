@@ -1,84 +1,95 @@
 package frc.robot.subsystems;
 
-import com.revrobotics.PersistMode;
-import com.revrobotics.ResetMode;
-import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.SparkLowLevel.MotorType;
-import com.revrobotics.spark.config.SparkMaxConfig;
 import au.grapplerobotics.LaserCan;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.Constants;
-import frc.robot.RobotState;
-import frc.robot.util.SmartLogger;
 
-// Feeds balls one at a time from the spindexer up to the flywheels.
-// A LaserCAN sensor detects when a ball is present and staged for feeding.
-// primeAndFeed() does a brief reverse pulse first to seat the ball before feeding forward.
+/*
+ * TASK 15 - Declare and Create the Singulator Motor
+ * -----------------------------------------------------------------------
+ * The Singulator feeds balls one at a time from the Spindexer up to the
+ * flywheels. It has one NEO motor on a SparkMax, and a LaserCAN sensor
+ * that detects when a ball is staged and ready.
+ *
+ * The LaserCAN is already wired up for you in isBallPresent() below.
+ * Your job is to declare and configure the motor - same pattern as the
+ * Spindexer, which you have already done.
+ *
+ * CAN ID: Constants.Singulator.MOTOR_ID
+ *
+ * Steps:
+ *   1. Add imports for SparkMax, MotorType, SparkMaxConfig, ResetMode, PersistMode,
+ *      RobotState, SmartLogger, and frc.robot.Constants (if not already imported).
+ *   2. Declare private final fields for the motor and for RobotState.
+ *   3. Update the constructor to accept RobotState.
+ *   4. In the constructor, create the SparkMax.
+ *   5. Create a SparkMaxConfig, set inverted to Constants.Singulator.MOTOR_INVERTED,
+ *      set smartCurrentLimit to Constants.Singulator.CURRENT_LIMIT_AMPS,
+ *      and call motor.configure().
+ *   6. Add a SmartLogger.logConsole line so you can see it boot in the console.
+ *      Something like: "Singulator ready (CAN " + Constants.Singulator.MOTOR_ID + ")"
+ *
+ * When done: compile and move to Task 16.
+ * -----------------------------------------------------------------------
+ */
+
+/*
+ * TASK 16 - Add Feed, Pause, Reverse, and StopAll Methods
+ * -----------------------------------------------------------------------
+ * The Singulator needs four methods. The Spindexer had similar methods -
+ * think about what each one should do before writing it.
+ *
+ *   spinFeed()    - run motor at Constants.Singulator.FEED_SPEED, set state to FEEDING
+ *   pause()       - stop motor, set state to PAUSED
+ *   spinReverse() - run motor at Constants.Singulator.REVERSE_SPEED, set state to REVERSING
+ *   stopAll()     - same as pause() - called as a safety stop on disable
+ *
+ * Notice that FEED_SPEED and REVERSE_SPEED need to exist in Constants.Singulator.
+ * Check if they are already there. If not, Task 13 asked you to add them - do that first.
+ *
+ * When done: compile and move to Task 17 in RobotContainer.java.
+ * -----------------------------------------------------------------------
+ */
+
+/*
+ * TASK 18 - Add periodic() Logging and Ball Detection
+ * -----------------------------------------------------------------------
+ * isBallPresent() is already written below - it reads the LaserCAN sensor.
+ * Your job is to call it in periodic() and log the result.
+ *
+ * Steps:
+ *   1. In periodic(), call isBallPresent() and store the result in a boolean.
+ *   2. Call robotState.setSingulatorBeamBreak() with that value.
+ *      (You wrote setSingulatorBeamBreak in Task 22 of RobotState.java)
+ *   3. Log it: SmartLogger.logReplay("Singulator/BallPresent", ballPresent)
+ *   4. Also log motor current: SmartLogger.logReplay("Singulator/CurrentAmps", ...)
+ *
+ * [ROBOT OPTIONAL] Deploy and watch Singulator/BallPresent toggle in AdvantageScope
+ * when you place a ball at the singulator staging point.
+ *
+ * When done: move to Task 19 in RobotContainer.java.
+ * -----------------------------------------------------------------------
+ */
+
+// The Singulator feeds balls one at a time from the Spindexer up to the flywheels.
+// A LaserCAN sensor detects when a ball is staged and ready.
 public class SingulatorSubsystem extends SubsystemBase {
-  private final RobotState robotState;
-  private final SparkMax motor;
+
   private final LaserCan laserCan;
 
-  private final Timer primeTimer = new Timer();
-  private boolean priming = false;
-
-  public SingulatorSubsystem(RobotState robotState) {
-    this.robotState = robotState;
-
-    motor = new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless);
-
-    SparkMaxConfig config = new SparkMaxConfig();
-    config.inverted(Constants.Singulator.MOTOR_INVERTED);
-    config.smartCurrentLimit(Constants.Singulator.CURRENT_LIMIT_AMPS);
-    motor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
-
+  public SingulatorSubsystem() {
     laserCan = new LaserCan(Constants.Singulator.LASERCAN_ID);
     try {
       laserCan.setRangingMode(LaserCan.RangingMode.SHORT);
       laserCan.setTimingBudget(LaserCan.TimingBudget.TIMING_BUDGET_20MS);
       laserCan.setRegionOfInterest(new LaserCan.RegionOfInterest(8, 8, 8, 8));
     } catch (au.grapplerobotics.ConfigurationFailedException e) {
-      SmartLogger.logConsole("LaserCAN config failed: " + e.getMessage(), "Singulator");
+      System.out.println("LaserCAN config failed: " + e.getMessage());
     }
-
-    SmartLogger.logConsole("Singulator ready (CAN " + Constants.Singulator.MOTOR_ID + ")", "Singulator");
   }
 
-  // Reverse briefly to seat the ball, then switch to feeding forward.
-  // Use this instead of spinFeed() for normal shooting.
-  public void primeAndFeed() {
-    if (priming || robotState.getSingulatorState() == RobotState.SingulatorState.FEEDING) return;
-    priming = true;
-    primeTimer.restart();
-    motor.set(Constants.Singulator.REVERSE_SPEED);
-    robotState.setSingulatorState(RobotState.SingulatorState.REVERSING);
-  }
-
-  // Feed forward directly without the prime pulse
-  public void spinFeed() {
-    priming = false;
-    motor.set(Constants.Singulator.FEED_SPEED);
-    robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
-  }
-
-  // Stop the motor
-  public void pause() {
-    priming = false;
-    motor.set(0.0);
-    robotState.setSingulatorState(RobotState.SingulatorState.PAUSED);
-  }
-
-  // Reverse to clear a jam
-  public void spinReverse() {
-    priming = false;
-    motor.set(Constants.Singulator.REVERSE_SPEED);
-    robotState.setSingulatorState(RobotState.SingulatorState.REVERSING);
-  }
-
-  public void stopAll() { pause(); }
-
-  // True when a ball is close enough to block the LaserCAN beam
+  // Returns true when a ball is close enough to block the LaserCAN beam.
+  // This is pre-built - you do not need to modify it.
   public boolean isBallPresent() {
     LaserCan.Measurement m = laserCan.getMeasurement();
     return m != null
@@ -88,17 +99,5 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
-    // After the prime pulse expires, switch to feed
-    if (priming && primeTimer.hasElapsed(Constants.Singulator.PRIME_REVERSE_SECS)) {
-      priming = false;
-      motor.set(Constants.Singulator.FEED_SPEED);
-      robotState.setSingulatorState(RobotState.SingulatorState.FEEDING);
-    }
-
-    boolean ballPresent = isBallPresent();
-    robotState.setSingulatorBeamBreak(ballPresent);
-    SmartLogger.logReplay("Singulator/BallPresent", ballPresent);
-    SmartLogger.logReplay("Singulator/CurrentAmps", motor.getOutputCurrent());
-    SmartLogger.logReplay("Singulator/State", robotState.getSingulatorState().toString());
   }
 }

@@ -8,8 +8,39 @@ import frc.robot.subsystems.DriveSubsystem;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 
-// Joystick teleoperated driving - runs as default command on DriveSubsystem
-// Applies deadbands, squaring, direction smoothing to prevent wheel twitching
+// Joystick teleoperated driving - runs as default command on DriveSubsystem.
+// Applies deadbands, curve shaping, direction smoothing, and desaturation.
+
+/*
+ * TASK 27 - Read Through This File
+ * -----------------------------------------------------------------------
+ * Before changing anything, read through execute() and understand:
+ *   - What does applyDeadband() do and why is it needed?
+ *   - What does the Math.copySign(Math.pow(...)) line do to the input?
+ *   - What is direction smoothing trying to prevent?
+ *   - What does desaturation prevent?
+ *
+ * There is nothing to write for this task - just understand it.
+ * When done: move to Task 28.
+ * -----------------------------------------------------------------------
+ */
+
+/*
+ * TASK 28 - Change the Input Curve and Feel the Difference
+ * -----------------------------------------------------------------------
+ * The current curve uses a power of 1.5 (see Math.pow(..., 1.5) in execute()).
+ * This affects how responsive the robot feels at low vs high stick inputs.
+ *
+ *   Lower power (e.g. 1.0) = linear, very twitchy at low speed
+ *   Higher power (e.g. 3.0) = sluggish at low speed, snappy at full stick
+ *   1.5 and 2.0 are common competition choices
+ *
+ * Change the power from 1.5 to 2.0 and notice how the robot feels.
+ * [ROBOT OPTIONAL] Try 1.0, 2.0, and 3.0 back to back. Pick what you prefer.
+ *
+ * When done: move to Task 29 in RobotContainer.java.
+ * -----------------------------------------------------------------------
+ */
 public class DriveWithJoysticks extends Command {
   private final DriveSubsystem driveSubsystem;
   private final DoubleSupplier xSupplier;
