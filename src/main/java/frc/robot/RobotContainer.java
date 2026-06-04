@@ -135,8 +135,8 @@ public class RobotContainer {
      * Pattern to use:
      *   new JoystickButton(operatorController, XboxController.Button.kRightBumper.value)
      *       .whileTrue(Commands.startEnd(
-     *           () -> { /* pressed - call spinForward here *&#47; },
-     *           () -> { /* released - call stop here *&#47; },
+     *           () -> { // pressed - call spinForward here ; },
+     *           () -> { // released - call stop here ; },
      *           spindexerSubsystem));
      *
      * Always null-check before calling: if (spindexerSubsystem != null) ...
