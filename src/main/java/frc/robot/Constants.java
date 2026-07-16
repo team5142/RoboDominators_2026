@@ -478,7 +478,7 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FORWARD_SPINDEXER_SPEED = 1.0;
+    public static final double FORWARD_SPINDEXER_SPEED = 0.7;
     // Full reverse on agitate — maximum force to break jam in minimum time.
     // Previous value was -0.50 (conservative placeholder).
     public static final double REVERSE_SPINDEXER_SPEED = -0.6;
