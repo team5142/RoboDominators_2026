@@ -179,7 +179,7 @@ import frc.robot.util.SmartLogger;
  */
 
 /*
- * TASK 13 - Jam Detection in periodic() (Advanced)
+ * TASK 14 - Jam Detection in periodic() (Advanced)
  * -----------------------------------------------------------------------
  * When a ball jams the spindexer, the motor strains against it and draws
  * extra current. If current stays high long enough, we know something is stuck.
@@ -226,6 +226,10 @@ import frc.robot.util.SmartLogger;
 public class SpindexerSubsystem extends SubsystemBase {
   private final SparkMax spinMotor;
   private RobotState.SpindexerState robotState;
+  private double currentAmps;
+  private double currentVelocity;
+  private int stallLoopCount = 0;        // counts consecutive high-current loops
+  private int agitateLoopsRemaining = 0; // counts how many loops the reverse pulse has left
     public SpindexerSubsystem(RobotState robotState) {
       spinMotor = new SparkMax(Constants.Spindexer.MOTOR_ID , MotorType.kBrushless);
       this.robotState = RobotState.SpindexerState.STOPPED;
@@ -253,7 +257,28 @@ public class SpindexerSubsystem extends SubsystemBase {
   
   @Override
   public void periodic() {
+    currentAmps=spinMotor.getOutputCurrent();
+    currentVelocity=spinMotor.getEncoder().getVelocity();
     SmartLogger.logReplay("Spindexer/CurrentAmps", spinMotor.getOutputCurrent());
     SmartLogger.logReplay("Spindexer/VelocityRpm", spinMotor.getEncoder().getVelocity());
+     if (currentAmps>Constants.Spindexer.LOAD_CURRENT_AMPS) {
+        stallLoopCount++;
+        System.out.println("Spindexer stalling");
+      } 
+      if (stallLoopCount >= Constants.Spindexer.AGITATE_LOOP_THRESHOLD) {
+        stallLoopCount = 0;
+        agitateLoopsRemaining = Constants.Spindexer.AGITATE_PULSE_LOOPS;
+        spinMotor.set(Constants.Spindexer.REVERSE_SPINDEXER_SPEED);
+        robotState=RobotState.SpindexerState.REVERSE;
+        System.out.println("Agitation initiated ");
+      }
+    if (robotState==RobotState.SpindexerState.REVERSE&&agitateLoopsRemaining>0) {
+      agitateLoopsRemaining--;
+      if (agitateLoopsRemaining==0) {
+        spinMotor.set(Constants.Spindexer.FORWARD_SPINDEXER_SPEED);
+        robotState=RobotState.SpindexerState.FORWARD;
+      }
+     }
+   
   }
 }
