@@ -64,7 +64,7 @@ public class RobotContainer {
     // Task 15: update SingulatorSubsystem() similarly
     intakeSubsystem     = ENABLE_INTAKE     ? new IntakeSubsystem(robotState) : null;
     spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem(robotState)        : null;
-    singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem()       : null;
+    singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem(robotState)       : null;
 
     updateAllianceFromDriverStation();
     robotState.setAlliance(cachedAlliance);
@@ -169,7 +169,7 @@ public class RobotContainer {
      */
     new JoystickButton(operatorController,XboxController.Button.kLeftBumper.value)
       .whileTrue(Commands.startEnd(
-        () -> {spindexerSubsystem.motorForward();
+        () -> {spindexerSubsystem.motorBackward();
               System.out.println("Spindexer on");},
         () -> {spindexerSubsystem.motorStop();
               System.out.println("Spindexer off");},

@@ -1,5 +1,7 @@
 package frc.robot;
 
+import java.lang.Thread.State;
+
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
 import frc.robot.util.SmartLogger;
@@ -100,9 +102,20 @@ public class RobotState {
    *   - getter: getSingulatorBeamBreak() returns boolean
    *
    * When done: compile, then move to Task 23 in IntakeSubsystem.java.
-   * -----------------------------------------------------------------------
+   * ------------------------------------------------------------------------
    */
-
+  public enum SingulatorState {
+    PAUSED,
+    FEEDING,
+    REVERSING,
+  }
+  private SingulatorState singulatorState=SingulatorState.PAUSED;
+  public void SetSingulatorState(SingulatorState state) {
+    if (this.singulatorState==state) return;
+    this.singulatorState = state;
+    SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
+  }
+  
   // ---- Mode ---- (do not modify)
 
   public void setMode(Mode mode) {
@@ -117,7 +130,7 @@ public class RobotState {
     SmartLogger.logReplay("RobotState/Enabled", enabled);
   }
   public boolean isEnabled() { return enabled; }
-
+ 
   // ---- Alliance ---- (do not modify)
 
   public void setAlliance(DriverStation.Alliance alliance) {
