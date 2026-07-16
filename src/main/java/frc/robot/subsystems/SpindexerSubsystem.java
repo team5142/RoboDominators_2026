@@ -1,6 +1,12 @@
 package frc.robot.subsystems;
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.Constants;
+import frc.robot.RobotState;
+import frc.robot.RobotState.SpindexerState;
+import frc.robot.util.SmartLogger;
 
 /*
  * TASK 2 - Declare a Motor
@@ -30,7 +36,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  * If it says BUILD SUCCESSFUL, move on to Task 3.
  * -----------------------------------------------------------------------
  */
-
+  
 /*
  * TASK 3 - Spin the Motor Forward and Stop It
  * -----------------------------------------------------------------------
@@ -218,11 +224,36 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 // The Spindexer is a cone-shaped spinning disk that feeds balls toward the Singulator.
 // It is driven by a single NEO motor controlled by a SparkMax motor controller.
 public class SpindexerSubsystem extends SubsystemBase {
-
-  public SpindexerSubsystem() {
+  private final SparkMax spinMotor;
+  private RobotState.SpindexerState robotState;
+    public SpindexerSubsystem(RobotState robotState) {
+      spinMotor = new SparkMax(Constants.Spindexer.MOTOR_ID , MotorType.kBrushless);
+      this.robotState = RobotState.SpindexerState.STOPPED;
+    }
+    public void motorForward() { 
+      spinMotor.set(Constants.Spindexer.FORWARD_SPINDEXER_SPEED);
+      System.out.println("Spindexer spinning forward");
+      robotState = RobotState.SpindexerState.FORWARD;
   }
-
+  public void motorStop() {
+    spinMotor.set(0.0);
+    System.out.println("Spindexer stopped");
+    robotState = RobotState.SpindexerState.STOPPED;
+  }
+  public void motorBackward() {
+    spinMotor.set(Constants.Spindexer.REVERSE_SPINDEXER_SPEED);
+    System.out.println("Spinder spinning backward");
+    robotState = RobotState.SpindexerState.REVERSE;
+  }
+  public void stopAll() { 
+    spinMotor.set(0.0);
+    System.out.println("Spindexer stopped");
+    robotState = RobotState.SpindexerState.STOPPED;
+  }
+  
   @Override
   public void periodic() {
+    SmartLogger.logReplay("Spindexer/CurrentAmps", spinMotor.getOutputCurrent());
+    SmartLogger.logReplay("Spindexer/VelocityRpm", spinMotor.getEncoder().getVelocity());
   }
 }

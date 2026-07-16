@@ -73,10 +73,10 @@ public final class AutoCommands {
         }
 
         if (spindexer != null && singulator != null) {
-            NamedCommands.registerCommand("FeedStart", Commands.runOnce(() -> {
-                // Task 11 unlock: spindexer.spinForward();
+            NamedCommands.registerCommand("FeedStart", Commands.runOnce(
+                () -> {spindexer.motorForward();}
                 // Task 16 unlock: singulator.spinFeed();
-            }, spindexer, singulator));
+                , spindexer, singulator)); }
 
             NamedCommands.registerCommand("FeedStop", Commands.runOnce(() -> {
                 // Task 11 unlock: spindexer.stop();
@@ -84,4 +84,4 @@ public final class AutoCommands {
             }, spindexer, singulator));
         }
     }
-}
+

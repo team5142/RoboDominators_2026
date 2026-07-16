@@ -101,7 +101,7 @@ public class Robot extends LoggedRobot {
        * Uncomment each line below once you have added stopAll() to that subsystem.
        * This is a safety requirement - motors must not run while the robot is disabled.
        */
-      // if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
+       if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
       // if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
       // if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
     }

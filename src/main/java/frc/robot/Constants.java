@@ -396,6 +396,8 @@ public final class Constants {
     public static final int MOTOR_ID = 24; // REV NEO on SparkMax
     public static final int LASERCAN_ID = 28; // LaserCAN — ball present at singulator staging point
     public static final int DEAD_ZONE_LASERCAN_ID = 29; // LaserCAN — ball stuck above singulator, below flywheels
+    public static final double FORWARD_SINGULATOR_SPEED = 0.8;
+    public static final double REVERSE_SINGULATOR_SPEED = -0.5;
     // Ball is considered present when LaserCAN reads closer than this distance.
     // Channel is ~7-8in wide, ball is 6in diameter. Sensor shoots across the channel (~200mm).
     // 150mm catches the ball anywhere in the inner half without false-triggering on the far wall.
@@ -476,10 +478,10 @@ public final class Constants {
     // TODO: flip to true if motor runs backwards on first test
     public static final boolean MOTOR_INVERTED = true;
 
-    public static final double FORWARD_SPEED = 1.0;
+    public static final double FORWARD_SPINDEXER_SPEED = 1.0;
     // Full reverse on agitate — maximum force to break jam in minimum time.
     // Previous value was -0.50 (conservative placeholder).
-    public static final double REVERSE_SPEED = -0.6;
+    public static final double REVERSE_SPINDEXER_SPEED = -0.6;
 
     // Agitator auto-reverse: current-based detection (replaces velocity-based).
     // Current spikes immediately when balls pile on; velocity was too slow to react.

@@ -63,7 +63,7 @@ public class RobotContainer {
     // Task 9: update SpindexerSubsystem() to pass robotState once you add it to the constructor
     // Task 15: update SingulatorSubsystem() similarly
     intakeSubsystem     = ENABLE_INTAKE     ? new IntakeSubsystem(robotState) : null;
-    spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem()        : null;
+    spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem(robotState)        : null;
     singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem()       : null;
 
     updateAllianceFromDriverStation();
@@ -143,6 +143,17 @@ public class RobotContainer {
      *
      * When done: compile and deploy.
      * [ROBOT OPTIONAL] Hold Right Bumper - the spindexer should spin.
+     */
+     new JoystickButton(operatorController,XboxController.Button.kRightBumper.value)
+      .whileTrue(Commands.startEnd(
+        () -> {spindexerSubsystem.motorForward();
+               System.out.println("Spindexer on");},
+        () -> {spindexerSubsystem.motorStop();
+               System.out.println("Spindexer off");},
+        spindexerSubsystem));
+      
+
+    /* 
      * Come back here for Task 6.
      * -----------------------------------------------------------------------
      */
@@ -156,7 +167,13 @@ public class RobotContainer {
      * When done: compile and come back here for Task 17.
      * -----------------------------------------------------------------------
      */
-
+    new JoystickButton(operatorController,XboxController.Button.kLeftBumper.value)
+      .whileTrue(Commands.startEnd(
+        () -> {spindexerSubsystem.motorForward();
+              System.out.println("Spindexer on");},
+        () -> {spindexerSubsystem.motorStop();
+              System.out.println("Spindexer off");},
+        spindexerSubsystem));
     /*
      * TASK 17 - Combine Spindexer and Singulator on Right Bumper
      * -----------------------------------------------------------------------
