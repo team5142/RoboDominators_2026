@@ -7,7 +7,9 @@ import frc.robot.Constants;
 import frc.robot.RobotState;
 import frc.robot.RobotState.SpindexerState;
 import frc.robot.util.SmartLogger;
-
+import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.PersistMode;
+ import com.revrobotics.ResetMode;
 /*
  * TASK 2 - Declare a Motor
  * -----------------------------------------------------------------------
@@ -233,6 +235,10 @@ public class SpindexerSubsystem extends SubsystemBase {
     public SpindexerSubsystem(RobotState robotState) {
       spinMotor = new SparkMax(Constants.Spindexer.MOTOR_ID , MotorType.kBrushless);
       this.robotState = RobotState.SpindexerState.STOPPED;
+      SparkMaxConfig config = new SparkMaxConfig();
+    config.inverted(Constants.Spindexer.MOTOR_INVERTED);
+    config.smartCurrentLimit(Constants.Spindexer.CURRENT_LIMIT_AMPS);
+    spinMotor.configure(config, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
     }
     public void motorForward() { 
       spinMotor.set(Constants.Spindexer.FORWARD_SPINDEXER_SPEED);
