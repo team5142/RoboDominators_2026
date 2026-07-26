@@ -14,7 +14,7 @@ import java.util.function.DoubleSupplier;
 // Uses a ProfiledPIDController for smooth deceleration instead of a sudden stop.
 
 /*
- * TASK 31 - Read Through This File
+ * TASK 24 - Read Through This File
  * -----------------------------------------------------------------------
  * This is your first named Command class. Before changing anything, read
  * through it and understand:
@@ -25,12 +25,12 @@ import java.util.function.DoubleSupplier;
  *     What would happen at 180 degrees without it?
  *   - Why does isFinished() return false?
  *
- * Nothing to write - understand it. When done: move to Task 32.
+ * Nothing to write - understand it. When done: move to Task 25.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 32 - Tune the PID Gains
+ * TASK 25 - Tune the PID Gains
  * -----------------------------------------------------------------------
  * The three gains control how aggressively the controller rotates:
  *   kP = proportional - how hard it pushes toward the target
@@ -45,7 +45,7 @@ import java.util.function.DoubleSupplier;
  * [ROBOT OPTIONAL] Change kP, deploy, hold a D-pad direction.
  * Watch how fast and smoothly the robot snaps to heading.
  *
- * When done: move to Task 33 in RobotContainer.java.
+ * When done: move to Task 26 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
