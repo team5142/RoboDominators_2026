@@ -222,6 +222,9 @@ public final class Constants {
 
   // QuestNav SLAM sensor (USB/Ethernet connected IMU with visual odometry)
   public static final class QuestNav {
+    public static final String QUEST_IP_ADDRESS = "10.51.42.100"; // Quest DHCP/Static connection IP
+    public static final int QUEST_PORT = 5801;                     // Default WebServer API port
+
     // Measured 2026-03-02: 10.79in back, 11.88in left, 20.28in up. Facing backward (yaw 180).
     public static final double QUEST_X_METERS = Units.inchesToMeters(-10.79);
     public static final double QUEST_Y_METERS = Units.inchesToMeters(10.88);

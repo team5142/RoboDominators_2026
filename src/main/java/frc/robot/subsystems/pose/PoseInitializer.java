@@ -319,6 +319,15 @@ public class PoseInitializer {
            point.getY() > FIELD_MARGIN_METERS &&
            point.getY() < FIELD_WIDTH_METERS - FIELD_MARGIN_METERS;
   }
+
+  public boolean isFieldAligned(Pose2d pose) {
+    // If the Quest is running unanchored without tag tracking, it defaults to booting at (0,0) locally.
+    // When it aligns with an AprilTag, it maps into real FRC coordinates.
+    // We check if it sits squarely in the field boundaries, and importantly:
+    // it shouldn't be exactly sitting at (0,0) (the unanchored fallback origin).
+    boolean notAtOrigin = Math.abs(pose.getX()) > 0.05 || Math.abs(pose.getY()) > 0.05;
+    return notAtOrigin && isWithinField(pose.getTranslation());
+  }
   
   // Sanity check for unanchored poses (SHOP_RESUME mode)
   // Rejects NaN/Inf and absurdly large values (>100m suggests Quest error)

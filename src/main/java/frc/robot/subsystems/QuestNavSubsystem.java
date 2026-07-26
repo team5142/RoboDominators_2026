@@ -10,6 +10,7 @@ import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import frc.robot.subsystems.pose.QuestNavWakeService;
 import frc.robot.util.SmartLogger;
 import gg.questnav.questnav.QuestNav;
 import gg.questnav.questnav.PoseFrame;
@@ -19,6 +20,7 @@ import java.util.OptionalInt;
 
 public class QuestNavSubsystem extends SubsystemBase {
   private final QuestNav questNav;
+  private final QuestNavWakeService wakeService;
   private final Transform3d robotToQuest;
   private final Transform3d robotToQuestInverse; // cached to avoid recomputing every frame
   
@@ -59,6 +61,10 @@ public class QuestNavSubsystem extends SubsystemBase {
   
   public QuestNavSubsystem() {
     SmartLogger.logConsole("QuestNavSubsystem initializing...", "QuestNav");
+    
+    // Start our network wake and tracking recovery service
+    wakeService = new QuestNavWakeService(QUEST_IP_ADDRESS, QUEST_PORT);
+    wakeService.start();
     
     try {
       questNav = new QuestNav();
@@ -380,6 +386,13 @@ public class QuestNavSubsystem extends SubsystemBase {
     isSeeded = false;
     SmartLogger.logConsole("QuestNav in RESUME mode - using existing tracking", "QuestNav");
     SmartLogger.logReplay("QuestNav/ResumeMode", true);
+  }
+
+  /**
+   * Forces the headset to restart its background VR tracking app using our WakeService.
+   */
+  public void triggerAppRestart() {
+    wakeService.triggerAppRestart();
   }
   
   private void testConnection() {

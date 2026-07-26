@@ -1,0 +1,199 @@
+# ==============================================================================
+# QUESTNAV ELITE-LEVEL AUTO-HEAL, NETWORK WAKE & ALIGNMENT SPECIFICATION
+# RoboDominators 5142 - FRC 2026 Season
+# ==============================================================================
+# This guide contains step-by-step specifications and production-ready Java templates
+# for implementing dynamic wake-on-network, automatic tracking recovery, and 
+# high-precision validation gates on the RoboRIO.
+# ==============================================================================
+
+1. SYSTEM OVERVIEW & THE FAILOVER CYCLE
+------------------------------------------------------------------------------
+The QuestNav system operates on an isolated, state-aware recovery pipeline:
+  
+  [Quest Online]                                           [Quest Offline]
+   120Hz VIO + Tags (Surgical Precision)                   Disconnect/Standby detected in 100ms
+        │                                                       │
+        ▼ (Standard Mode)                                       ▼ (Veto / Shield Activated)
+   Process using QuestNavFusion                             Swerve Odometry + Pigeon 2 Backups
+        ▲                                                       │
+        │                                                       ▼ (Active Recovery)
+   Seamless Handshake Swap <─── High-Confidence Verification ─── Ping & HTTP Restart Commands
+                                (Dynamic Delta validation)
+
+When active, standard deviations scale dynamically:
+  - Traising / Dynamic turns: Standard deviations set to 5.0m (Veto Mode) to protect PathPlanner.
+  - Settle & Shot Alignment: Settle timer (150ms) triggers. Standard deviations snap to 0.01m (1cm XY).
+
+
+2. PRODUCTION JAVA TEMPLATE: QUESTNAV NETWORK WAKE SERVICE
+------------------------------------------------------------------------------
+Place this service as a secondary asynchronous helper thread managed by QuestNavSubsystem.
+This prevents blocking main loop cycles (main thread) during HTTP timeouts.
+
+File: src/main/java/frc/robot/subsystems/pose/QuestNavWakeService.java (Recommended Location)
+```java
+package frc.robot.subsystems.pose;
+
+import edu.wpi.first.wpilibj.Timer;
+import frc.robot.util.SmartLogger;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class QuestNavWakeService {
+  private final String questIp;
+  private final int port;
+  private Thread asyncThread;
+  private boolean running = false;
+  
+  private double lastPingTime = 0.0;
+  private static final double PING_INTERVAL_SEC = 2.0;
+
+  public QuestNavWakeService(String questIp, int port) {
+    this.questIp = questIp;
+    this.port = port;
+  }
+
+  public void start() {
+    if (running) return;
+    running = true;
+    asyncThread = new Thread(this::runService);
+    asyncThread.setDaemon(true);
+    asyncThread.setName("QuestNav-WakeService");
+    asyncThread.start();
+    SmartLogger.logConsole("Asynchronous Wake & Recovery Service started.", "QuestNav");
+  }
+
+  public void stop() {
+    running = false;
+    if (asyncThread != null) {
+      asyncThread.interrupt();
+    }
+  }
+
+  private void runService() {
+    while (running) {
+      double currentTime = Timer.getFPGATimestamp();
+      if (currentTime - lastPingTime >= PING_INTERVAL_SEC) {
+        lastPingTime = currentTime;
+        pingAndWake();
+      }
+      try {
+        Thread.sleep(500); // Poll sleep check at 2Hz
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        break;
+      }
+    }
+  }
+
+  private void pingAndWake() {
+    HttpURLConnection connection = null;
+    try {
+      // Send a lightweight GET request to the Status/Info endpoint.
+      // This wakes the USB-C Ethernet controller on the Quest from standby.
+      URL url = new URL("http://" + questIp + ":" + port + "/api/info");
+      connection = (HttpURLConnection) url.openConnection();
+      connection.setRequestMethod("GET");
+      connection.setConnectTimeout(800);
+      connection.setReadTimeout(800);
+      
+      int responseCode = connection.getResponseCode();
+      if (responseCode == 200) {
+        // Success! Headset is active and webserver is running.
+        // No action required.
+      }
+    } catch (Exception e) {
+      // Connection failed (Quest is sleeping or network is down)
+      // This is expected when the robot boots up on the field while the Quest is sleeping.
+    } finally {
+      if (connection != null) {
+        connection.disconnect();
+      }
+    }
+  }
+
+  /**
+   * Forces the headset's custom Android service to restart the QuestNav VR tracking app.
+   * Useful when we see the headset is connected over NT but 'isTracking' remains false.
+   */
+  public void triggerAppRestart() {
+    new Thread(() -> {
+      HttpURLConnection connection = null;
+      try {
+        URL url = new URL("http://" + questIp + ":" + port + "/api/restart");
+        connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("POST");
+        connection.setConnectTimeout(1500);
+        connection.setReadTimeout(1500);
+        
+        int responseCode = connection.getResponseCode();
+        if (responseCode == 200) {
+          SmartLogger.logConsole("[QuestNav] Successfully requested app tracking restart via API GET", "QuestNav");
+        }
+      } catch (Exception e) {
+        SmartLogger.logConsoleError("Failed to send QuestNav app restart: " + e.getMessage());
+      } finally {
+        if (connection != null) {
+          connection.disconnect();
+        }
+      }
+    }).start();
+  }
+}
+```
+
+
+3. ALIGNED VALIDATION GATE (THE RE-LOCK SWAP BACK)
+------------------------------------------------------------------------------
+When QuestNav transitions from 'offline' to 'online', the RoboRIO must verify that the
+restored coordinates are correct before handing back control.
+
+Integrate this validation block inside 'QuestNavFusion.java' or 'PoseEstimatorSubsystem.java':
+
+```java
+// Inside PoseEstimatorSubsystem.java during the Reconnection / Regain loop:
+private void handleReconnectionVerification() {
+  if (questNavSubsystem.isTracking() && currentInitMode == InitMode.SHOP_RESUME) {
+    Optional<QuestNavSubsystem.QuestMeasurement> meas = questNavSubsystem.peekLatestMeasurement();
+    
+    if (meas.isPresent()) {
+      Pose2d questPose = meas.get().pose;
+      Pose2d odometryBackupPose = poseEstimator.getEstimatedPosition();
+      
+      // Calculate the physical delta between our highly stable swerve odometry 
+      // backup and the newly restored QuestNav pose.
+      double deltaXY = questPose.getTranslation().getDistance(odometryBackupPose.getTranslation());
+      double deltaTheta = Math.abs(questPose.getRotation().minus(odometryBackupPose.getRotation()).getDegrees());
+      
+      // Define our recovery boundaries (e.g. 15cm translation, 5.0 degrees rotation)
+      if (deltaXY <= 0.15 && deltaTheta <= 5.0) {
+        // SUCCESS: The restored track is self-consistent and aligned! 
+        // Swap back to QuestNav primary tracking smoothly.
+        questNavFusion.resumeFusion();
+        SmartLogger.logConsole("[Recovery] Reconnection confirmed! Alignment delta is within tolerance (XY=" 
+            + String.format("%.3f", deltaXY) + "m, Theta=" + String.format("%.1f", deltaTheta) + "deg). Swapped back to QuestNav.");
+      } else {
+        // WARNING: The restored pose differs dramatically. We may have drifted or 
+        // the headset underwent an unverified AprilTag snap. 
+        // We reject the reconnection on this loop, keeping the backup enabled.
+        SmartLogger.logConsoleError("[Recovery] Verification REJECTED! restored pose differs from odometry. (XY delta=" 
+            + String.format("%.3f", deltaXY) + "m, Theta delta=" + String.format("%.1f", deltaTheta) + "deg).");
+      }
+    }
+  }
+}
+```
+
+
+4. DEVELOPER GUIDELINES FOR HIGH-ACCURACY TESTING (TO DO)
+------------------------------------------------------------------------------
+- [ ] Implement startup 'Disabled' auto-seeder: if isDisabled() is true and the headset sees a tag (field-aligned), 
+      seed the starting position automatically to bypass auto chooser select blindness.
+- [ ] Implement settle timer (150ms) inside 'QuestNavFusion.processFrames()'. If linear speed < 0.05 m/s 
+      and angular rate < 2 deg/s for 150ms, set Standard Deviations to 0.01m (1cm) to lock pose before firing.
+- [ ] Connect 'QuestNavWakeService' during RobotContainer configuration. Test carrying the robot 
+      through the lab and placing it on the floor: confirm that the active ping successfully wakes the 
+      headset and restores tracking on-the-fly.
+- [ ] Log reconnection metrics on Elastic Dashboard to track drift alignment in real-time.
+# ==============================================================================

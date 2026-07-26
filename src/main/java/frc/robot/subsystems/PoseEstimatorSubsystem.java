@@ -278,6 +278,35 @@ public class PoseEstimatorSubsystem extends SubsystemBase {
       if (logCounter % 10 == 0) {
         initializer.updateReadiness();
 
+        // Passive Aligner: if QuestNav starts up, detects AprilTags, and locks onto real field coordinates,
+        // we can automatically snap our odometry position to it right now!
+        if (!initializer.isInitialized() && !DriverStation.isFMSAttached()) {
+          var latestQuestMeas = questNavSubsystem.peekLatestMeasurement();
+          if (latestQuestMeas.isPresent()) {
+            Pose2d pose = latestQuestMeas.get().pose;
+            if (initializer.isFieldAligned(pose)) {
+              SmartLogger.logConsole("[Passive Aligner] Headset has field-aligned! Snapping starting pose to: " + SmartLogger.formatPose(pose));
+              
+              // Seed the robot estimator directly
+              resetPose(pose, driveSubsystem.getGyroRotation(), driveSubsystem.getModulePositions());
+              
+              // Transition to SHOP_RESUME mode so we respect the field coordinates without overwriting them
+              questNavSubsystem.enterResumeMode();
+              questNavFusion.setExpectedSeedPose(null);
+              questNavFusion.setValidationMode(Constants.QuestNav.InitMode.SHOP_RESUME);
+              questNavFusion.onShopResumeInit();
+              currentInitMode = Constants.QuestNav.InitMode.SHOP_RESUME;
+              
+              // Sync Pigeon and set Operator Perspective
+              driveSubsystem.setGyroHeading(pose.getRotation());
+              driveSubsystem.setOperatorPerspectiveForward(getDriverDownfieldAngle());
+              
+              initializer.setInitState(PoseInitializer.InitializationState.INITIALIZED);
+              lastSeededAutoName = initializer.getSelectedAutoName();
+            }
+          }
+        }
+
         // If the auto chooser selection changes while disabled, reset init so the pose
         // estimator and Quest re-seed to the new auto's start position immediately.
         // This lets the driver see the correct robot position on the field in Elastic

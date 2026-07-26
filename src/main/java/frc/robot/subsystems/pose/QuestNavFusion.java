@@ -484,11 +484,44 @@ public class QuestNavFusion {
   }
 
   private boolean checkValidation(Pose2d questPose) {
+    // If the robot is already enabled and running, we validate the restored tracking 
+    // against our active ongoing swerve odometry backup (represented by the estimator's
+    // current pose) instead of a static startup seed pose. This acts as our safety veto.
+    boolean matchIsEnabled = edu.wpi.first.wpilibj.DriverStation.isEnabled();
+    
+    double error;
+    double tolerance;
+    
+    if (matchIsEnabled) {
+      Pose2d curEstimatorPose = poseEstimatorSubsystem.getEstimatedPose();
+      error = questPose.getTranslation().getDistance(curEstimatorPose.getTranslation());
+      tolerance = 0.15; // Tight 15cm backup alignment guard
+      
+      Logger.recordOutput("PoseEstimator/QuestNav/ValidationError", error);
+      Logger.recordOutput("PoseEstimator/QuestNav/ValidationTolerance", tolerance);
+      
+      if (error < tolerance) {
+        validationPassStreak++;
+        if (validationPassStreak >= VALIDATION_REQUIRED_STREAK) {
+          SmartLogger.logConsole("[QuestNav Recovery] Reconnection SUCCESS: restored tracking aligns with odometry! Delta XY = " 
+              + String.format("%.3fm", error) + ". Resuming primary fusion.", "QuestNav");
+          return true;
+        }
+      } else {
+        validationPassStreak = 0;
+        if (logCounter % 10 == 0) {
+          SmartLogger.logConsoleError("[QuestNav Recovery] Reconnection REJECTED: restored coordinates differ from odometry by " 
+              + String.format("%.2fm", error) + ". Holding backup mode!");
+        }
+      }
+      return false;
+    }
+
     if (validationSeedPose == null) return false;
 
-    double error = questPose.getTranslation().getDistance(validationSeedPose.getTranslation());
+    error = questPose.getTranslation().getDistance(validationSeedPose.getTranslation());
     
-    double tolerance = (validationMode == Constants.QuestNav.InitMode.COMP_SEED) 
+    tolerance = (validationMode == Constants.QuestNav.InitMode.COMP_SEED) 
         ? COMP_VALIDATION_TOLERANCE_METERS 
         : SHOP_STABILITY_TOLERANCE_METERS;
 
