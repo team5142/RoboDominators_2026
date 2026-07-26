@@ -62,7 +62,7 @@ public class RobotContainer {
     poseEstimator  = new PoseEstimatorSubsystem(driveSubsystem, robotState, questNav);
 
     // Task 9: update SpindexerSubsystem() to pass robotState once you add it to the constructor
-    // Task 15: update SingulatorSubsystem() similarly
+    // Task 14: update SingulatorSubsystem() similarly
     intakeSubsystem     = ENABLE_INTAKE     ? new IntakeSubsystem(robotState) : null;
     spindexerSubsystem  = ENABLE_SPINDEXER  ? new SpindexerSubsystem(robotState)        : null;
     singulatorSubsystem = ENABLE_SINGULATOR ? new SingulatorSubsystem(robotState)       : null;
@@ -168,7 +168,7 @@ public class RobotContainer {
      * Same pattern as Task 4 - whileTrue + startEnd.
      * Left Bumper: XboxController.Button.kLeftBumper
      *
-     * When done: compile and come back here for Task 17.
+     * When done: compile and move to Task 7 in Robot.java.
      * -----------------------------------------------------------------------
      */
     new JoystickButton(operatorController,XboxController.Button.kLeftBumper.value)
@@ -187,7 +187,7 @@ public class RobotContainer {
       singulatorSubsystem));
       
     /*
-     * TASK 17 - Combine Spindexer and Singulator on Right Bumper
+     * TASK 16 - Combine Spindexer and Singulator on Right Bumper
      * -----------------------------------------------------------------------
      * Now that both subsystems exist, update the Right Bumper binding to call
      * both at the same time. One lambda can call multiple methods.
@@ -201,12 +201,12 @@ public class RobotContainer {
      * Make sure to include both subsystems in the requirements list at the end
      * of startEnd() so WPILib knows both are being used.
      *
-     * When done: compile and move to Task 19.
+     * When done: compile and move to Task 17.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 19 - Add a Release-to-Trigger Binding (onFalse)
+     * TASK 17 - Add a Release-to-Trigger Binding (onFalse)
      * -----------------------------------------------------------------------
      * Sometimes you want an action to happen when a button is RELEASED rather
      * than pressed. onFalse() fires once when the button goes from held to released.
@@ -220,12 +220,12 @@ public class RobotContainer {
      *       .onTrue(Commands.runOnce(() -> { ... }))
      *       .onFalse(Commands.runOnce(() -> { ... }));
      *
-     * When done: move to Task 25.
+     * When done: move to Task 18.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 25 - Wire the Y Button: Intake Arm Toggle (Conditional Logic)
+     * TASK 18 - Wire the Y Button: Intake Arm Toggle (Conditional Logic)
      * -----------------------------------------------------------------------
      * The Y button should extend the arm if it is retracted, and retract it
      * if it is extended. This requires a conditional check inside the lambda.
@@ -244,12 +244,12 @@ public class RobotContainer {
      *     }
      *   }, theSubsystem)
      *
-     * When done: move to Task 26.
+     * When done: move to Task 19.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 26 - Wire B and X: Roller Control While Held
+     * TASK 19 - Wire B and X: Roller Control While Held
      * -----------------------------------------------------------------------
      * B button (hold): run intake rollers in (spinIn), stop on release
      * X button (hold): run intake rollers out (spinOut), stop on release
@@ -257,12 +257,12 @@ public class RobotContainer {
      * You have done this pattern twice already (Tasks 4 and 6).
      * Write these two bindings without looking back at your previous work.
      *
-     * When done: compile and move to Task 27 in DriveWithJoysticks.java.
+     * When done: compile and move to Task 20 in DriveWithJoysticks.java.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 29 - Add a Precision Mode Button (Live Supplier)
+     * TASK 22 - Add a Precision Mode Button (Live Supplier)
      * -----------------------------------------------------------------------
      * DriveWithJoysticks already accepts a precisionModeSupplier - a lambda
      * that is called every loop to check if precision mode is active.
@@ -276,12 +276,12 @@ public class RobotContainer {
      *
      * When done: deploy and hold Left Bumper while driving.
      * [ROBOT OPTIONAL] The robot should feel noticeably slower and more precise.
-     * Then move to Task 30.
+     * Then move to Task 23.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 30 - Rewrite One Binding as a Method Reference
+     * TASK 23 - Rewrite One Binding as a Method Reference
      * -----------------------------------------------------------------------
      * A method reference is a shorthand for a lambda that only calls one method.
      *
@@ -293,12 +293,12 @@ public class RobotContainer {
      * Find one of your existing bindings that only calls a single method and
      * rewrite it using the :: syntax. Compile and verify it still works.
      *
-     * When done: move to Task 31 in SnapToHeadingFixed.java.
+     * When done: move to Task 24 in SnapToHeadingFixed.java.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 33 - Wire D-Pad to Snap-to-Heading (Passing a Value to a Command)
+     * TASK 26 - Wire D-Pad to Snap-to-Heading (Passing a Value to a Command)
      * -----------------------------------------------------------------------
      * SnapToHeadingFixed is a Command class - you create it with new, passing
      * arguments in the constructor. This is different from Commands.runOnce()
@@ -316,12 +316,12 @@ public class RobotContainer {
      * Pass the left stick suppliers for translation, and a fixed heading value
      * as a supplier: () -> 0.0 for north, () -> 90.0 for east, etc.
      *
-     * When done: move to Task 34.
+     * When done: move to Task 27.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 34 - Add a Toggle Mode for the Spindexer
+     * TASK 27 - Add a Toggle Mode for the Spindexer
      * -----------------------------------------------------------------------
      * toggleOnTrue() is like onTrue(), but pressing again stops the command.
      * Good for "set it and forget it" spinning without holding the button.
@@ -332,12 +332,12 @@ public class RobotContainer {
      * You will need Commands.startEnd() or Commands.run() - think about which
      * one makes more sense for a toggle vs a hold.
      *
-     * When done: move to Task 35 (vision).
+     * When done: move to Task 28 (vision).
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 35 - Gate a Binding on Vision Detection (.and() trigger chaining)
+     * TASK 28 - Gate a Binding on Vision Detection (.and() trigger chaining)
      * -----------------------------------------------------------------------
      * Trigger conditions can be combined with .and() so a binding only fires
      * when multiple conditions are true at the same time.
@@ -353,12 +353,12 @@ public class RobotContainer {
      *       .and(() -> someConditionIsTrue())
      *       .whileTrue(Commands.runOnce(() -> { ... }));
      *
-     * When done: move to Task 37.
+     * When done: move to Task 29.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 37 - Display Vision Status on the Dashboard
+     * TASK 29 - Display Vision Status on the Dashboard
      * -----------------------------------------------------------------------
      * SmartDashboard.putBoolean(key, value) sends a boolean to the driver
      * dashboard and to AdvantageScope. Call it in the periodic() method below.
@@ -366,12 +366,12 @@ public class RobotContainer {
      * Add a line that posts whether the limelight currently sees any target.
      * You will need to find the right method on the vision subsystem to call.
      *
-     * When done: move to Task 38.
+     * When done: move to Task 30.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 38 - Aim at a Detected Object with SnapToHeadingDynamic
+     * TASK 30 - Aim at a Detected Object with SnapToHeadingDynamic
      * -----------------------------------------------------------------------
      * SnapToHeadingDynamic takes a supplier for the target heading instead of
      * a fixed value - the heading is recalculated every loop.

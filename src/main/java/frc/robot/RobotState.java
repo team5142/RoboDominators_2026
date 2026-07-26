@@ -40,7 +40,7 @@ public class RobotState {
   private SpindexerState spindexerState = SpindexerState.STOPPED;
 
   /*
-   * TASK 20 - Add IntakePosition Enum and State
+   * TASK 19 - Add IntakePosition Enum and State
    * -----------------------------------------------------------------------
    * The intake arm has several positions it can be in. We track this so
    * other subsystems (like auto commands) can read the arm state without
@@ -67,26 +67,26 @@ public class RobotState {
    * Look at the SpindexerState block above - the pattern is identical.
    * Write it out from scratch rather than copying.
    *
-   * When done: compile and move to Task 21.
+   * When done: compile and move to Task 20.
    * -----------------------------------------------------------------------
    */
 
   /*
-   * TASK 21 - Add IntakeRollerState Enum and State
+   * TASK 20 - Add IntakeRollerState Enum and State
    * -----------------------------------------------------------------------
    * The intake rollers (separate from the arm) can spin in, spin out, or stop.
    *
    * Values needed: STOPPED, INTAKING, REVERSING
    *
-   * Same pattern as Task 20 - enum, field, setter with log, getter.
+   * Same pattern as Task 19 - enum, field, setter with log, getter.
    * Log key: "RobotState/Intake/RollerState"
    *
-   * When done: compile and move to Task 22.
+   * When done: compile and move to Task 21.
    * -----------------------------------------------------------------------
    */
 
   /*
-   * TASK 22 - Add SingulatorState Enum and State
+   * TASK 21 - Add SingulatorState Enum and State
    * -----------------------------------------------------------------------
    * The Singulator feeds balls one at a time. It can be paused, feeding, or reversing.
    *
@@ -101,21 +101,23 @@ public class RobotState {
    *   - setter: setSingulatorBeamBreak(boolean value) - logs to "RobotState/SingulatorBeamBreak"
    *   - getter: getSingulatorBeamBreak() returns boolean
    *
-   * When done: compile, then move to Task 23 in IntakeSubsystem.java.
-   * ------------------------------------------------------------------------
+   * When done: compile, then move to Task 22 in IntakeSubsystem.java.
+   * -----------------------------------------------------------------------
    */
   public enum SingulatorState {
     PAUSED,
     FEEDING,
-    REVERSING,
+    REVERSING
   }
-  private SingulatorState singulatorState=SingulatorState.PAUSED;
-  public void SetSingulatorState(SingulatorState state) {
-    if (this.singulatorState==state) return;
+  private SingulatorState singulatorState = SingulatorState.PAUSED;
+
+  public void setSingulatorState(SingulatorState state) {
+    if (this.singulatorState == state) return;
     this.singulatorState = state;
     SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
   }
-  public SingulatorState getSingulatorState(SingulatorState state) { return singulatorState;}
+  public SingulatorState getSingulatorState() { return singulatorState; }
+  
   // ---- Mode ---- (do not modify)
 
   public void setMode(Mode mode) {

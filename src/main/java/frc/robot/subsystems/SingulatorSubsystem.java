@@ -12,7 +12,7 @@ import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.PersistMode;
  import com.revrobotics.ResetMode;
 /*
- * TASK 15 - Declare and Create the Singulator Motor
+ * TASK 14 - Declare and Create the Singulator Motor
  * -----------------------------------------------------------------------
  * The Singulator feeds balls one at a time from the Spindexer up to the
  * flywheels. It has one NEO motor on a SparkMax, and a LaserCAN sensor
@@ -36,12 +36,12 @@ import com.revrobotics.PersistMode;
  *   6. Add a SmartLogger.logConsole line so you can see it boot in the console.
  *      Something like: "Singulator ready (CAN " + Constants.Singulator.MOTOR_ID + ")"
  *
- * When done: compile and move to Task 16.
+ * When done: compile and move to Task 15.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 16 - Add Feed, Pause, Reverse, and StopAll Methods
+ * TASK 15 - Add Feed, Pause, Reverse, and StopAll Methods
  * -----------------------------------------------------------------------
  * The Singulator needs four methods. The Spindexer had similar methods -
  * think about what each one should do before writing it.
@@ -54,12 +54,12 @@ import com.revrobotics.PersistMode;
  * Notice that FEED_SPEED and REVERSE_SPEED need to exist in Constants.Singulator.
  * Check if they are already there. If not, Task 13 asked you to add them - do that first.
  *
- * When done: compile and move to Task 17 in RobotContainer.java.
+ * When done: compile and move to Task 16 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 18 - Add periodic() Logging and Ball Detection
+ * TASK 17 - Add periodic() Logging and Ball Detection
  * -----------------------------------------------------------------------
  * isBallPresent() is already written below - it reads the LaserCAN sensor.
  * Your job is to call it in periodic() and log the result.
@@ -74,7 +74,7 @@ import com.revrobotics.PersistMode;
  * [ROBOT OPTIONAL] Deploy and watch Singulator/BallPresent toggle in AdvantageScope
  * when you place a ball at the singulator staging point.
  *
- * When done: move to Task 19 in RobotContainer.java.
+ * When done: move to Task 18 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
