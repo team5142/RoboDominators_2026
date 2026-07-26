@@ -12,7 +12,7 @@ import java.util.function.DoubleSupplier;
 // Applies deadbands, curve shaping, direction smoothing, and desaturation.
 
 /*
- * TASK 27 - Read Through This File
+ * TASK 20 - Read Through This File
  * -----------------------------------------------------------------------
  * Before changing anything, read through execute() and understand:
  *   - What does applyDeadband() do and why is it needed?
@@ -21,12 +21,12 @@ import java.util.function.DoubleSupplier;
  *   - What does desaturation prevent?
  *
  * There is nothing to write for this task - just understand it.
- * When done: move to Task 28.
+ * When done: move to Task 21.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 28 - Change the Input Curve and Feel the Difference
+ * TASK 21 - Change the Input Curve and Feel the Difference
  * -----------------------------------------------------------------------
  * The current curve uses a power of 1.5 (see Math.pow(..., 1.5) in execute()).
  * This affects how responsive the robot feels at low vs high stick inputs.
@@ -38,7 +38,7 @@ import java.util.function.DoubleSupplier;
  * Change the power from 1.5 to 2.0 and notice how the robot feels.
  * [ROBOT OPTIONAL] Try 1.0, 2.0, and 3.0 back to back. Pick what you prefer.
  *
- * When done: move to Task 29 in RobotContainer.java.
+ * When done: move to Task 22 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 public class DriveWithJoysticks extends Command {
