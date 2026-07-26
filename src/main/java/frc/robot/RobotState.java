@@ -107,14 +107,16 @@ public class RobotState {
   public enum SingulatorState {
     PAUSED,
     FEEDING,
-    REVERSING,
+    REVERSING
   }
-  private SingulatorState singulatorState=SingulatorState.PAUSED;
-  public void SetSingulatorState(SingulatorState state) {
-    if (this.singulatorState==state) return;
+  private SingulatorState singulatorState = SingulatorState.PAUSED;
+
+  public void setSingulatorState(SingulatorState state) {
+    if (this.singulatorState == state) return;
     this.singulatorState = state;
     SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
   }
+  public SingulatorState getSingulatorState() { return singulatorState; }
   
   // ---- Mode ---- (do not modify)
 
