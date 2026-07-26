@@ -23,7 +23,7 @@ import frc.robot.subsystems.SingulatorSubsystem;
  */
 
 /*
- * TASK 39 - Register a New Named Command
+ * TASK 31 - Register a New Named Command
  * -----------------------------------------------------------------------
  * Named commands are how you trigger Java code from a PathPlanner auto path.
  * Any method call can become a named command - you are not limited to what is here.
@@ -40,7 +40,7 @@ import frc.robot.subsystems.SingulatorSubsystem;
  * After registering it here, open PathPlanner and you will see it in the
  * named commands list. Drop it into an auto path and test it.
  *
- * When done: move to Task 40 in PathPlanner (no Java changes needed).
+ * When done: move to Task 32 in PathPlanner (no Java changes needed).
  * -----------------------------------------------------------------------
  */
 
