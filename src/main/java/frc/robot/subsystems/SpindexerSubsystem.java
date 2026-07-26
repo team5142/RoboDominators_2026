@@ -202,7 +202,7 @@ import com.revrobotics.PersistMode;
  *     if (currentAmps > Constants.Spindexer.LOAD_CURRENT_AMPS) {
  *       stallLoopCount++;
  *     } else {
- *       stallLoopCount = 0;
+ *       stallLoopCount = 0; 
  *     }
  *     if (stallLoopCount >= Constants.Spindexer.AGITATE_LOOP_THRESHOLD) {
  *       stallLoopCount = 0;

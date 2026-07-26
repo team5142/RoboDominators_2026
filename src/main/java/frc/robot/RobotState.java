@@ -115,7 +115,7 @@ public class RobotState {
     this.singulatorState = state;
     SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
   }
-  
+  public SingulatorState getSingulatorState(SingulatorState state) { return singulatorState;}
   // ---- Mode ---- (do not modify)
 
   public void setMode(Mode mode) {
@@ -132,7 +132,7 @@ public class RobotState {
   public boolean isEnabled() { return enabled; }
  
   // ---- Alliance ---- (do not modify)
-
+ 
   public void setAlliance(DriverStation.Alliance alliance) {
     if (this.alliance == alliance) return;
     this.alliance = alliance;

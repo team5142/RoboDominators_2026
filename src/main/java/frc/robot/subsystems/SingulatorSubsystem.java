@@ -135,5 +135,6 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+    
   }
 }

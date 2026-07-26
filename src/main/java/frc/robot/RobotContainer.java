@@ -15,6 +15,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import frc.robot.commands.auto.AutoCommands;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.subsystems.*;
@@ -147,10 +148,13 @@ public class RobotContainer {
      new JoystickButton(operatorController,XboxController.Button.kRightBumper.value)
       .whileTrue(Commands.startEnd(
         () -> {spindexerSubsystem.motorForward();
-               System.out.println("Spindexer on");},
+               System.out.println("Spindexer on");
+              singulatorSubsystem.spinFeed();},
         () -> {spindexerSubsystem.motorStop();
+              singulatorSubsystem.pause();
                System.out.println("Spindexer off");},
-        spindexerSubsystem));
+        spindexerSubsystem,
+        singulatorSubsystem));
       
 
     /* 
@@ -174,6 +178,14 @@ public class RobotContainer {
         () -> {spindexerSubsystem.motorStop();
               System.out.println("Spindexer off");},
         spindexerSubsystem));
+    new JoystickButton(operatorController,XboxController.Button.kA.value)
+      .onTrue(Commands.runOnce(
+    () -> {singulatorSubsystem.spinFeed();},
+    singulatorSubsystem))
+      .onFalse(Commands.runOnce(
+    () -> {singulatorSubsystem.pause();},
+      singulatorSubsystem));
+      
     /*
      * TASK 17 - Combine Spindexer and Singulator on Right Bumper
      * -----------------------------------------------------------------------
