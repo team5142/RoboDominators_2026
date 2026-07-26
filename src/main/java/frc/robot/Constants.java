@@ -465,7 +465,7 @@ public final class Constants {
    * Look at how Spindexer defines FORWARD_SPEED and REVERSE_SPEED for the format.
    * Write the constants yourself - do not copy from Spindexer.
    *
-   * When done: compile and move to Task 14.
+   * When done: compile and move to Task 14 in SingulatorSubsystem.java.
    * -----------------------------------------------------------------------
    */
 
