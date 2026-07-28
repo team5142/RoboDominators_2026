@@ -1,7 +1,11 @@
 package frc.robot.subsystems;
 
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
-
+import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import frc.robot.Constants; 
+import frc.robot.RobotState;  
+import frc.robot.util.SmartLogger;
 /*
  * TASK 2 - Declare a Motor
  * -----------------------------------------------------------------------
@@ -22,7 +26,8 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  *   1. Add these imports at the top of the file:
  *        import com.revrobotics.spark.SparkMax;
  *        import com.revrobotics.spark.SparkLowLevel.MotorType;
- *        import frc.robot.Constants;
+ *        import frc.robot.Constants; *     
+
  *   2. Declare a private final SparkMax field called "motor" inside the class.
  *   3. In the constructor, create the SparkMax using Constants.Spindexer.MOTOR_ID.
  *
@@ -62,7 +67,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  * and find Task 4. You will uncomment the button bindings that call them.
  * Come back here for Task 5 when done.
  * -----------------------------------------------------------------------
- */
+ */ 
 
 /*
  * TASK 5 - Add Reverse and Safety Stop
@@ -205,7 +210,7 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  *
  *   Part 2 - while state is REVERSE and agitateLoopsRemaining > 0:
  *     agitateLoopsRemaining--;
- *     if (agitateLoopsRemaining == 0) {
+ *     if (agitateLoopsRemaining == 0) { 
  *       motor.set(Constants.Spindexer.FORWARD_SPEED);
  *       robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
  *     }
@@ -220,8 +225,22 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 public class SpindexerSubsystem extends SubsystemBase {
 
   public SpindexerSubsystem() {
+    
+  
   }
-
+  private final SparkMax motor = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
+  
+  public void spinForward() {
+    motor.set(Constants.Spindexer.FORWARD_SPEED);
+  }
+  public void spinReverse() {
+    motor.set(Constants.Spindexer.REVERSE_SPEED);
+  }
+  public void stop() {
+    motor.set(0.0);
+  }
+  
+  public void stopAll() { stop(); }
   @Override
   public void periodic() {
   }

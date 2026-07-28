@@ -18,7 +18,7 @@ import frc.robot.RobotState;
 import frc.robot.util.SmartLogger;
 
 /*
- * TASK 22 - Declare and Configure the Intake Motors
+ * TASK 23 - Declare and Configure the Intake Motors
  * -----------------------------------------------------------------------
  * The Intake is an over-bumper arm that collects game pieces.
  * It has three motors:
@@ -50,12 +50,12 @@ import frc.robot.util.SmartLogger;
  *   5. Configure the SparkMax roller with inverted and smartCurrentLimit.
  *   6. Set up BaseStatusSignal for the position and current signals (pre-built below).
  *
- * When done: compile and move to Task 23.
+ * When done: compile and move to Task 24.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 23 - Add Arm and Roller Control Methods
+ * TASK 24 - Add Arm and Roller Control Methods
  * -----------------------------------------------------------------------
  * The intake needs these methods:
  *
@@ -81,7 +81,7 @@ import frc.robot.util.SmartLogger;
  *   setExtensionOutput(double output)
  * It handles the left/right mirroring automatically.
  *
- * When done: compile and move to Task 18 in RobotContainer.java.
+ * When done: compile and move to Task 25 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
@@ -114,7 +114,7 @@ public class IntakeSubsystem extends SubsystemBase {
     output.Inverted    = InvertedValue.CounterClockwise_Positive;
     output.NeutralMode = NeutralModeValue.Brake;
 
-    // TODO (Task 22): create extensionMotorLeft, extensionMotorRight, rollerMotor, limitSwitch
+    // TODO (Task 23): create extensionMotorLeft, extensionMotorRight, rollerMotor, limitSwitch
     // then apply config to both TalonFX motors and configure the SparkMax roller
     // then set up the status signals below
 
@@ -126,8 +126,8 @@ public class IntakeSubsystem extends SubsystemBase {
     // extensionMotorLeft.optimizeBusUtilization();
     // extensionMotorRight.optimizeBusUtilization();
 
-    // Task 23 unlock: stopAll();
-    // Task 19 unlock: startHoming();
+    // Task 24 unlock: stopAll();
+    // Task 20 unlock: startHoming();
   }
 
   // Retract until the limit switch trips, then zero encoders. Called automatically at boot.
@@ -136,44 +136,44 @@ public class IntakeSubsystem extends SubsystemBase {
     extensionStalled = false;
     stallLoopCount = 0;
     setExtensionOutput(Constants.Intake.RETRACT_SPEED);
-    // Task 19 unlock: robotState.setIntakePosition(RobotState.IntakePosition.HOMING);
+    // Task 20 unlock: robotState.setIntakePosition(RobotState.IntakePosition.HOMING);
     SmartLogger.logConsole("Intake homing started", "Intake");
   }
 
-  // TODO (Task 23): add extend(), retract(), spinIn(), spinOut(), stopRollers(),
+  // TODO (Task 24): add extend(), retract(), spinIn(), spinOut(), stopRollers(),
   //                 stopAll(), isExtended(), isHomed() here
 
   // Commands both arm motors - right is negated because it is mounted mirrored.
   // Use this inside extend(), retract(), and stopAll() instead of calling motors directly.
   private void setExtensionOutput(double output) {
-    // TODO (Task 22): replace with actual motor calls once motors are declared
+    // TODO (Task 23): replace with actual motor calls once motors are declared
     // extensionMotorLeft.setControl(extensionOut.withOutput(output));
     // extensionMotorRight.setControl(extensionOut.withOutput(-output));
   }
 
   private void zeroEncoders() {
-    // TODO (Task 22): uncomment once motors are declared
+    // TODO (Task 23): uncomment once motors are declared
     // extensionMotorLeft.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS);
     // extensionMotorRight.setPosition(Constants.Intake.EXTENSION_HOME_ROTATIONS_RIGHT);
   }
 
   // periodic() handles homing, position tracking, and stall detection.
   // This is pre-built - read through it to understand how it works.
-  // Task 19 unlock: un-comment all the RobotState lines below once you add IntakePosition.
+  // Task 20 unlock: un-comment all the RobotState lines below once you add IntakePosition.
   @Override
   public void periodic() {
     if (positionSignal == null || currentSignal == null) return;
     BaseStatusSignal.refreshAll(positionSignal, currentSignal);
     double rotations   = positionSignal.getValueAsDouble();
     double currentAmps = currentSignal.getValueAsDouble();
-    boolean switchRaw  = false; // TODO (Task 22): replace with limitSwitch.get()
+    boolean switchRaw  = false; // TODO (Task 23): replace with limitSwitch.get()
     boolean atHome = switchRaw
         && rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS;
-    // Task 19 unlock: robotState.setIntakeLimitSwitch(atHome);
+    // Task 20 unlock: robotState.setIntakeLimitSwitch(atHome);
 
-    // Task 19 unlock: RobotState.IntakePosition pos = robotState.getIntakePosition();
+    // Task 20 unlock: RobotState.IntakePosition pos = robotState.getIntakePosition();
 
-    // Task 19 unlock: if (pos == RobotState.IntakePosition.HOMING) {
+    // Task 20 unlock: if (pos == RobotState.IntakePosition.HOMING) {
     //   if (switchRaw) {
     //     setExtensionOutput(0.0);
     //     zeroEncoders();
@@ -184,7 +184,7 @@ public class IntakeSubsystem extends SubsystemBase {
     //   }
     // }
 
-    // Task 19 unlock: if (pos == RobotState.IntakePosition.RETRACTING) {
+    // Task 20 unlock: if (pos == RobotState.IntakePosition.RETRACTING) {
     //   if (atHome || rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS) {
     //     setExtensionOutput(0.0);
     //     zeroEncoders();
@@ -192,14 +192,14 @@ public class IntakeSubsystem extends SubsystemBase {
     //   }
     // }
 
-    // Task 19 unlock: if (pos == RobotState.IntakePosition.EXTENDING) {
+    // Task 20 unlock: if (pos == RobotState.IntakePosition.EXTENDING) {
     //   if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
     //     setExtensionOutput(0.0);
     //     robotState.setIntakePosition(RobotState.IntakePosition.EXTENDED);
     //   }
     // }
 
-    // Task 19 unlock: if (pos == RobotState.IntakePosition.HOMING || pos == RobotState.IntakePosition.EXTENDING
+    // Task 20 unlock: if (pos == RobotState.IntakePosition.HOMING || pos == RobotState.IntakePosition.EXTENDING
     //     || pos == RobotState.IntakePosition.RETRACTING) {
     if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
       stallLoopCount++;
@@ -207,19 +207,20 @@ public class IntakeSubsystem extends SubsystemBase {
         setExtensionOutput(0.0);
         extensionStalled = true;
         stallLoopCount = 0;
-        // Task 19 unlock: if (pos == RobotState.IntakePosition.HOMING) {
+        // Task 20 unlock: if (pos == RobotState.IntakePosition.HOMING) {
         //   robotState.setIntakePosition(RobotState.IntakePosition.HOMING_FAILED);
         //   SmartLogger.logConsoleError("Intake homing FAILED - stall detected");
         // }
       }
     } else {
-      stallLoopCount = 0;
+      //stallLoopCount = 0;
     }
-    // Task 19 unlock: }
-
-    SmartLogger.logReplay("Intake/PositionRotations", rotations);
-    SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
-    SmartLogger.logReplay("Intake/LimitSwitch", atHome);
+    // Task 20 unlock: }
+    public void stop() {
+    //motor.set(0.0);
+    //SmartLogger.logReplay("Intake/PositionRotations", rotations);
+    //SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
+    //SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
   }
 }
