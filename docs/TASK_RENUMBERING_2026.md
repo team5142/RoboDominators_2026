@@ -2,62 +2,6 @@
 
 ## Summary
 Tasks 12-23 have been renumbered with a/b suffixes to clarify the dual-task structure and eliminate confusion about duplicate task numbers.
-
-## Complete Task Flow (Linear Path)
-
-```
-Task 1:  docs/GIT_GUIDE.md - Create branch
-Task 2:  SpindexerSubsystem - Declare motor
-Task 3:  SpindexerSubsystem - Add spinForward/stop
-Task 4:  RobotContainer - Wire right bumper
-Task 5:  SpindexerSubsystem - Add spinReverse
-Task 6:  RobotContainer - Wire left bumper
-Task 7:  Robot.java - Add stopAll safety
-Task 8:  SpindexerSubsystem - Track state
-Task 9:  RobotContainer - Update constructor (note)
-Task 10: SpindexerSubsystem - Log data
-Task 11: AutoCommands - Add spindexer
-
-Task 12a: Constants - Read Spindexer Constants
-Task 12b: SpindexerSubsystem - Configure motor
-Task 13a: Constants - Add Singulator Constants
-Task 13b: SpindexerSubsystem - Jam Detection
-
-Task 14: SingulatorSubsystem - Declare motor
-Task 15: SingulatorSubsystem - Add methods
-Task 16: RobotContainer - Combine spindexer+singulator
-
-Task 17a: SingulatorSubsystem - Add periodic logging
-Task 17b: RobotContainer - Release-to-trigger binding
-
-Task 18: RobotContainer - Wire Y button
-
-Task 19a: RobotState - Add IntakePosition enum
-Task 19b: RobotContainer - Wire B/X buttons
-
-Task 20a: RobotState - Add IntakeRollerState
-Task 20b: DriveWithJoysticks - Read file
-
-Task 21a: RobotState - Add SingulatorState
-Task 21b: DriveWithJoysticks - Change input curve
-
-Task 22a: IntakeSubsystem - Declare motors
-Task 22b: RobotContainer - Precision mode
-
-Task 23a: IntakeSubsystem - Add methods
-Task 23b: RobotContainer - Method reference
-
-Task 24: SnapToHeadingFixed - Read file
-Task 25: SnapToHeadingFixed - Tune PID
-Task 26: RobotContainer - Wire D-Pad
-Task 27: RobotContainer - Toggle mode
-Task 28: RobotContainer - Gate on vision
-Task 29: RobotContainer - Display vision status
-Task 30: RobotContainer - Aim at object
-Task 31: AutoCommands - Register named command
-Task 32: PathPlanner - Use command in auto (no Java)
-```
-
 ## What Changed
 
 ### Tasks 12-13: Spindexer Configuration (Now has a/b)
