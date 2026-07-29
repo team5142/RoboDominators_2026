@@ -436,7 +436,7 @@ public final class Constants {
   }
 
   /*
-   * TASK 12 - Read the Spindexer Constants
+   * TASK 12a - Read the Spindexer Constants
    * -----------------------------------------------------------------------
    * Look through the Spindexer class below and understand what each constant
    * controls. Notice the pattern: hardware IDs at the top, booleans for config,
@@ -446,12 +446,12 @@ public final class Constants {
    * hunting through subsystem code. If you want the spindexer faster,
    * you change FORWARD_SPEED here - not in the subsystem.
    *
-   * Nothing to write here. When done: move to Task 13.
+   * Nothing to write here. When done: move to Task 12b in SpindexerSubsystem.java.
    * -----------------------------------------------------------------------
    */
 
   /*
-   * TASK 13 - Add Speed Constants for the Singulator
+   * TASK 13a - Add Speed Constants for the Singulator
    * -----------------------------------------------------------------------
    * The Singulator class below has MOTOR_ID, LASERCAN_ID, MOTOR_INVERTED,
    * and CURRENT_LIMIT_AMPS already defined.
@@ -465,7 +465,7 @@ public final class Constants {
    * Look at how Spindexer defines FORWARD_SPEED and REVERSE_SPEED for the format.
    * Write the constants yourself - do not copy from Spindexer.
    *
-   * When done: compile and move to Task 14 in SingulatorSubsystem.java.
+   * When done: compile and move to Task 13b in SpindexerSubsystem.java.
    * -----------------------------------------------------------------------
    */
 
