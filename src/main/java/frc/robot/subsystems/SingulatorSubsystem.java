@@ -59,7 +59,7 @@ import com.revrobotics.PersistMode;
  */
 
 /*
- * TASK 17 - Add periodic() Logging and Ball Detection
+ * TASK 17a - Add periodic() Logging and Ball Detection
  * -----------------------------------------------------------------------
  * isBallPresent() is already written below - it reads the LaserCAN sensor.
  * Your job is to call it in periodic() and log the result.
@@ -67,14 +67,14 @@ import com.revrobotics.PersistMode;
  * Steps:
  *   1. In periodic(), call isBallPresent() and store the result in a boolean.
  *   2. Call robotState.setSingulatorBeamBreak() with that value.
- *      (You wrote setSingulatorBeamBreak in Task 22 of RobotState.java)
+ *      (You wrote setSingulatorBeamBreak in Task 21a of RobotState.java)
  *   3. Log it: SmartLogger.logReplay("Singulator/BallPresent", ballPresent)
  *   4. Also log motor current: SmartLogger.logReplay("Singulator/CurrentAmps", ...)
  *
  * [ROBOT OPTIONAL] Deploy and watch Singulator/BallPresent toggle in AdvantageScope
  * when you place a ball at the singulator staging point.
  *
- * When done: move to Task 18 in RobotContainer.java.
+ * When done: move to Task 17b in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 

@@ -155,7 +155,7 @@ import com.revrobotics.PersistMode;
  */
 
 /*
- * TASK 12 - Configure the Motor (Advanced)
+ * TASK 12b - Configure the Motor (Advanced)
  * -----------------------------------------------------------------------
  * Motors need configuration before use:
  *   - Invert: flips which direction counts as forward based on how it is mounted
@@ -176,12 +176,12 @@ import com.revrobotics.PersistMode;
  *        import com.revrobotics.ResetMode;
  *   2. Add the configuration block to the constructor.
  *
- * When done: compile, then move to Task 13.
+ * When done: compile, then move to Task 13a in Constants.java.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 14 - Jam Detection in periodic() (Advanced)
+ * TASK 13b - Jam Detection in periodic() (Advanced)
  * -----------------------------------------------------------------------
  * When a ball jams the spindexer, the motor strains against it and draws
  * extra current. If current stays high long enough, we know something is stuck.

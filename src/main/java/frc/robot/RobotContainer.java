@@ -189,12 +189,12 @@ public class RobotContainer {
      * Make sure to include both subsystems in the requirements list at the end
      * of startEnd() so WPILib knows both are being used.
      *
-     * When done: compile and move to Task 17.
+     * When done: compile and move to Task 17a in SingulatorSubsystem.java.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 17 - Add a Release-to-Trigger Binding (onFalse)
+     * TASK 17b - Add a Release-to-Trigger Binding (onFalse)
      * -----------------------------------------------------------------------
      * Sometimes you want an action to happen when a button is RELEASED rather
      * than pressed. onFalse() fires once when the button goes from held to released.
@@ -232,12 +232,12 @@ public class RobotContainer {
      *     }
      *   }, theSubsystem)
      *
-     * When done: move to Task 19.
+     * When done: move to Task 19a in RobotState.java.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 19 - Wire B and X: Roller Control While Held
+     * TASK 19b - Wire B and X: Roller Control While Held
      * -----------------------------------------------------------------------
      * B button (hold): run intake rollers in (spinIn), stop on release
      * X button (hold): run intake rollers out (spinOut), stop on release
@@ -245,12 +245,12 @@ public class RobotContainer {
      * You have done this pattern twice already (Tasks 4 and 6).
      * Write these two bindings without looking back at your previous work.
      *
-     * When done: compile and move to Task 20 in DriveWithJoysticks.java.
+     * When done: compile and move to Task 20a in DriveWithJoysticks.java.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 22 - Add a Precision Mode Button (Live Supplier)
+     * TASK 22b - Add a Precision Mode Button (Live Supplier)
      * -----------------------------------------------------------------------
      * DriveWithJoysticks already accepts a precisionModeSupplier - a lambda
      * that is called every loop to check if precision mode is active.
@@ -264,12 +264,12 @@ public class RobotContainer {
      *
      * When done: deploy and hold Left Bumper while driving.
      * [ROBOT OPTIONAL] The robot should feel noticeably slower and more precise.
-     * Then move to Task 23.
+     * Then move to Task 23b.
      * -----------------------------------------------------------------------
      */
 
     /*
-     * TASK 23 - Rewrite One Binding as a Method Reference
+     * TASK 23b - Rewrite One Binding as a Method Reference
      * -----------------------------------------------------------------------
      * A method reference is a shorthand for a lambda that only calls one method.
      *
