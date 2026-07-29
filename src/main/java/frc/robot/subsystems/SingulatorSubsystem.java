@@ -45,7 +45,7 @@ import frc.robot.Constants;
  *   stopAll()     - same as pause() - called as a safety stop on disable
  *
  * Notice that FEED_SPEED and REVERSE_SPEED need to exist in Constants.Singulator.
- * Check if they are already there. If not, Task 13 asked you to add them - do that first.
+ * Check if they are already there. If not, Task 13a asked you to add them - do that first.
  *
  * When done: compile and move to Task 16 in RobotContainer.java.
  * -----------------------------------------------------------------------
