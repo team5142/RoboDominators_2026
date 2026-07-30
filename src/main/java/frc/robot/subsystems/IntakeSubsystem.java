@@ -25,7 +25,7 @@ import com.revrobotics.spark.config.SparkMaxConfig;
 import frc.robot.RobotState.IntakePosition;
 import frc.robot.RobotState.IntakeRollerState;
 /*
- * TASK 22 - Declare and Configure the Intake Motors
+ * TASK 22a - Declare and Configure the Intake Motors
  * -----------------------------------------------------------------------
  * The Intake is an over-bumper arm that collects game pieces.
  * It has three motors:
@@ -57,12 +57,12 @@ import frc.robot.RobotState.IntakeRollerState;
  *   5. Configure the SparkMax roller with inverted and smartCurrentLimit.
  *   6. Set up BaseStatusSignal for the position and current signals (pre-built below).
  *
- * When done: compile and move to Task 23.
+ * When done: compile and move to Task 23a.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 23 - Add Arm and Roller Control Methods
+ * TASK 23a - Add Arm and Roller Control Methods
  * -----------------------------------------------------------------------
  * The intake needs these methods:
  *
@@ -88,7 +88,7 @@ import frc.robot.RobotState.IntakeRollerState;
  *   setExtensionOutput(double output)
  * It handles the left/right mirroring automatically.
  *
- * When done: compile and move to Task 18 in RobotContainer.java.
+ * When done: compile and move to Task 23b in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 

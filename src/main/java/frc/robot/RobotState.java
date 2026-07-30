@@ -40,7 +40,7 @@ public class RobotState {
   private SpindexerState spindexerState = SpindexerState.STOPPED;
 
   /*
-   * TASK 19 - Add IntakePosition Enum and State
+   * TASK 19a - Add IntakePosition Enum and State
    * -----------------------------------------------------------------------
    * The intake arm has several positions it can be in. We track this so
    * other subsystems (like auto commands) can read the arm state without
@@ -67,7 +67,7 @@ public class RobotState {
    * Look at the SpindexerState block above - the pattern is identical.
    * Write it out from scratch rather than copying.
    *
-   * When done: compile and move to Task 20.
+   * When done: compile and move to Task 19b in RobotContainer.java (or continue to Task 20a here).
    * -----------------------------------------------------------------------
    */
     public enum IntakePosition{
@@ -88,16 +88,16 @@ public class RobotState {
     //intake position getter
     public IntakePosition getIntakePosition(IntakePosition intakePosition) { return intakePosition;}
   /*
-   * TASK 20 - Add IntakeRollerState Enum and State
+   * TASK 20a - Add IntakeRollerState Enum and State
    * -----------------------------------------------------------------------
    * The intake rollers (separate from the arm) can spin in, spin out, or stop.
    *
    * Values needed: STOPPED, INTAKING, REVERSING
    *
-   * Same pattern as Task 19 - enum, field, setter with log, getter.
+   * Same pattern as Task 19a - enum, field, setter with log, getter.
    * Log key: "RobotState/Intake/RollerState"
    *
-   * When done: compile and move to Task 21.
+   * When done: compile and move to Task 20b in DriveWithJoysticks.java (or continue to Task 21a here).
    * -----------------------------------------------------------------------
    */
     public enum IntakeRollerState {
@@ -113,7 +113,7 @@ public class RobotState {
     }
     public IntakeRollerState getIntakeRollerState(IntakeRollerState intakeRollerState) {return intakeRollerState;}
   /*
-   * TASK 21 - Add SingulatorState Enum and State
+   * TASK 21a - Add SingulatorState Enum and State
    * -----------------------------------------------------------------------
    * The Singulator feeds balls one at a time. It can be paused, feeding, or reversing.
    *
@@ -128,7 +128,7 @@ public class RobotState {
    *   - setter: setSingulatorBeamBreak(boolean value) - logs to "RobotState/SingulatorBeamBreak"
    *   - getter: getSingulatorBeamBreak() returns boolean
    *
-   * When done: compile, then move to Task 22 in IntakeSubsystem.java.
+   * When done: compile, then move to Task 21b in DriveWithJoysticks.java (or continue to Task 22a in IntakeSubsystem.java).
    * -----------------------------------------------------------------------
    */
   public enum SingulatorState {
