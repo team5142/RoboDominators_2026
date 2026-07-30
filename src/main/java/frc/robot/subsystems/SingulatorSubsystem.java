@@ -11,6 +11,7 @@ import frc.robot.util.SmartLogger;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.PersistMode;
  import com.revrobotics.ResetMode;
+<<<<<<< HEAD
 // singulator class is completed
 =======
 /*
