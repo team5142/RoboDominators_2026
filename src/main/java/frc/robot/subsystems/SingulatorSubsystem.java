@@ -9,7 +9,7 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import frc.robot.RobotState;  
 import frc.robot.util.SmartLogger;
 /*
- * TASK 15 - Declare and Create the Singulator Motor
+ * TASK 14 - Declare and Create the Singulator Motor
  * -----------------------------------------------------------------------
  * The Singulator feeds balls one at a time from the Spindexer up to the
  * flywheels. It has one NEO motor on a SparkMax, and a LaserCAN sensor
@@ -33,12 +33,12 @@ import frc.robot.util.SmartLogger;
  *   6. Add a SmartLogger.logConsole line so you can see it boot in the console.
  *      Something like: "Singulator ready (CAN " + Constants.Singulator.MOTOR_ID + ")"
  *
- * When done: compile and move to Task 16.
+ * When done: compile and move to Task 15.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 16 - Add Feed, Pause, Reverse, and StopAll Methods
+ * TASK 15 - Add Feed, Pause, Reverse, and StopAll Methods
  * -----------------------------------------------------------------------
  * The Singulator needs four methods. The Spindexer had similar methods -
  * think about what each one should do before writing it.
@@ -49,14 +49,14 @@ import frc.robot.util.SmartLogger;
  *   stopAll()     - same as pause() - called as a safety stop on disable
  *
  * Notice that FEED_SPEED and REVERSE_SPEED need to exist in Constants.Singulator.
- * Check if they are already there. If not, Task 13 asked you to add them - do that first.
+ * Check if they are already there. If not, Task 13a asked you to add them - do that first.
  *
- * When done: compile and move to Task 17 in RobotContainer.java.
+ * When done: compile and move to Task 16 in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
 /*
- * TASK 18 - Add periodic() Logging and Ball Detection
+ * TASK 17a - Add periodic() Logging and Ball Detection
  * -----------------------------------------------------------------------
  * isBallPresent() is already written below - it reads the LaserCAN sensor.
  * Your job is to call it in periodic() and log the result.
@@ -64,14 +64,14 @@ import frc.robot.util.SmartLogger;
  * Steps:
  *   1. In periodic(), call isBallPresent() and store the result in a boolean.
  *   2. Call robotState.setSingulatorBeamBreak() with that value.
- *      (You wrote setSingulatorBeamBreak in Task 22 of RobotState.java)
+ *      (You wrote setSingulatorBeamBreak in Task 21a of RobotState.java)
  *   3. Log it: SmartLogger.logReplay("Singulator/BallPresent", ballPresent)
  *   4. Also log motor current: SmartLogger.logReplay("Singulator/CurrentAmps", ...)
  *
  * [ROBOT OPTIONAL] Deploy and watch Singulator/BallPresent toggle in AdvantageScope
  * when you place a ball at the singulator staging point.
  *
- * When done: move to Task 19 in RobotContainer.java.
+ * When done: move to Task 17b in RobotContainer.java.
  * -----------------------------------------------------------------------
  */
 
