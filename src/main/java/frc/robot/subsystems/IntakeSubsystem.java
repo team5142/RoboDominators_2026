@@ -214,7 +214,7 @@ public class IntakeSubsystem extends SubsystemBase {
       }
     } else {
       //stallLoopCount = 0;
-    }
+    }}
     // Task 20 unlock: }
     public void stop() {
     //motor.set(0.0);
