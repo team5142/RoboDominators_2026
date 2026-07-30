@@ -16,6 +16,7 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.JoystickButton;
 import edu.wpi.first.wpilibj2.command.button.Trigger;
+import frc.robot.Constants.Intake;
 import frc.robot.commands.auto.AutoCommands;
 import frc.robot.commands.drive.DriveWithJoysticks;
 import frc.robot.subsystems.*;
@@ -161,7 +162,7 @@ public class RobotContainer {
      * Come back here for Task 6.
      * -----------------------------------------------------------------------
      */
-
+ 
     /*
      * TASK 6 - Wire the Left Bumper to spinReverse() and stop()
      * -----------------------------------------------------------------------

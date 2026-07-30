@@ -1,6 +1,6 @@
 package frc.robot;
 
-import java.lang.Thread.State;
+
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.DriverStation;
@@ -70,7 +70,23 @@ public class RobotState {
    * When done: compile and move to Task 20.
    * -----------------------------------------------------------------------
    */
-
+    public enum IntakePosition{
+      HOMING, // finding limit switch on first enable
+      HOMING_FAILED, // special state when the arm stalls during homing 
+      RETRACTED, // Fully in, encoder and limit switch defined
+      EXTENDING, // currently moving outward
+      EXTENDED, // Complete moving outward
+      RETRACTING // moving inward
+    }
+    IntakePosition intakePosition=IntakePosition.RETRACTED;
+    // intake position setter
+    public void setIntakePosition(IntakePosition intakePosition) {
+      if (this.intakePosition==intakePosition) return;
+      this.intakePosition=intakePosition;
+      SmartLogger.logReplay("RobotState/Intake/Position", intakePosition.toString());
+    }
+    //intake position getter
+    public IntakePosition getIntakePosition(IntakePosition intakePosition) { return intakePosition;}
   /*
    * TASK 20 - Add IntakeRollerState Enum and State
    * -----------------------------------------------------------------------
@@ -84,7 +100,18 @@ public class RobotState {
    * When done: compile and move to Task 21.
    * -----------------------------------------------------------------------
    */
-
+    public enum IntakeRollerState {
+      STOPPED, // Roller not on
+      INTAKING, // Roller Intaking balls
+      REVERSING, // Roller spitting out balls
+    }
+    IntakeRollerState intakeRollerState=IntakeRollerState.STOPPED;
+    public void setIntakeRollerState(IntakeRollerState intakeRollerState) {
+      if (this.intakeRollerState==intakeRollerState) return;
+      this.intakeRollerState=intakeRollerState;
+      SmartLogger.logReplay("RobotState/Intake/RollerState", intakeRollerState.toString());
+    }
+    public IntakeRollerState getIntakeRollerState(IntakeRollerState intakeRollerState) {return intakeRollerState;}
   /*
    * TASK 21 - Add SingulatorState Enum and State
    * -----------------------------------------------------------------------
@@ -110,13 +137,18 @@ public class RobotState {
     REVERSING
   }
   private SingulatorState singulatorState = SingulatorState.PAUSED;
-
+  private static  boolean singulatorBeamBreak=false;
   public void setSingulatorState(SingulatorState state) {
     if (this.singulatorState == state) return;
     this.singulatorState = state;
     SmartLogger.logReplay("RobotState/SingulatorState", state.toString());
   }
   public SingulatorState getSingulatorState() { return singulatorState; }
+  public static void setSingulatorBeamBreak(boolean singulatorBeamBreak) {
+    if (RobotState.singulatorBeamBreak == singulatorBeamBreak) return;
+    RobotState.singulatorBeamBreak = singulatorBeamBreak;
+    SmartLogger.logReplay("RobotState/SingulatorBeamBreak", singulatorBeamBreak);
+  }
   
   // ---- Mode ---- (do not modify)
 
