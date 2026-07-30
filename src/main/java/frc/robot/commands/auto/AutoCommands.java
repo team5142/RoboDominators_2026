@@ -18,7 +18,7 @@ import frc.robot.subsystems.SingulatorSubsystem;
  * Inside the FeedStart lambda: call spindexer.spinForward() alongside the singulator call.
  * Inside the FeedStop lambda:  call spindexer.stop() alongside the singulator call.
  *
- * When done: compile and move to Task 12 in Constants.java.
+ * When done: compile and move to Task 12a in Constants.java.
  * -----------------------------------------------------------------------
  */
 
@@ -55,7 +55,7 @@ public final class AutoCommands {
             SingulatorSubsystem singulator) {
 
         if (intake != null) {
-            // Task 24 unlock: uncomment each line below once you add the method to IntakeSubsystem
+            // Task 23a unlock: uncomment each line below once you add the method to IntakeSubsystem
 
             // NamedCommands.registerCommand("IntakeDeploy", Commands.runOnce(
             //     intake::extend, intake));
