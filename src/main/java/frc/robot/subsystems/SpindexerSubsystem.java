@@ -227,14 +227,14 @@ import com.revrobotics.PersistMode;
 // It is driven by a single NEO motor controlled by a SparkMax motor controller.
 public class SpindexerSubsystem extends SubsystemBase {
   private final SparkMax spinMotor;
-  private RobotState.SpindexerState robotState;
+  private RobotState robotState;
   private double currentAmps;
   private double currentVelocity;
   private int stallLoopCount = 0;        // counts consecutive high-current loops
   private int agitateLoopsRemaining = 0; // counts how many loops the reverse pulse has left
-    public SpindexerSubsystem(RobotState robotState) {
+    public SpindexerSubsystem(RobotState rS) {
       spinMotor = new SparkMax(Constants.Spindexer.MOTOR_ID , MotorType.kBrushless);
-      this.robotState = RobotState.SpindexerState.STOPPED;
+      this.robotState = rS;
       SparkMaxConfig config = new SparkMaxConfig();
     config.inverted(Constants.Spindexer.MOTOR_INVERTED);
     config.smartCurrentLimit(Constants.Spindexer.CURRENT_LIMIT_AMPS);
@@ -243,22 +243,22 @@ public class SpindexerSubsystem extends SubsystemBase {
     public void motorForward() { 
       spinMotor.set(Constants.Spindexer.FORWARD_SPINDEXER_SPEED);
       System.out.println("Spindexer spinning forward");
-      robotState = RobotState.SpindexerState.FORWARD;
+      robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
   }
   public void motorStop() {
     spinMotor.set(0.0);
     System.out.println("Spindexer stopped");
-    robotState = RobotState.SpindexerState.STOPPED;
+    robotState.setSpindexerState(RobotState.SpindexerState.STOPPED);
   }
   public void motorBackward() {
     spinMotor.set(Constants.Spindexer.REVERSE_SPINDEXER_SPEED);
     System.out.println("Spinder spinning backward");
-    robotState = RobotState.SpindexerState.REVERSE;
+    robotState.setSpindexerState(RobotState.SpindexerState.REVERSE);
   }
   public void stopAll() { 
     spinMotor.set(0.0);
     System.out.println("Spindexer stopped");
-    robotState = RobotState.SpindexerState.STOPPED;
+    robotState.setSpindexerState(RobotState.SpindexerState.STOPPED);;
   }
   
   @Override
@@ -275,14 +275,14 @@ public class SpindexerSubsystem extends SubsystemBase {
         stallLoopCount = 0;
         agitateLoopsRemaining = Constants.Spindexer.AGITATE_PULSE_LOOPS;
         spinMotor.set(Constants.Spindexer.REVERSE_SPINDEXER_SPEED);
-        robotState=RobotState.SpindexerState.REVERSE;
+        robotState.setSpindexerState(RobotState.SpindexerState.REVERSE);;
         System.out.println("Agitation initiated ");
       }
-    if (robotState==RobotState.SpindexerState.REVERSE&&agitateLoopsRemaining>0) {
+    if (robotState.getSpindexerState()==RobotState.SpindexerState.REVERSE&&agitateLoopsRemaining>0) {
       agitateLoopsRemaining--;
       if (agitateLoopsRemaining==0) {
         spinMotor.set(Constants.Spindexer.FORWARD_SPINDEXER_SPEED);
-        robotState=RobotState.SpindexerState.FORWARD;
+        robotState.setSpindexerState(RobotState.SpindexerState.FORWARD);
       }
      }
    

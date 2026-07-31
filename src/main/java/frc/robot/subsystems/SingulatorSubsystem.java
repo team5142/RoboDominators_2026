@@ -11,9 +11,6 @@ import frc.robot.util.SmartLogger;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.PersistMode;
  import com.revrobotics.ResetMode;
-<<<<<<< HEAD
-// singulator class is completed
-=======
 /*
  * TASK 14 - Declare and Create the Singulator Motor
  * -----------------------------------------------------------------------
@@ -83,7 +80,6 @@ import com.revrobotics.PersistMode;
 
 // The Singulator feeds balls one at a time from the Spindexer up to the flywheels.
 // A LaserCAN sensor detects when a ball is staged and ready.
->>>>>>> 6b293bbba60886be576841eeea49c1b5596d8bd1
 public class SingulatorSubsystem extends SubsystemBase {
 
   private final LaserCan laserCan;
@@ -91,10 +87,9 @@ public class SingulatorSubsystem extends SubsystemBase {
   private final int smartCurrentLimit;
 
   public boolean ballPresent;
-  private RobotState.SingulatorState singulatorState;
-  public SingulatorSubsystem(RobotState robotState) {
-
-    singulatorState=RobotState.SingulatorState.PAUSED;
+  private RobotState singulatorState;
+  public SingulatorSubsystem(RobotState rS) {
+    singulatorState=rS;
     smartCurrentLimit=Constants.Singulator.CURRENT_LIMIT_AMPS;
     singulatorMotor=new SparkMax(Constants.Singulator.MOTOR_ID, null);
     SparkMaxConfig config = new SparkMaxConfig();
@@ -114,22 +109,22 @@ public class SingulatorSubsystem extends SubsystemBase {
   public void spinFeed() {
     singulatorMotor.set(Constants.Singulator.FORWARD_SINGULATOR_SPEED);
     SmartLogger.logConsole("Singulator moving forward");
-    singulatorState=RobotState.SingulatorState.FEEDING;
+    singulatorState.setSingulatorState(RobotState.SingulatorState.FEEDING);
   }
   public void pause() {
     singulatorMotor.set(0.0);
     SmartLogger.logConsole(" Singulator Paused ");
-    singulatorState=RobotState.SingulatorState.PAUSED;
+    singulatorState.setSingulatorState(RobotState.SingulatorState.PAUSED);
   }
-  private void spinReverse(){
+  public void spinReverse(){
     singulatorMotor.set(Constants.Singulator.REVERSE_SINGULATOR_SPEED);
     SmartLogger.logConsole("Singulator in reverse");
-    singulatorState=RobotState.SingulatorState.REVERSING;
+    singulatorState.setSingulatorState(RobotState.SingulatorState.REVERSING);
   }
-  private void StopAll() {
+  public void stopAll() {
     singulatorMotor.set(0.0);
     SmartLogger.logConsole(" Singulator Paused ");
-    singulatorState=RobotState.SingulatorState.PAUSED;
+    singulatorState.setSingulatorState(RobotState.SingulatorState.PAUSED);
   }
   // Returns true when a ball is close enough to block the LaserCAN beam.
   // This is pre-built - you do not need to modify it.

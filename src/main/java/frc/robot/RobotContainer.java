@@ -175,10 +175,13 @@ public class RobotContainer {
     new JoystickButton(operatorController,XboxController.Button.kLeftBumper.value)
       .whileTrue(Commands.startEnd(
         () -> {spindexerSubsystem.motorBackward();
-              System.out.println("Spindexer on");},
+                singulatorSubsystem.spinReverse();
+              System.out.println("Spindexer on, Singulator on");},
         () -> {spindexerSubsystem.motorStop();
-              System.out.println("Spindexer off");},
-        spindexerSubsystem));
+               singulatorSubsystem.pause();
+              System.out.println("Spindexer off, Singulator off");},
+        spindexerSubsystem,
+        singulatorSubsystem));
     new JoystickButton(operatorController,XboxController.Button.kA.value)
       .onTrue(Commands.runOnce(
     () -> {singulatorSubsystem.spinFeed();},

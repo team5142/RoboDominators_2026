@@ -109,14 +109,12 @@ public class IntakeSubsystem extends SubsystemBase {
   private final TalonFX extensionMotorRight;
   private final SparkMax rollerMotor;
   private final DigitalInput limitSwitch;
-  private final RobotState.IntakePosition intakePosition;
-  private final RobotState.IntakeRollerState intakeRollerState;
   
-  public IntakeSubsystem(RobotState robotState) {
+  
+  public IntakeSubsystem(RobotState rS) {
     // instantiating states
-    intakePosition=RobotState.IntakePosition.HOMING;
-    intakeRollerState=RobotState.IntakeRollerState.STOPPED;
-    this.robotState = robotState;
+    this.robotState=rS;
+    
     // Motor declarations for both extensions, limit switch, and roller 
     extensionMotorLeft=new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID_LEFT);
     extensionMotorRight=new TalonFX(Constants.Intake.INTAKE_EXTENSION_MOTOR_ID_RIGHT);
@@ -188,12 +186,12 @@ public class IntakeSubsystem extends SubsystemBase {
     stopExtension();
   }
   public boolean isExtended() {
-    if (intakePosition==RobotState.IntakePosition.EXTENDED) 
+    if (robotState.getIntakePosition()==RobotState.IntakePosition.EXTENDED) 
     {return true;}
     else {return false;}
   }
   public boolean isHomed() {
-    if (intakePosition!=RobotState.IntakePosition.HOMING && intakePosition!=RobotState.IntakePosition.HOMING_FAILED){
+    if (robotState.getIntakePosition()!=RobotState.IntakePosition.HOMING && robotState.getIntakePosition() !=RobotState.IntakePosition.HOMING_FAILED){
       return true;
     }
     else 
@@ -232,7 +230,7 @@ public class IntakeSubsystem extends SubsystemBase {
 
     // Task 19 unlock: RobotState.IntakePosition pos = robotState.getIntakePosition();
 
-     if (intakePosition == RobotState.IntakePosition.HOMING) {
+     if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING) {
        if (switchRaw) {
          setExtensionOutput(0.0);
          zeroEncoders();
@@ -243,7 +241,7 @@ public class IntakeSubsystem extends SubsystemBase {
        }
       }
 
-    if (intakePosition == RobotState.IntakePosition.RETRACTING) {
+    if (robotState.getIntakePosition() == RobotState.IntakePosition.RETRACTING) {
        if (atHome || rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS) {
          setExtensionOutput(0.0);
          zeroEncoders();
@@ -251,14 +249,14 @@ public class IntakeSubsystem extends SubsystemBase {
        }
      }
 
-  if (intakePosition == RobotState.IntakePosition.EXTENDING) {
+  if (robotState.getIntakePosition() == RobotState.IntakePosition.EXTENDING) {
     if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
       setExtensionOutput(0.0);
       robotState.setIntakePosition(RobotState.IntakePosition.EXTENDED);
        }
      }
 
-  if (intakePosition == RobotState.IntakePosition.HOMING || intakePosition == RobotState.IntakePosition.EXTENDING|| intakePosition == RobotState.IntakePosition.RETRACTING) {
+  if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING || robotState.getIntakePosition() == RobotState.IntakePosition.EXTENDING|| robotState.getIntakePosition() == RobotState.IntakePosition.RETRACTING) {
     
     if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
       stallLoopCount++;
@@ -266,7 +264,7 @@ public class IntakeSubsystem extends SubsystemBase {
         setExtensionOutput(0.0);
         extensionStalled = true;
         stallLoopCount = 0;
-          if (intakePosition == RobotState.IntakePosition.HOMING) {
+          if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING) {
            robotState.setIntakePosition(RobotState.IntakePosition.HOMING_FAILED);
            SmartLogger.logConsoleError("Intake homing FAILED - stall detected");
          }

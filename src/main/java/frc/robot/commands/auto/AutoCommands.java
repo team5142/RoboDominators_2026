@@ -57,30 +57,30 @@ public final class AutoCommands {
         if (intake != null) {
             // Task 24 unlock: uncomment each line below once you add the method to IntakeSubsystem
 
-            // NamedCommands.registerCommand("IntakeDeploy", Commands.runOnce(
-            //     intake::extend, intake));
+            NamedCommands.registerCommand("IntakeDeploy", Commands.runOnce(
+            intake::extend, intake));
 
-            // NamedCommands.registerCommand("IntakeRetract", Commands.runOnce(() -> {
-            //     intake.stopRollers();
-            //     intake.retract();
-            // }, intake));
+            NamedCommands.registerCommand("IntakeRetract", Commands.runOnce(() -> {
+                intake.stopRollers();
+                intake.retract();
+               }, intake));
 
-            // NamedCommands.registerCommand("IntakeRollersOn", Commands.runOnce(
-            //     intake::spinIn, intake));
+            NamedCommands.registerCommand("IntakeRollersOn", Commands.runOnce(
+                 intake::spinIn, intake));
 
-            // NamedCommands.registerCommand("IntakeRollersOff", Commands.runOnce(
-            //     intake::stopRollers, intake));
+            NamedCommands.registerCommand("IntakeRollersOff", Commands.runOnce(
+                 intake::stopRollers, intake));
         }
 
         if (spindexer != null && singulator != null) {
             NamedCommands.registerCommand("FeedStart", Commands.runOnce(
-                () -> {spindexer.motorForward();}
-                // Task 16 unlock: singulator.spinFeed();
+                () -> {spindexer.motorForward();
+                 singulator.spinFeed();}
                 , spindexer, singulator)); }
 
             NamedCommands.registerCommand("FeedStop", Commands.runOnce(() -> {
-                // Task 11 unlock: spindexer.stop();
-                // Task 16 unlock: singulator.pause();
+                spindexer.motorStop();
+                singulator.pause();
             }, spindexer, singulator));
         }
     }

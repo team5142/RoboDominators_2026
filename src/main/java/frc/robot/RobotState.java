@@ -86,7 +86,7 @@ public class RobotState {
       SmartLogger.logReplay("RobotState/Intake/Position", intakePosition.toString());
     }
     //intake position getter
-    public IntakePosition getIntakePosition(IntakePosition intakePosition) { return intakePosition;}
+    public IntakePosition getIntakePosition() { return intakePosition;}
   /*
    * TASK 20a - Add IntakeRollerState Enum and State
    * -----------------------------------------------------------------------
@@ -111,7 +111,7 @@ public class RobotState {
       this.intakeRollerState=intakeRollerState;
       SmartLogger.logReplay("RobotState/Intake/RollerState", intakeRollerState.toString());
     }
-    public IntakeRollerState getIntakeRollerState(IntakeRollerState intakeRollerState) {return intakeRollerState;}
+    public IntakeRollerState getIntakeRollerState() {return intakeRollerState;}
   /*
    * TASK 21a - Add SingulatorState Enum and State
    * -----------------------------------------------------------------------
@@ -188,7 +188,7 @@ public class RobotState {
   public void setRobotPose(Pose2d pose) { this.robotPose = pose; }
   public Pose2d getRobotPose() { return robotPose; }
 
-  // ---- Spindexer ---- (provided as reference)
+  // ---- Spindexer ---- (provded as reference)
 
   public void setSpindexerState(SpindexerState state) {
     if (this.spindexerState == state) return;
