@@ -102,8 +102,8 @@ public class Robot extends LoggedRobot {
        * This is a safety requirement - motors must not run while the robot is disabled.
        */
        if (robotContainer.spindexerSubsystem  != null) robotContainer.spindexerSubsystem.stopAll();
-       //if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
-      // if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
+       if (robotContainer.singulatorSubsystem != null) robotContainer.singulatorSubsystem.stopAll();
+       if (robotContainer.intakeSubsystem     != null) robotContainer.intakeSubsystem.stopAll();
     }
     Logger.recordOutput("Robot/Mode", "DISABLED");
     SmartLogger.logConsole("Robot DISABLED");

@@ -9,6 +9,9 @@ import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.SparkMax;
+
 import edu.wpi.first.units.measure.Angle;
 import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.wpilibj.DigitalInput;
@@ -99,7 +102,7 @@ public class IntakeSubsystem extends SubsystemBase {
   private boolean extensionStalled = false;
   private int stallLoopCount = 0;
   private static final int STALL_LOOP_THRESHOLD = 30;
-
+  
   public IntakeSubsystem(RobotState robotState) {
     this.robotState = robotState;
 
@@ -219,10 +222,14 @@ public class IntakeSubsystem extends SubsystemBase {
   // Task 19 unlock: }
     public void stop() {
     //motor.set(0.0);
+    //private final SparkMax motor = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
     //SmartLogger.logReplay("Intake/PositionRotations", rotations);
     //SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
     //SmartLogger.logReplay("Intake/LimitSwitch", atHome);
     SmartLogger.logReplay("Intake/Stalled", extensionStalled);
   }
+
+    public void stopAll() { stop(); }
+
   
 }

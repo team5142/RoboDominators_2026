@@ -6,6 +6,7 @@ import com.revrobotics.spark.SparkLowLevel.MotorType;
 import frc.robot.Constants; 
 import frc.robot.RobotState;  
 import frc.robot.util.SmartLogger;
+import frc.robot.RobotState;
 /*
  * TASK 2 - Declare a Motor
  * -----------------------------------------------------------------------
@@ -223,24 +224,26 @@ import frc.robot.util.SmartLogger;
 // The Spindexer is a cone-shaped spinning disk that feeds balls toward the Singulator.
 // It is driven by a single NEO motor controlled by a SparkMax motor controller.
 public class SpindexerSubsystem extends SubsystemBase {
-
+  private final SparkMax special554;
   public SpindexerSubsystem() {
-    
+    special554 = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
   
   }
-  private final SparkMax motor = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
+  
   
   public void spinForward() {
-    motor.set(Constants.Spindexer.FORWARD_SPEED);
+    special554.set(Constants.Spindexer.FORWARD_SPEED);
   }
   public void spinReverse() {
-    motor.set(Constants.Spindexer.REVERSE_SPEED);
+    special554.set(Constants.Spindexer.REVERSE_SPEED);
   }
   public void stop() {
-    motor.set(0.0);
+    special554.set(0.0);
   }
-  
   public void stopAll() { stop(); }
+  //private final RobotState robotState;
+  
+  
   @Override
   public void periodic() {
   }

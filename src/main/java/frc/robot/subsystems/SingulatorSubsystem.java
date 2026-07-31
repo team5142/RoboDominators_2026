@@ -100,10 +100,11 @@ public class SingulatorSubsystem extends SubsystemBase {
         && m.status == LaserCan.LASERCAN_STATUS_VALID_MEASUREMENT
         && m.distance_mm <= Constants.Singulator.LASERCAN_THRESHOLD_MM;
   }
-  //public void stop() {
-    //motor.set(0.0);
-  //public void stopAll() { stop(); }
+  public void stop() {
+    motor.set(0.0); }
+  public void stopAll() { stop(); }
   @Override
   public void periodic() {
   }
+  private final SparkMax motor = new SparkMax(Constants.Spindexer.MOTOR_ID, MotorType.kBrushless);
 }
