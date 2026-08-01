@@ -85,10 +85,13 @@ public class SingulatorSubsystem extends SubsystemBase {
   private final LaserCan laserCan;
   private final SparkMax singulatorMotor;
   private final int smartCurrentLimit;
-
+  private int stallCount;
+  private int agitationLoops;
   public boolean ballPresent;
   private RobotState singulatorState;
   public SingulatorSubsystem(RobotState rS) {
+    agitationLoops=10;
+    stallCount=0;
     singulatorState=rS;
     smartCurrentLimit=Constants.Singulator.CURRENT_LIMIT_AMPS;
     singulatorMotor=new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless  );
@@ -137,9 +140,35 @@ public class SingulatorSubsystem extends SubsystemBase {
 
   @Override
   public void periodic() {
+      if (singulatorState.getSingulatorState()==RobotState.SingulatorState.PAUSED) {
+      return;
+    }
     ballPresent=isBallPresent();
     RobotState.setSingulatorBeamBreak(ballPresent);
-    SmartLogger.logReplay("Singulator/BallPresent", ballPresent);
-    SmartLogger.logReplay("Singulator/CurrentAmps", singulatorMotor.getOutputCurrent());  
+    
+    if (!ballPresent && singulatorState.getSingulatorState()== RobotState.SingulatorState.FEEDING) {
+      stallCount ++;
+      System.out.println("Singulator stalling");
+
+    }
+    if (stallCount==Constants.Singulator.stallThreshold && singulatorState.getSingulatorState() != RobotState.SingulatorState.PAUSED) {
+      spinReverse();
+      singulatorState.setSingulatorState(RobotState.SingulatorState.REVERSING);
+      System.out.println("Unjamming singulator");
+      agitationLoops --;
+    }
+  
+    if (agitationLoops==0) {
+      stallCount=0;
+      agitationLoops=10;
+      System.out.println("Unjamming complete");
+      singulatorState.setSingulatorState(RobotState.SingulatorState.FEEDING);
+      spinFeed();
+    }
+    if (ballPresent && singulatorState.getSingulatorState() == RobotState.SingulatorState.FEEDING ) {
+      System.out.println("Ball staged in turret");
+      pause();
+      singulatorState.setSingulatorState(RobotState.SingulatorState.PAUSED);
+    }
   }
 }

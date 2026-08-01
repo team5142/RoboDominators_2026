@@ -426,6 +426,7 @@ public final class Constants {
 
     public static final double FEED_SPEED    =  1.00; // raised from 0.85 (2026-03-11)
     public static final double REVERSE_SPEED = -0.85;
+    public static final double stallThreshold = 5;
 
     // Pre-feed prime: briefly reverse before feeding to pull the ball back into compression.
     // The ball sits in a deadzone at the turret plane where the wheel barely contacts it —

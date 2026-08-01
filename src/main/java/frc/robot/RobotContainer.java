@@ -189,6 +189,10 @@ public class RobotContainer {
       .onFalse(Commands.runOnce(
     () -> {singulatorSubsystem.pause();},
       singulatorSubsystem));
+    new JoystickButton(operatorController,XboxController.Button.kY.value)
+      .onTrue(Commands.runOnce(
+        () -> {intakeSubsystem.extend();} 
+        ,intakeSubsystem));
       
     /*
      * TASK 16 - Combine Spindexer and Singulator on Right Bumper
