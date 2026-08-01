@@ -36,7 +36,10 @@ public class Robot extends LoggedRobot {
     Logger.start();
 
     SmartLogger.logConsole("Robot booting... Battery: " + RobotController.getBatteryVoltage() + "V", "Robot Init");
-
+    robotState = new RobotState();
+      robotContainer = new RobotContainer(robotState);
+      SmartLogger.logConsole("Robot initialized successfully");
+    /* 
     try {
       robotState = new RobotState();
       robotContainer = new RobotContainer(robotState);
@@ -44,7 +47,7 @@ public class Robot extends LoggedRobot {
     } catch (Exception e) {
       SmartLogger.logConsoleError("FATAL: Robot failed to initialize: " + e.getMessage());
       DriverStation.reportError("Robot failed to initialize: " + e.getMessage(), true);
-    }
+    } */
   }
 
   // Runs EVERY 20ms in ALL modes - the robot heartbeat

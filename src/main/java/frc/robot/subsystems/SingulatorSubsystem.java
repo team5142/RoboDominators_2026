@@ -91,7 +91,7 @@ public class SingulatorSubsystem extends SubsystemBase {
   public SingulatorSubsystem(RobotState rS) {
     singulatorState=rS;
     smartCurrentLimit=Constants.Singulator.CURRENT_LIMIT_AMPS;
-    singulatorMotor=new SparkMax(Constants.Singulator.MOTOR_ID, null);
+    singulatorMotor=new SparkMax(Constants.Singulator.MOTOR_ID, MotorType.kBrushless  );
     SparkMaxConfig config = new SparkMaxConfig();
     config.inverted(Constants.Singulator.MOTOR_INVERTED);
     config.smartCurrentLimit(Constants.Singulator.CURRENT_LIMIT_AMPS);
