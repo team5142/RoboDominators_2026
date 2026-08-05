@@ -190,11 +190,41 @@ public class RobotContainer {
     () -> {singulatorSubsystem.pause();},
       singulatorSubsystem));
     new JoystickButton(operatorController,XboxController.Button.kY.value)
-      .onTrue(Commands.runOnce(
-        () -> {intakeSubsystem.extend();} 
+      .onTrue(Commands.startEnd(
+        () -> {if (intakeSubsystem.isExtended()) {
+          intakeSubsystem.extend();
+        }
+        },
+        () -> {if (intakeSubsystem.isExtended()==false) {
+          intakeSubsystem.retract();
+        }
+        }
         ,intakeSubsystem));
-      
-    /*
+
+    new JoystickButton(operatorController,XboxController.Button.kB.value)     
+        .whileTrue(Commands.startEnd(
+          () -> {
+            if (intakeSubsystem.isExtended()) {
+              intakeSubsystem.spinIn();
+            }
+            else return;
+          },
+          () -> {
+            intakeSubsystem.stopRollers();
+          },
+          intakeSubsystem));
+    
+    new JoystickButton(operatorController,XboxController.Button.kX.value)
+        .whileTrue(Commands.startEnd(
+          () -> {if (intakeSubsystem.isExtended()){
+            intakeSubsystem.spinOut();
+          }
+          else return;
+        },
+          () -> {intakeSubsystem.stopRollers();}          
+          ,intakeSubsystem ));
+    
+        /*
      * TASK 16 - Combine Spindexer and Singulator on Right Bumper
      * -----------------------------------------------------------------------
      * Now that both subsystems exist, update the Right Bumper binding to call
@@ -268,7 +298,6 @@ public class RobotContainer {
      * When done: compile and move to Task 20a in DriveWithJoysticks.java.
      * -----------------------------------------------------------------------
      */
-
     /*
      * TASK 22b - Add a Precision Mode Button (Live Supplier)
      * -----------------------------------------------------------------------

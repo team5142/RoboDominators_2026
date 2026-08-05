@@ -220,7 +220,66 @@ public class IntakeSubsystem extends SubsystemBase {
   // Task 19 unlock: un-comment all the RobotState lines below once you add IntakePosition.
   @Override
   public void periodic() {
-    
+        if (positionSignal == null || currentSignal == null) return;
+    BaseStatusSignal.refreshAll(positionSignal, currentSignal);
+    double rotations   = positionSignal.getValueAsDouble();
+    double currentAmps = currentSignal.getValueAsDouble();
+    boolean switchRaw  = false; // TODO (Task 22): replace with limitSwitch.get()
+    boolean atHome = switchRaw
+        && rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS + Constants.Intake.LIMIT_SWITCH_VALID_WINDOW_ROTATIONS;
+    // Task 19 unlock: robotState.setIntakeLimitSwitch(atHome);
+
+    // Task 19 unlock: RobotState.IntakePosition pos = robotState.getIntakePosition();
+
+     if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING) {
+       if (switchRaw) {
+         setExtensionOutput(0.0);
+         zeroEncoders();
+         robotState.setIntakePosition(RobotState.IntakePosition.RETRACTED);
+         SmartLogger.logConsole("Intake homing complete", "Intake");
+       } else {
+         setExtensionOutput(Constants.Intake.RETRACT_SPEED);
+       }
+      }
+
+    if (robotState.getIntakePosition() == RobotState.IntakePosition.RETRACTING) {
+       if (atHome || rotations <= Constants.Intake.EXTENSION_HOME_ROTATIONS) {
+         setExtensionOutput(0.0);
+         zeroEncoders();
+         robotState.setIntakePosition(RobotState.IntakePosition.RETRACTED);
+       }
+     }
+
+  if (robotState.getIntakePosition() == RobotState.IntakePosition.EXTENDING) {
+    if (rotations >= Constants.Intake.EXTENSION_TARGET_ROTATIONS) {
+      setExtensionOutput(0.0);
+      robotState.setIntakePosition(RobotState.IntakePosition.EXTENDED);
+       }
+     }
+
+  if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING || robotState.getIntakePosition() == RobotState.IntakePosition.EXTENDING|| robotState.getIntakePosition() == RobotState.IntakePosition.RETRACTING) {
+
+    if (currentAmps > Constants.Intake.EXTENSION_STALL_CURRENT_AMPS) {
+      stallLoopCount++;
+      if (stallLoopCount >= STALL_LOOP_THRESHOLD) {
+        setExtensionOutput(0.0);
+        extensionStalled = true;
+        stallLoopCount = 0;
+          if (robotState.getIntakePosition() == RobotState.IntakePosition.HOMING) {
+           robotState.setIntakePosition(RobotState.IntakePosition.HOMING_FAILED);
+           SmartLogger.logConsoleError("Intake homing FAILED - stall detected");
+         }
+      }
+    } else {
+      stallLoopCount = 0;
+    }
+    }
+
+    SmartLogger.logReplay("Intake/PositionRotations", rotations);
+    SmartLogger.logReplay("Intake/CurrentAmps", currentAmps);
+    SmartLogger.logReplay("Intake/LimitSwitch", atHome);
+    SmartLogger.logReplay("Intake/Stalled", extensionStalled);
+  }
 }
-}
+
 
